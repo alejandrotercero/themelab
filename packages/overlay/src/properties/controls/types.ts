@@ -11,3 +11,14 @@ export interface PropertyControl {
 
 export type OnPreview = (key: string, cssValue: string) => void;
 export type OnCommit = () => void;
+
+/** Extra context passed to control factories (currently used by the color
+ *  control to detect/offer shadcn theme-variable bindings). */
+export interface ControlContext {
+  /** className of the currently selected element — lets the color control
+   *  detect that a color is bound to a theme token (e.g. `bg-primary`). */
+  selectedClassName?: string;
+  /** Bind a color property to a theme token, writing e.g. `bg-primary`
+   *  instead of a raw color. Editing the token then updates it everywhere. */
+  onBindToken?: (key: string, token: string) => void;
+}

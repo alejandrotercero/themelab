@@ -23,7 +23,8 @@ const TOOLBAR_STYLES = `
   .toolbar {
     position: fixed;
     bottom: 16px;
-    left: 76px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 2147483647;
     display: flex;
     align-items: center;
@@ -140,7 +141,8 @@ const TOOLBAR_STYLES = `
   .toast {
     position: fixed;
     bottom: 68px;
-    left: 76px;
+    left: 50%;
+    transform: translateX(-50%);
     background: ${COLORS.bgPrimary};
     border: 1px solid ${COLORS.border};
     color: ${COLORS.textPrimary};

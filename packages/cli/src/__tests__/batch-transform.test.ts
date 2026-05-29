@@ -129,6 +129,48 @@ describe("executeBatch", () => {
     expect(result.results[0].error).toContain("No matching text");
   });
 
+  // ── moveSibling (structural reorder via the resolver) ────────────────
+
+  it("moves an element down among siblings via executeBatch", () => {
+    const { filePath, original } = setup("batch-multi.tsx");
+    // Reorder a real element among its siblings; resolve via line:col.
+    const h1Pos = findPosition(original, "h1");
+    const result = executeBatch(
+      [{ op: "moveSibling", file: filePath, line: h1Pos.line, col: h1Pos.col, direction: "down", tagName: "h1" }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(true);
+    expect(result.undoEntries).toHaveLength(1);
+  });
+
+  it("returns a friendly error when moving past the first sibling", () => {
+    const { filePath, original } = setup("five-siblings.tsx");
+    const navbarPos = findPosition(original, "Navbar");
+    const result = executeBatch(
+      [{ op: "moveSibling", file: filePath, line: navbarPos.line, col: navbarPos.col, direction: "up", tagName: "Navbar" }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(false);
+    expect(result.results[0].error).toMatch(/already the first sibling/i);
+    // File unchanged on a no-op boundary move
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(original);
+  });
+
+  it("reorders sibling components and writes correct source order", () => {
+    const { filePath, original } = setup("five-siblings.tsx");
+    const featuresPos = findPosition(original, "Features");
+    const result = executeBatch(
+      [{ op: "moveSibling", file: filePath, line: featuresPos.line, col: featuresPos.col, direction: "up", tagName: "Features" }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(true);
+    const updated = fs.readFileSync(filePath, "utf-8");
+    const order = updated
+      .split("\n").map(l => l.trim())
+      .filter(l => /^<(Navbar|Hero|Features|Pricing|Footer) \/>$/.test(l));
+    expect(order).toEqual(["<Navbar />", "<Features />", "<Hero />", "<Pricing />", "<Footer />"]);
+  });
+
   // ── Multiple operations on the same file ─────────────────────────────
 
   it("applies multiple updateClass ops on different elements in one file", () => {
@@ -735,5 +777,116 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     const updated = fs.readFileSync(filePath, "utf-8");
     expect(updated).toContain("text-purple-500");
+  });
+
+  // ── MDX fallback scoping (regression for the docs/blueprint.md corruption) ──
+
+  function makeTempProject(): { root: string; write: (rel: string, content: string) => string } {
+    const root = path.join(fixturesDir, `_tmpproj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    fs.mkdirSync(root, { recursive: true });
+    fixtures.push({ cleanup: () => { try { fs.rmSync(root, { recursive: true, force: true }); } catch {} } });
+    return {
+      root,
+      write: (rel: string, content: string) => {
+        const full = path.join(root, rel);
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, content, "utf-8");
+        return full;
+      },
+    };
+  }
+
+  it("does NOT touch an unrelated markdown file when a .tsx text edit fails (no MDX import)", () => {
+    const proj = makeTempProject();
+    const compFile = proj.write(
+      "src/Comp.tsx",
+      `export default function Comp() {\n  return <div>Some component text</div>;\n}\n`,
+    );
+    // An unrelated doc that happens to contain the text the user is editing.
+    const docContent = `# Blueprint\n\n- Fetch Liked Tweets: retrieve liked tweets.\n`;
+    const docFile = proj.write("docs/blueprint.md", docContent);
+
+    const result = executeBatch(
+      [{
+        op: "updateText",
+        file: compFile,
+        line: 2,
+        col: 14,
+        originalText: "Fetch Liked Tweets",
+        newText: "Fetch Likes Tweets",
+      }],
+      proj.root,
+    );
+
+    // The edit must fail (text isn't in the component) and must NOT corrupt the doc.
+    expect(result.results[0].success).toBe(false);
+    expect(fs.readFileSync(docFile, "utf-8")).toBe(docContent);
+  });
+
+  it("redirects a failed .tsx text edit to the .mdx file it actually imports", () => {
+    const proj = makeTempProject();
+    const postFile = proj.write(
+      "src/Post.tsx",
+      `import Content from "./post.mdx";\nexport default function Post() {\n  return <article><Content /></article>;\n}\n`,
+    );
+    const original = "The quick brown fox jumps over the lazy dog.";
+    const mdxFile = proj.write("src/post.mdx", `# Title\n\n${original}\n`);
+    // A sibling markdown with the same text that is NOT imported — must stay untouched.
+    const unrelatedContent = `# Other\n\n${original}\n`;
+    const unrelatedFile = proj.write("docs/other.md", unrelatedContent);
+
+    const articlePos = findPosition(fs.readFileSync(postFile, "utf-8"), "article");
+
+    const result = executeBatch(
+      [{
+        op: "updateText",
+        file: postFile,
+        line: articlePos.line,
+        col: articlePos.col,
+        originalText: original,
+        newText: "The quick brown fox leaps over the lazy dog.",
+        textAnchor: buildTextEditAnchor(original, "The quick brown fox leaps over the lazy dog."),
+      }],
+      proj.root,
+    );
+
+    expect(result.results[0].success).toBe(true);
+    expect(result.results[0].file).toBe(mdxFile);
+    expect(fs.readFileSync(mdxFile, "utf-8")).toContain("leaps over the lazy dog");
+    // The unrelated, non-imported markdown is never touched.
+    expect(fs.readFileSync(unrelatedFile, "utf-8")).toBe(unrelatedContent);
+  });
+
+  // ── Host-vs-component tag bridge (shadcn <TabsTrigger> renders a <button>) ──
+
+  it("resolves a class edit on a shadcn component whose DOM tag (button) differs from the source tag (TabsTrigger)", () => {
+    const source = `import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";\nexport function AppHeader() {\n  return (\n    <Tabs defaultValue="likes">\n      <TabsList>\n        <TabsTrigger value="likes" className="px-3">Likes</TabsTrigger>\n      </TabsList>\n    </Tabs>\n  );\n}\n`;
+    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_shadcn-tabs.tsx`);
+    fs.writeFileSync(filePath, source, "utf-8");
+    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+
+    const pos = findPosition(source, "TabsTrigger");
+
+    const result = executeBatch(
+      [{
+        op: "updateClass",
+        file: filePath,
+        line: pos.line,
+        col: pos.col,
+        // DOM host tag is "button" (what shadcn renders), but the source JSX is
+        // the <TabsTrigger> component — the bridge resolves via componentName.
+        tagName: "button",
+        componentName: "TabsTrigger",
+        className: "inline-flex items-center justify-center px-3 text-sm",
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+
+    expect(result.results[0].success).toBe(true);
+    const updated = fs.readFileSync(filePath, "utf-8");
+    // The class lands on the <TabsTrigger>, preserving its existing classes.
+    expect(updated).toMatch(/<TabsTrigger[^>]*className="[^"]*bg-red-500[^"]*"/);
+    expect(updated).toContain("px-3");
   });
 });

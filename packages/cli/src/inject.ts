@@ -133,8 +133,16 @@ export function createProxyServer(
     }
     if (res && "writeHead" in res) {
       const errRes = res as unknown as http.ServerResponse;
-      errRes.writeHead(502, { "Content-Type": "text/plain" });
-      errRes.end("Dev server unavailable");
+      // With selfHandleResponse the proxyRes handler may have already written
+      // headers/streamed the body before the upstream error fired. Writing them
+      // again throws ERR_HTTP_HEADERS_SENT and crashes the proxy, so only send a
+      // 502 when nothing has been written yet; otherwise just terminate cleanly.
+      if (errRes.headersSent) {
+        if (!errRes.writableEnded) errRes.end();
+      } else {
+        errRes.writeHead(502, { "Content-Type": "text/plain" });
+        errRes.end("Dev server unavailable");
+      }
     }
   });
 

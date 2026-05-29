@@ -11,6 +11,7 @@ import {
   mutateClassName,
   mutateTextContent,
   mutateReorder,
+  swapWithAdjacentSibling,
   type ClassNameUpdate,
 } from "./transform.js";
 import { applyMdxTextEdit, isMdxTextFile } from "./mdx-text.js";
@@ -19,37 +20,56 @@ import { resolveJSXPath } from "./jsx-path-resolver.js";
 import { logger } from "./logger.js";
 
 /**
- * Search for .mdx/.md files in the project that contain the given text.
+ * Find an .mdx/.md file that is imported by `jsxFilePath` AND contains `text`.
+ *
  * Used as a fallback when a text edit targets a JSX wrapper but the actual
- * content lives in a compiled MDX file.
+ * content lives in a compiled MDX file (e.g. `import Post from "./post.mdx"`).
+ *
+ * IMPORTANT: this is scoped to files the clicked component actually references.
+ * A previous version searched the entire project for any markdown containing the
+ * text and edited the first match, which silently corrupted unrelated docs (e.g.
+ * a README) whenever a normal text edit failed to resolve. The import linkage is
+ * the safety property: we only ever touch markdown the component imports.
  */
-function findMdxFileContainingText(projectRoot: string, text: string): string | null {
+function findImportedMdxFileContainingText(
+  jsxFilePath: string,
+  text: string,
+  projectRoot: string,
+): string | null {
   const normalizedText = text.replace(/\s+/g, " ").trim();
   if (!normalizedText) return null;
 
+  let source: string;
+  try {
+    source = fs.readFileSync(jsxFilePath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  // Collect import/require/dynamic-import specifiers that point at .md/.mdx.
+  // Scoped to this file only — never a project-wide scan.
+  const specifierRegex = /(?:import\s[^'"]*?|import\s*\(\s*|require\s*\(\s*|from\s+)['"]([^'"]+\.mdx?)['"]/g;
+  const baseDir = path.dirname(jsxFilePath);
+  const seen = new Set<string>();
   const candidates: string[] = [];
-  const searchDirs = [projectRoot];
-  const visited = new Set<string>();
 
-  while (searchDirs.length > 0) {
-    const dir = searchDirs.pop()!;
-    if (visited.has(dir)) continue;
-    visited.add(dir);
-
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
+  let match: RegExpExecArray | null;
+  while ((match = specifierRegex.exec(source)) !== null) {
+    const spec = match[1];
+    const resolvedCandidates: string[] = [];
+    if (spec.startsWith(".")) {
+      resolvedCandidates.push(path.resolve(baseDir, spec));
+    } else if (spec.startsWith("@/")) {
+      // Common Next/Vite alias: @/ → <root>/src or <root>
+      resolvedCandidates.push(path.resolve(projectRoot, "src", spec.slice(2)));
+      resolvedCandidates.push(path.resolve(projectRoot, spec.slice(2)));
+    } else if (spec.startsWith("/")) {
+      resolvedCandidates.push(path.resolve(projectRoot, spec.slice(1)));
     }
-
-    for (const entry of entries) {
-      if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") continue;
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        searchDirs.push(fullPath);
-      } else if (entry.name.endsWith(".mdx") || entry.name.endsWith(".md")) {
-        candidates.push(fullPath);
+    for (const candidate of resolvedCandidates) {
+      if (!seen.has(candidate)) {
+        seen.add(candidate);
+        candidates.push(candidate);
       }
     }
   }
@@ -128,6 +148,29 @@ function tagNameMatches(astTag: string, domTag: string): boolean {
     if (suffix.toLowerCase() === domTag.toLowerCase()) return true;
   }
   return false;
+}
+
+/**
+ * Match an AST tag against the op's DOM `tagName`, OR — when the clicked DOM node
+ * is a host element rendered by a user component — against the owning
+ * `componentName`. shadcn primitives are the canonical case: `<TabsTrigger>` in
+ * source renders a host `<button>` in the DOM, so the overlay sends
+ * tagName="button" while the JSX the user wants to edit is `<TabsTrigger>`.
+ *
+ * The component bridge only fires when the AST tag is itself a component
+ * (capitalized identifier or `Foo.Bar` member). For ordinary host elements the
+ * componentName is the *containing* function (e.g. `AppHeader`), whose own JSX
+ * usage lives in another file — so this won't spuriously match host tags.
+ */
+function tagOrComponentMatches(astTag: string, op: BatchOperation): boolean {
+  const domTag = "tagName" in op ? op.tagName : undefined;
+  if (domTag && tagNameMatches(astTag, domTag)) return true;
+
+  const componentName = "componentName" in op ? op.componentName : undefined;
+  if (!componentName) return false;
+  const astBase = astTag.split(".").pop() ?? astTag;
+  const astIsComponent = /^[A-Z]/.test(astBase);
+  return astIsComponent && tagNameMatches(astTag, componentName);
 }
 
 /** Extract static classes from a JSX element's className attribute. */
@@ -305,7 +348,7 @@ function resolveNodes(
     // Cross-validate tag name if we got a hit and hint is available
     if (node && op.tagName) {
       const actualTag = getJSXTagName(node.node);
-      if (actualTag && !tagNameMatches(actualTag, op.tagName)) {
+      if (actualTag && !tagOrComponentMatches(actualTag, op)) {
         // Exact position hit wrong tag — clear and fall through
         node = null;
       }
@@ -316,7 +359,7 @@ function resolveNodes(
       const candidates: any[] = [];
       root.find(j.JSXElement).forEach((p: any) => {
         const astTag = getJSXTagName(p.node);
-        if (astTag && op.tagName && tagNameMatches(astTag, op.tagName)) {
+        if (astTag && tagOrComponentMatches(astTag, op)) {
           candidates.push(p);
         }
       });
@@ -466,7 +509,7 @@ function coalesceOps(resolved: ResolvedOp[]): ResolvedOp[] {
       // Failed resolution — keep as-is
       continue;
     }
-    if (rop.op.op === "reorder" || rop.op.op === "deleteElement") {
+    if (rop.op.op === "reorder" || rop.op.op === "deleteElement" || rop.op.op === "moveSibling") {
       // Structural ops can't be coalesced
       continue;
     }
@@ -511,6 +554,7 @@ function applyOp(j: any, root: any, rop: ResolvedOp, source: string): string | u
         relatedPrefixes: u.relatedPrefixes,
         classPattern: u.classPattern,
         standalone: u.standalone,
+        variant: u.variant,
       }));
       mutateClassName(j, node, updates);
       return undefined;
@@ -541,6 +585,18 @@ function applyOp(j: any, root: any, rop: ResolvedOp, source: string): string | u
 
     case "reorder": {
       mutateReorder(j, root, op.fromLine, op.toLine);
+      return undefined;
+    }
+
+    case "moveSibling": {
+      if (!node) {
+        return `Could not resolve element at ${op.line}:${op.col} to move`;
+      }
+      try {
+        swapWithAdjacentSibling(node, op.direction);
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
       return undefined;
     }
 
@@ -1577,7 +1633,7 @@ export function executeBatch(
     const resultFailed = !results[i]?.success;
 
     if (resultFailed || !sourceHasText) {
-      const mdxFile = findMdxFileContainingText(projectRoot, op.originalText);
+      const mdxFile = findImportedMdxFileContainingText(resolvedPath, op.originalText, projectRoot);
       if (mdxFile) {
         logger.info(`[MDX fallback] Redirecting text edit from ${op.file} → ${mdxFile}`);
         try {

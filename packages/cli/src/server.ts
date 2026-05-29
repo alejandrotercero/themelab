@@ -15,6 +15,8 @@ import { reorderComponent, getSiblings } from "./transform.js";
 import { updateClassName, updateTextContent } from "./transform.js";
 import { logger } from "./logger.js";
 import { resolveTailwindConfig } from "./tailwind-resolver.js";
+import { resolveTheme } from "./theme-resolver.js";
+import { writeThemeVars } from "./theme-writer.js";
 import { isProjectFilePathSafe, resolveProjectFilePath } from "./path-resolver.js";
 import { discoverFile } from "./file-discovery.js";
 import { executeBatch } from "./batch-transform.js";
@@ -60,6 +62,22 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
   let processing = false;
   const queue: Array<{ msg: ClientMessage; ws: WebSocket }> = [];
 
+  // Single source of truth for mutating message types: these are processed
+  // sequentially via the queue (processQueue). Anything listed here MUST have a
+  // matching case in the processQueue switch — its `default` loudly flags drift.
+  // Everything else is handled immediately (read-only) in the message dispatcher.
+  const WRITE_MESSAGE_TYPES = new Set<ClientMessage["type"]>([
+    "reorder",
+    "moveSibling",
+    "updateTheme",
+    "undo",
+    "updateProperty",
+    "updateProperties",
+    "updateText",
+    "revertChanges",
+    "commitBatch",
+  ]);
+
   function extractErrorCode(err: unknown): TransformErrorCode | undefined {
     if (err instanceof Error) {
       const match = err.message.match(/^(DYNAMIC_CLASSNAME|FILE_CHANGED|MAPPED_ELEMENT|CONFLICTING_CLASS)/);
@@ -82,6 +100,27 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
 
     try {
       switch (msg.type) {
+        case "updateTheme": {
+          if (!isProjectFilePathSafe(msg.filePath, projectRoot)) {
+            logger.warn(`[ReactRewrite] Rejected theme write path: ${msg.filePath}`);
+            send(ws, { type: "updateThemeComplete", success: false, error: "Theme file path is outside the project root" });
+            break;
+          }
+          const resolvedPath = resolveProjectFilePath(msg.filePath, projectRoot)!;
+          const result = writeThemeVars(resolvedPath, msg.edits);
+          if (!result.success) {
+            send(ws, { type: "updateThemeComplete", success: false, error: result.error });
+            break;
+          }
+          let undoId: string | undefined;
+          if (result.before !== result.after) {
+            undoId = randomUUID();
+            undoStack.push({ id: undoId, filePath: resolvedPath, content: result.before!, afterContent: result.after!, timestamp: Date.now() });
+          }
+          logger.debug(`[theme] wrote ${msg.edits.reduce((n, e) => n + Object.keys(e.vars).length, 0)} var(s) to ${path.relative(projectRoot, resolvedPath)}`);
+          send(ws, { type: "updateThemeComplete", success: true, undoId });
+          break;
+        }
         case "reorder": {
           if (!isProjectFilePathSafe(msg.filePath, projectRoot)) {
             const error = msg.filePath.trim()
@@ -116,6 +155,53 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               success: false,
               error: err instanceof Error ? err.message : String(err),
             });
+          }
+          break;
+        }
+
+        case "moveSibling": {
+          if (!isProjectFilePathSafe(msg.filePath, projectRoot)) {
+            const error = msg.filePath.trim()
+              ? "File path is outside the project root"
+              : "File path could not be resolved for this element";
+            logger.warn(`[ReactRewrite] Rejected moveSibling path: ${msg.filePath}`);
+            send(ws, { type: "moveSiblingComplete", success: false, error });
+            break;
+          }
+
+          // Route through the batch engine so the element resolves via the full
+          // chain (jsxPath → line:col → fuzzy className/nth), the same way class
+          // edits land on the right node. A raw line match was too brittle.
+          logger.debug(`[moveSibling] ${msg.filePath}:${msg.lineNumber} dir=${msg.direction} tag=${msg.tagName} class="${(msg.className || "").slice(0, 40)}"`);
+          const batchResult = executeBatch(
+            [{
+              op: "moveSibling" as const,
+              file: msg.filePath,
+              line: msg.lineNumber,
+              col: msg.columnNumber,
+              direction: msg.direction,
+              componentName: msg.componentName,
+              tagName: msg.tagName,
+              className: msg.className,
+              parentTagName: msg.parentTagName,
+              parentClassName: msg.parentClassName,
+              nthOfType: msg.nthOfType,
+              id: msg.elementId,
+              jsxKey: msg.jsxKey,
+              jsxPath: msg.jsxPath,
+            }],
+            projectRoot,
+          );
+
+          const opResult = batchResult.results[0];
+          if (opResult?.success) {
+            const undoId = randomUUID();
+            for (const entry of batchResult.undoEntries) {
+              undoStack.push({ id: undoId, filePath: entry.filePath, content: entry.content, afterContent: entry.afterContent, timestamp: Date.now() });
+            }
+            send(ws, { type: "moveSiblingComplete", success: true });
+          } else {
+            send(ws, { type: "moveSiblingComplete", success: false, error: opResult?.error || "Unknown error" });
           }
           break;
         }
@@ -371,6 +457,11 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
           send(ws, { type: "revertComplete", results });
           break;
         }
+
+        default:
+          // A type is in WRITE_MESSAGE_TYPES but has no handler here — loud, not
+          // silent, so this drift is caught immediately instead of vanishing.
+          logger.error(`[ReactRewrite] Queued write message has no handler: ${(msg as { type?: string }).type}`);
       }
     } catch (err) {
       // Catch-all for unexpected errors
@@ -398,12 +489,34 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
       logger.warn("[ReactRewrite] Could not resolve Tailwind config:", err);
     }
 
+    // Resolve and send the project's design-token theme (for Theme mode)
+    try {
+      const resolved = resolveTheme(projectRoot);
+      if (resolved) {
+        send(ws, { type: "themeStyles", theme: resolved.theme, source: resolved.source });
+        logger.debug(
+          `[theme] ${path.relative(projectRoot, resolved.source.filePath)} — ` +
+            `${Object.keys(resolved.theme.light).length} light / ${Object.keys(resolved.theme.dark).length} dark vars` +
+            `${resolved.source.darkSelector ? ` (dark: ${resolved.source.darkSelector})` : ""}`,
+        );
+      }
+    } catch (err) {
+      logger.warn("[ReactRewrite] Could not resolve theme:", err);
+    }
+
     ws.on("message", (data) => {
       let msg: ClientMessage;
       try {
         msg = JSON.parse(data.toString());
       } catch {
         return; // Ignore malformed messages
+      }
+
+      // Mutating messages → sequential queue (single source of truth above).
+      if (WRITE_MESSAGE_TYPES.has(msg.type)) {
+        queue.push({ msg, ws });
+        processQueue();
+        return;
       }
 
       switch (msg.type) {
@@ -458,17 +571,9 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
           break;
         }
 
-        case "reorder":
-        case "undo":
-        case "updateProperty":
-        case "updateProperties":
-        case "updateText":
-        case "revertChanges":
-        case "commitBatch":
-          // Sequential processing
-          queue.push({ msg, ws });
-          processQueue();
-          break;
+        default:
+          // Write types are intercepted above; anything here is unrecognized.
+          logger.debug(`[ReactRewrite] Ignoring unrecognized message type: ${(msg as { type?: string }).type}`);
       }
     });
 

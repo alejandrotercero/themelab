@@ -110,7 +110,11 @@ Options:
 | `Delete / Backspace` | Remove selected element |
 | `Ctrl/Cmd + Z` | Undo canvas changes |
 | `Ctrl/Cmd + Shift + L` | Toggle changelog |
-| `Ctrl/Cmd + Click` | Follow links through the overlay |
+| `` ` `` (backtick) | Toggle Interact mode — operate the app (buttons, menus, links); press again to go back to selecting |
+| `↑` / `↓` | Select parent / first child of the selected element |
+| `←` / `→` | Select previous / next sibling |
+| `[` / `]` | Move selected element up / down among its siblings (writes to source) |
+| `Ctrl/Cmd + Click` | Add element to multi-selection |
 | Double-click text | Edit text inline |
 
 ## Notes

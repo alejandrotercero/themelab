@@ -1,5 +1,5 @@
 import type { PropertyDescriptor, PropertyGroup } from "@react-rewrite/shared";
-import type { PropertyControl, OnPreview, OnCommit } from "./controls/types.js";
+import type { PropertyControl, OnPreview, OnCommit, ControlContext } from "./controls/types.js";
 import { createNumberScrub } from "./controls/number-scrub.js";
 import { createSegmented } from "./controls/segmented.js";
 import { createColorSwatch } from "./controls/color-swatch.js";
@@ -44,6 +44,7 @@ type ControlFactory = (
   values: Map<string, string>,
   onPreview: OnPreview,
   onCommit: OnCommit,
+  ctx?: ControlContext,
 ) => PropertyControl;
 
 const CONTROL_FACTORIES: Record<string, ControlFactory> = {
@@ -236,6 +237,7 @@ export function renderSections(
   onPreview: OnPreview,
   onCommit: OnCommit,
   onShowAll?: () => void,
+  ctx?: ControlContext,
 ): { container: HTMLElement; controls: PropertyControl[] } {
   const container = document.createElement("div");
   container.className = "prop-sections";
@@ -298,7 +300,7 @@ export function renderSections(
       const factory = CONTROL_FACTORIES[entry.controlType];
       if (!factory) continue;
 
-      const control = factory(entry.descriptors, currentValues, onPreview, onCommit);
+      const control = factory(entry.descriptors, currentValues, onPreview, onCommit, ctx);
 
       // Compound controls (box-model) have their own layout — no label wrapper
       if (entry.descriptors.length > 1 || entry.controlType === "box-model") {

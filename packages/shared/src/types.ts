@@ -66,6 +66,13 @@ export type BatchOperation =
         relatedPrefixes?: string[];
         classPattern?: string;
         standalone?: boolean;
+        /**
+         * Responsive breakpoint variant the edit targets (e.g. "md"), chosen by
+         * the overlay as the class winning at the current viewport. Empty/omitted
+         * means the base (unprefixed) class. Lets edits hit `md:mb-6` instead of
+         * silently changing the base `mb-0` that a responsive variant overrides.
+         */
+        variant?: string;
       }>;
     }
   | {
@@ -151,6 +158,24 @@ export type BatchOperation =
       fileMtime?: number;
       fileSize?: number;
       jsxPath?: JSXStructuralPath;
+    }
+  | {
+      op: "moveSibling";
+      file: string;
+      line: number;
+      col: number;
+      direction: "up" | "down";
+      componentName?: string;
+      tagName?: string;
+      className?: string;
+      parentTagName?: string;
+      parentClassName?: string;
+      nthOfType?: number;
+      id?: string;
+      jsxKey?: string;
+      fileMtime?: number;
+      fileSize?: number;
+      jsxPath?: JSXStructuralPath;
     };
 
 export type ClientMessage =
@@ -163,8 +188,29 @@ export type ClientMessage =
       toComponent: string;
     }
   | { type: "getSiblings"; filePath: string; parentLine: number }
+  | {
+      type: "moveSibling";
+      filePath: string;
+      lineNumber: number;
+      columnNumber: number;
+      direction: "up" | "down";
+      componentName?: string;
+      tagName?: string;
+      className?: string;
+      parentTagName?: string;
+      parentClassName?: string;
+      nthOfType?: number;
+      elementId?: string;
+      jsxKey?: string;
+      jsxPath?: JSXStructuralPath;
+    }
   | { type: "undo" }
   | { type: "ping" }
+  | {
+      type: "updateTheme";
+      filePath: string;
+      edits: Array<{ selector: string; vars: Record<string, string> }>;
+    }
   | {
       type: "updateProperty";
       filePath: string;
@@ -240,6 +286,7 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "reorderComplete"; success: boolean; error?: string }
+  | { type: "moveSiblingComplete"; success: boolean; error?: string }
   | {
       type: "siblingsList";
       siblings: Array<{ componentName: string; lineNumber: number }>;
@@ -256,6 +303,8 @@ export type ServerMessage =
       undoId?: string;
     }
   | { type: "tailwindTokens"; tokens: TailwindTokenMap }
+  | { type: "themeStyles"; theme: ThemeStyles; source: ThemeSource | null }
+  | { type: "updateThemeComplete"; success: boolean; error?: string; undoId?: string }
   | { type: "updateTextComplete"; success: boolean; error?: string; reason?: string; undoId?: string }
   | { type: "revertComplete"; results: Array<{ undoId: string; success: boolean; error?: string }> }
   | { type: "discoverFileResult"; componentName: string; filePath: string | null }
@@ -365,6 +414,26 @@ export interface TailwindTokenMap {
   opacityReverse: Record<string, string>;
   letterSpacingReverse: Record<string, string>;
   lineHeightReverse: Record<string, string>;
+}
+
+/**
+ * A project's design-token theme (shadcn/Tailwind CSS variables). Each map is
+ * `var name without the leading "--"` → value, read from the theme CSS file's
+ * `:root {}` (light) and dark selector block (`.dark {}` etc.). Generic on
+ * purpose — we surface whatever the project declares (`primary`, `background`,
+ * `radius`, `font-sans`, …) rather than a fixed schema.
+ */
+export interface ThemeStyles {
+  light: Record<string, string>;
+  dark: Record<string, string>;
+}
+
+/** Where a ThemeStyles was read from, so edits can be written back precisely. */
+export interface ThemeSource {
+  /** Absolute path to the CSS file holding the theme tokens. */
+  filePath: string;
+  /** The selector used for dark mode (e.g. ".dark", "[data-theme='dark']"), or null if light-only. */
+  darkSelector: string | null;
 }
 
 export type TransformErrorCode =

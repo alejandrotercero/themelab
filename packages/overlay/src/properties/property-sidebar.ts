@@ -148,6 +148,74 @@ const SIDEBAR_STYLES = `
     background: ${COLORS.danger};
     color: #ffffff;
   }
+  .prop-sidebar-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 8px 16px;
+    border-bottom: 1px solid ${COLORS.border};
+    flex-shrink: 0;
+  }
+  .prop-sidebar-nav-btn {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 1px solid ${COLORS.border};
+    background: ${COLORS.bgSecondary};
+    color: ${COLORS.textSecondary};
+    border-radius: ${RADII.sm};
+    cursor: pointer;
+    font-family: ${FONT_FAMILY};
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    transition: ${TRANSITIONS.fast};
+  }
+  .prop-sidebar-nav-btn:hover:not(:disabled) {
+    background: ${COLORS.bgTertiary};
+    color: ${COLORS.textPrimary};
+    border-color: ${COLORS.borderStrong};
+  }
+  .prop-sidebar-nav-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .prop-sidebar-move {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 0 16px 10px;
+    flex-shrink: 0;
+  }
+  .prop-sidebar-move-btn {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid ${COLORS.border};
+    background: ${COLORS.bgSecondary};
+    color: ${COLORS.textSecondary};
+    border-radius: ${RADII.sm};
+    cursor: pointer;
+    font-family: ${FONT_FAMILY};
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 0;
+    transition: ${TRANSITIONS.fast};
+  }
+  .prop-sidebar-move-btn:hover {
+    background: ${COLORS.bgTertiary};
+    color: ${COLORS.textPrimary};
+    border-color: ${COLORS.borderStrong};
+  }
+  .prop-sidebar-move-btn .kbd {
+    font-size: 10px;
+    color: ${COLORS.textTertiary};
+  }
   .prop-sidebar-content {
     flex: 1;
     overflow-y: auto;
@@ -196,7 +264,15 @@ function saveWidth(width: number): void {
 // Public API
 // ---------------------------------------------------------------------------
 
-export function createSidebar(shadowRoot: ShadowRoot, onClose?: () => void): {
+type NavDir = "up" | "down" | "left" | "right";
+type MoveDir = "up" | "down";
+
+export function createSidebar(
+  shadowRoot: ShadowRoot,
+  onClose?: () => void,
+  onNavigate?: (dir: NavDir) => void,
+  onMove?: (dir: MoveDir) => void,
+): {
   show: (componentName: string, filePath: string, lineNumber: number, content: HTMLElement) => void;
   hide: () => void;
   isVisible: () => boolean;
@@ -206,6 +282,7 @@ export function createSidebar(shadowRoot: ShadowRoot, onClose?: () => void): {
   clearWarning: () => void;
   showSaving: () => void;
   hideSaving: () => void;
+  updateNav: (availability: Record<NavDir, boolean>) => void;
 } {
   // Inject styles
   const style = document.createElement("style");
@@ -249,6 +326,50 @@ export function createSidebar(shadowRoot: ShadowRoot, onClose?: () => void): {
   header.appendChild(headerInfo);
   header.appendChild(closeBtn);
   sidebar.appendChild(header);
+
+  // Hierarchy navigation row (↑ parent, ↓ child, ←/→ siblings)
+  const nav = document.createElement("div");
+  nav.className = "prop-sidebar-nav";
+  const navButtons: Record<NavDir, HTMLButtonElement> = {} as Record<NavDir, HTMLButtonElement>;
+  const NAV_DEFS: Array<{ dir: NavDir; glyph: string; title: string }> = [
+    { dir: "left", glyph: "←", title: "Select previous sibling  (←)" },
+    { dir: "up", glyph: "↑", title: "Select parent  (↑)" },
+    { dir: "down", glyph: "↓", title: "Select first child  (↓)" },
+    { dir: "right", glyph: "→", title: "Select next sibling  (→)" },
+  ];
+  for (const def of NAV_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = "prop-sidebar-nav-btn";
+    btn.textContent = def.glyph;
+    btn.title = def.title;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onNavigate?.(def.dir);
+    });
+    navButtons[def.dir] = btn;
+    nav.appendChild(btn);
+  }
+  sidebar.appendChild(nav);
+
+  // Move row — reorders the element in source (distinct from nav, which selects)
+  const move = document.createElement("div");
+  move.className = "prop-sidebar-move";
+  const MOVE_DEFS: Array<{ dir: MoveDir; label: string; glyph: string; kbd: string; title: string }> = [
+    { dir: "up", glyph: "↑", label: "Move up", kbd: "[", title: "Move element up among its siblings  ([)" },
+    { dir: "down", glyph: "↓", label: "Move down", kbd: "]", title: "Move element down among its siblings  (])" },
+  ];
+  for (const def of MOVE_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = "prop-sidebar-move-btn";
+    btn.innerHTML = `${def.glyph} ${def.label} <span class="kbd">${def.kbd}</span>`;
+    btn.title = def.title;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onMove?.(def.dir);
+    });
+    move.appendChild(btn);
+  }
+  sidebar.appendChild(move);
 
   // Warning banner (hidden by default)
   const warningBanner = document.createElement("div");
@@ -376,6 +497,12 @@ export function createSidebar(shadowRoot: ShadowRoot, onClose?: () => void): {
     savingDot.classList.remove("active");
   }
 
+  function updateNav(availability: Record<NavDir, boolean>): void {
+    for (const dir of Object.keys(navButtons) as NavDir[]) {
+      navButtons[dir].disabled = !availability[dir];
+    }
+  }
+
   return {
     show,
     hide,
@@ -386,5 +513,6 @@ export function createSidebar(shadowRoot: ShadowRoot, onClose?: () => void): {
     clearWarning,
     showSaving,
     hideSaving,
+    updateNav,
   };
 }

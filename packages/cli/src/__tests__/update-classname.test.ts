@@ -400,4 +400,56 @@ describe("updateClassName", () => {
       }])).toThrow(/DYNAMIC_CLASSNAME/);
     });
   });
+
+  describe("responsive variant edits (#11)", () => {
+    // fixture div: "bg-blue-500 hover:bg-blue-700 dark:bg-gray-900 md:bg-red-500"
+    it("edits the responsive variant class, leaving base and state variants intact", () => {
+      const fixture = path.join(fixturesDir, "classname-variants.tsx");
+      const { line, col } = findElement("classname-variants.tsx", "div");
+      const result = updateClassName(fixture, line, col, [{
+        tailwindPrefix: "bg",
+        tailwindToken: "green-500",
+        value: "#22c55e",
+        relatedPrefixes: [],
+        variant: "md",
+      }]);
+      expect(result).toContain("md:bg-green-500");
+      expect(result).not.toContain("md:bg-red-500");
+      expect(result).toContain("bg-blue-500");       // base untouched
+      expect(result).toContain("hover:bg-blue-700");  // state variants untouched
+      expect(result).toContain("dark:bg-gray-900");
+    });
+
+    it("base edit leaves responsive/state variant classes intact", () => {
+      const fixture = path.join(fixturesDir, "classname-variants.tsx");
+      const { line, col } = findElement("classname-variants.tsx", "div");
+      const result = updateClassName(fixture, line, col, [{
+        tailwindPrefix: "bg",
+        tailwindToken: "green-500",
+        value: "#22c55e",
+        relatedPrefixes: [],
+      }]);
+      expect(result).toContain("bg-green-500");
+      expect(result).not.toContain("bg-blue-500");
+      expect(result).toContain("md:bg-red-500");      // the #11 case: variant must survive a base edit
+      expect(result).toContain("hover:bg-blue-700");
+    });
+
+    // fixture p: "p-4 md:p-8 lg:p-12"
+    it("edits one responsive breakpoint without touching base or other breakpoints", () => {
+      const fixture = path.join(fixturesDir, "classname-variants.tsx");
+      const { line, col } = findElement("classname-variants.tsx", "p");
+      const result = updateClassName(fixture, line, col, [{
+        tailwindPrefix: "p",
+        tailwindToken: "6",
+        value: "24px",
+        relatedPrefixes: [],
+        variant: "md",
+      }]);
+      expect(result).toContain("md:p-6");
+      expect(result).not.toContain("md:p-8");
+      expect(result).toContain("p-4");     // base intact
+      expect(result).toContain("lg:p-12");  // other breakpoint intact
+    });
+  });
 });

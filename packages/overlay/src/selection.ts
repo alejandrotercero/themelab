@@ -30,7 +30,7 @@ import { getPageElementAtPoint, isPanningActive } from "./interaction.js";
 import { tryStartMove, updateMovePosition, endMove } from "./tools/move.js";
 import { getMoveContainingElement, hasMoveForElement, addClone, removeCloneEntry, addDelete } from "./canvas-state.js";
 import { getCachedFilePath, setCachedFilePath } from "./file-discovery-cache.js";
-import { requestFileDiscovery } from "./bridge.js";
+import { requestFileDiscovery, send, onMessage } from "./bridge.js";
 import { isTextEditing } from "./inline-text-edit.js";
 import { copyElement, hasClipboard, pasteElement, isInsideMapTemplate, resolveFromCloneAncestry, getCloneForElement } from "./clone-state.js";
 import { deleteElement } from "./delete-state.js";
@@ -139,7 +139,11 @@ function resolveComponentFromFiberWalk(el: HTMLElement, fiber: any): ResolvedCom
       let columnNumber = 0;
 
       if (debugSource) {
-        filePath = debugSource.fileName || "";
+        // Normalize the same way the getOwnerStack path does — strips bundler
+        // URL wrappers and rejects chunk names (e.g. Turbopack's src_*._.js),
+        // returning "" when there's no real source path. Sending a raw chunk
+        // name here is what caused ENOENT writes on React 18 + Next 15 Turbopack.
+        filePath = resolveFrameFilePath(debugSource.fileName);
         lineNumber = debugSource.lineNumber || 0;
         columnNumber = debugSource.columnNumber || 0;
       }
@@ -215,6 +219,204 @@ function getCanonicalSelectableElement(clientX: number, clientY: number): HTMLEl
   return moveEntry?.element ?? pageEl;
 }
 
+// --- Hierarchy navigation (issue #6) -------------------------------------
+// Walk the live DOM tree from the selected element, skipping wrapper nodes the
+// overlay considers non-selectable (overlay UI, full-page shells, hidden nodes)
+// so arrow keys hop between meaningful elements rather than every <div>.
+
+function isNavigable(el: Element | null): el is HTMLElement {
+  return (
+    el instanceof HTMLElement &&
+    !el.closest("#react-rewrite-root") &&
+    isValidElement(el)
+  );
+}
+
+/** Nearest selectable ancestor (↑). */
+function findValidAncestor(el: HTMLElement): HTMLElement | null {
+  let cur: Element | null = el.parentElement;
+  while (cur) {
+    const tag = cur.tagName.toLowerCase();
+    if (tag === "body" || tag === "html") return null;
+    if (isNavigable(cur)) return cur;
+    cur = cur.parentElement;
+  }
+  return null;
+}
+
+/** Nearest selectable descendant in DOM order (↓) — prefers direct children,
+ *  then descends through wrapper nodes that aren't selectable themselves. */
+function findValidDescendant(el: HTMLElement): HTMLElement | null {
+  const children = Array.from(el.children).filter(
+    (c): c is HTMLElement => c instanceof HTMLElement && !c.closest("#react-rewrite-root")
+  );
+  for (const child of children) {
+    if (isValidElement(child)) return child;
+  }
+  for (const child of children) {
+    const found = findValidDescendant(child);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Next/previous selectable sibling at the same level (→ / ←). When no sibling
+ *  is selectable at this level, climbs to the nearest selectable ancestor and
+ *  continues from there, so navigation never dead-ends inside wrapper nodes. */
+function findValidSibling(el: HTMLElement, dir: 1 | -1): HTMLElement | null {
+  let anchor: HTMLElement | null = el;
+  while (anchor) {
+    let cur: Element | null = dir === 1 ? anchor.nextElementSibling : anchor.previousElementSibling;
+    while (cur) {
+      if (isNavigable(cur)) return cur;
+      // Wrapper sibling — look inside it for a selectable node.
+      if (cur instanceof HTMLElement && !cur.closest("#react-rewrite-root")) {
+        const inner = findValidDescendant(cur);
+        if (inner) return inner;
+      }
+      cur = dir === 1 ? cur.nextElementSibling : cur.previousElementSibling;
+    }
+    // No selectable sibling here — climb one level and retry from the ancestor.
+    anchor = findValidAncestor(anchor);
+  }
+  return null;
+}
+
+export type NavDirection = "up" | "down" | "left" | "right";
+
+const NAV_EMPTY_MSG: Record<NavDirection, string> = {
+  up: "Top of tree",
+  down: "No child elements",
+  left: "No previous sibling",
+  right: "No next sibling",
+};
+
+function findNavTarget(el: HTMLElement, dir: NavDirection): HTMLElement | null {
+  switch (dir) {
+    case "up": return findValidAncestor(el);
+    case "down": return findValidDescendant(el);
+    case "left": return findValidSibling(el, -1);
+    case "right": return findValidSibling(el, 1);
+  }
+}
+
+/** Navigate the DOM hierarchy from the current selection (↑ parent, ↓ child,
+ *  ←/→ siblings). Shared by the arrow keys and the sidebar nav buttons. */
+export function navigate(dir: NavDirection): void {
+  if (!selectedElement || !currentSelection || multiSelected.size > 0) return;
+  const target = findNavTarget(selectedElement, dir);
+  if (target) {
+    clearMultiSelectState();
+    selectElement(target);
+  } else {
+    showToast(NAV_EMPTY_MSG[dir]);
+  }
+}
+
+/** Which directions have a selectable target for the current selection — used
+ *  to enable/disable the sidebar nav buttons. */
+export function getNavAvailability(): Record<NavDirection, boolean> {
+  if (!selectedElement || !currentSelection || multiSelected.size > 0) {
+    return { up: false, down: false, left: false, right: false };
+  }
+  return {
+    up: !!findValidAncestor(selectedElement),
+    down: !!findValidDescendant(selectedElement),
+    left: !!findValidSibling(selectedElement, -1),
+    right: !!findValidSibling(selectedElement, 1),
+  };
+}
+
+const ARROW_TO_DIR: Record<string, NavDirection> = {
+  ArrowUp: "up",
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+};
+
+/** Arrow-key hierarchy navigation. Returns true if it consumed the key. */
+function navigateHierarchy(key: string): boolean {
+  if (!selectedElement || !currentSelection || multiSelected.size > 0) return false;
+  const dir = ARROW_TO_DIR[key];
+  if (!dir) return false;
+  navigate(dir);
+  return true;
+}
+
+// --- Move element among siblings (issue #5) ------------------------------
+// Writes a real source reorder via the CLI's moveSibling transform (all AST
+// sibling reasoning happens server-side from the element's file:line, so there
+// is no fragile DOM-to-source matching like the old drag path).
+export type MoveDirection = "up" | "down";
+let lastMoveDir: MoveDirection | null = null;
+
+/** Move the selected element one step earlier/later among its source siblings. */
+export function moveSelectedSibling(dir: MoveDirection): void {
+  if (!selectedElement || !currentSelection || multiSelected.size > 0) return;
+  if (!currentSelection.filePath) {
+    showToast("Can't move — no source file resolved");
+    return;
+  }
+  if (isInsideMapTemplate(currentSelection)) {
+    showToast("Can't reorder elements inside .map()");
+    return;
+  }
+
+  // Gather the same DOM resolution hints delete/duplicate use, so the CLI's
+  // batch resolver (jsxPath → line:col → fuzzy className/nth) lands on the right
+  // node — a raw line match is too brittle (stale line:col on React 18/Turbopack).
+  const el = selectedElement;
+  const parent = el.parentElement;
+  let nthOfType = 0;
+  if (parent) {
+    for (const child of Array.from(parent.children)) {
+      if (child === el) break;
+      if (child.tagName === el.tagName) nthOfType++;
+    }
+  }
+  const lastSeg = currentSelection.jsxPath?.segments.at(-1);
+  const jsxKey =
+    lastSeg?.discriminator.type === "key"
+      ? (lastSeg.discriminator as { type: "key"; value: string }).value
+      : undefined;
+
+  lastMoveDir = dir;
+  send({
+    type: "moveSibling",
+    filePath: currentSelection.filePath,
+    lineNumber: currentSelection.lineNumber,
+    columnNumber: currentSelection.columnNumber,
+    direction: dir,
+    componentName: currentSelection.componentName,
+    tagName: currentSelection.tagName,
+    className: el.className || undefined,
+    parentTagName: parent?.tagName.toLowerCase(),
+    parentClassName: parent?.className || undefined,
+    nthOfType,
+    elementId: el.id || undefined,
+    jsxKey,
+    jsxPath: currentSelection.jsxPath,
+  });
+}
+
+let moveResultListenerAttached = false;
+function attachMoveResultListener(): void {
+  if (moveResultListenerAttached) return;
+  moveResultListenerAttached = true;
+  onMessage((msg) => {
+    if (msg.type !== "moveSiblingComplete") return;
+    if (msg.success) {
+      showToast(lastMoveDir === "down" ? "Moved down" : "Moved up");
+      // The source changed; HMR will re-render. Drop the now-stale selection
+      // so the highlight doesn't linger on a detached/reused node.
+      clearSelection();
+    } else {
+      showToast(msg.error || "Couldn't move element");
+    }
+    lastMoveDir = null;
+  });
+}
+
 
 let currentSelection: ComponentInfo | null = null;
 let selectedElement: HTMLElement | null = null;
@@ -246,7 +448,7 @@ let resizeInitialHeight = 0;
 let multiResizeInitials: Array<{ element: HTMLElement; width: number; height: number }> = [];
 
 // Shift+click tracking
-let isShiftClick = false;
+let isMultiSelectClick = false;
 
 
 // Drag callbacks — set by drag.ts via setDragCallbacks
@@ -334,6 +536,7 @@ export function initSelection(): void {
   shadowRoot.appendChild(marqueeBox);
 
   isActive = true;
+  attachMoveResultListener();
 
   // Single set of event listeners — selection.ts owns all mouse dispatch
   document.addEventListener("mousedown", handleMouseDown, true);
@@ -346,13 +549,39 @@ export function initSelection(): void {
   listenersAttached = true;
 }
 
+// "Interact mode" is a toggle flipped by the backtick (`) key, not a mouse
+// modifier. Every browser click-modifier hijacks links (⌘=new tab, ⇧=new window,
+// ⌥=download), and hold-to-interact was unreliable (keyup gets swallowed on focus
+// changes / link nav), so it's a sticky press-to-switch toggle instead.
+let interactMode = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+/** True while interact mode is on — clicks/hover reach the app instead of selecting. */
+export function isInteractActive(): boolean {
+  return interactMode;
+}
+
+/** Recompute the hover outline at the last cursor position (e.g. after the
+ *  interact key is released, so the outline returns without needing a move). */
+function refreshIdleHover(): void {
+  if (mode !== "idle") return;
+  if (isInteractActive()) { setHoverTarget(null); return; }
+  const el = getCanonicalSelectableElement(lastMouseX, lastMouseY);
+  if (!el || !isValidElement(el)) { setHoverTarget(null); return; }
+  const rect = el.getBoundingClientRect();
+  const br = parseFloat(getComputedStyle(el).borderRadius) || 4;
+  setHoverTarget(rect, br + 2);
+}
+
 function handleMouseDown(e: MouseEvent): void {
   if (!isActive) return;
   if (isTextEditing()) return;
   if (isPanningActive()) return;
 
-  // Cmd+click (Mac) or Ctrl+click (Win/Linux) → let browser handle (follow links, etc.)
-  if (e.metaKey || e.ctrlKey) return;
+  // Interact key (`) held → let the click reach the app instead of selecting
+  // (follow links, press buttons, open menus, etc.).
+  if (isInteractActive()) return;
 
   // Ignore clicks on the overlay's own UI (sidebar, toolbar, etc.)
   // composedPath() pierces Shadow DOM boundaries
@@ -421,7 +650,8 @@ function handleMouseDown(e: MouseEvent): void {
 
   mouseDownPos = { x: e.clientX, y: e.clientY };
   mouseDownElement = el;
-  isShiftClick = e.shiftKey;
+  // ⌘/Ctrl+click toggles multi-select (Shift is now the interact modifier).
+  isMultiSelectClick = e.metaKey || e.ctrlKey;
 
   // If clicking on an element that already has a move entry → start re-drag immediately
   if (hasMoveForElement(el)) {
@@ -432,7 +662,7 @@ function handleMouseDown(e: MouseEvent): void {
   }
 
   // If clicking on the currently selected element (not shift-click) → prepare for possible move-drag
-  if (!isShiftClick && selectedElement && el === selectedElement) {
+  if (!isMultiSelectClick && selectedElement && el === selectedElement) {
     mode = "pending-move";
     return;
   }
@@ -443,6 +673,8 @@ function handleMouseDown(e: MouseEvent): void {
 
 function handleMouseMove(e: MouseEvent): void {
   if (!isActive) return;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
   if (isTextEditing()) return;
   if (isPanningActive()) return;
 
@@ -546,6 +778,15 @@ function handleMouseMove(e: MouseEvent): void {
 
   // Hover highlight (only when idle — no mouse button down)
   if (mode === "idle") {
+    // Interact key (`) held: drop the selection highlight so the pointer reads as
+    // "interacting with the app". The vanishing outline is the signal that the
+    // next click will hit the app, not select an element.
+    if (isInteractActive()) {
+      setHoverTarget(null);
+      document.body.style.cursor = "";
+      return;
+    }
+
     // Show resize cursor when hovering over a corner handle (single or multi-select)
     const hasAnySelection = (currentSelection && selectedElement) || multiSelected.size > 0;
     if (hasAnySelection) {
@@ -618,13 +859,13 @@ function handleMouseUp(e: MouseEvent): void {
     );
     mouseDownPos = null;
     mouseDownElement = null;
-    isShiftClick = false;
+    isMultiSelectClick = false;
     return;
   }
 
   // prevMode was "pending" — treat as a click
   if (mouseDownElement) {
-    if (isShiftClick) {
+    if (isMultiSelectClick) {
       toggleMultiSelect(mouseDownElement);
     } else {
       // Regular click: clear multi-select, do single select
@@ -634,7 +875,7 @@ function handleMouseUp(e: MouseEvent): void {
   }
   mouseDownPos = null;
   mouseDownElement = null;
-  isShiftClick = false;
+  isMultiSelectClick = false;
 }
 
 export async function selectElement(el: HTMLElement, options?: { skipSidebar?: boolean }): Promise<void> {
@@ -792,7 +1033,7 @@ function performMarqueeSelect(x1: number, y1: number, x2: number, y2: number): v
 }
 
 
-/** Shift+click: toggle an element in/out of multi-select */
+/** ⌘/Ctrl+click: toggle an element in/out of multi-select */
 function toggleMultiSelect(el: HTMLElement): void {
   if (multiSelected.has(el)) {
     // Remove from multi-select
@@ -887,8 +1128,8 @@ function updateMultiSelectionHighlights(): void {
 function handleClick(e: MouseEvent): void {
   if (!isActive) return;
   if (isTextEditing()) return;
-  // Ctrl/Cmd+click → let browser follow links normally
-  if (e.metaKey || e.ctrlKey) return;
+  // Interact key (`) held → let the app handle the click (links, buttons).
+  if (isInteractActive()) return;
   // Block all other clicks (prevents link navigation, form submission, etc.)
   e.preventDefault();
 }
@@ -898,7 +1139,19 @@ function handleKeyDown(e: KeyboardEvent): void {
 
   const isEditing = isTextEditing() ||
     document.activeElement instanceof HTMLInputElement ||
-    document.activeElement instanceof HTMLTextAreaElement;
+    document.activeElement instanceof HTMLTextAreaElement ||
+    (document.activeElement as HTMLElement)?.isContentEditable === true;
+
+  // Backtick (`) = toggle interact mode. Skip while typing so the key still works
+  // in fields. A toast + the hover outline (gone in interact mode) show the state.
+  if ((e.code === "Backquote" || e.key === "`") && !isEditing) {
+    interactMode = !interactMode;
+    document.body.style.cursor = "";
+    refreshIdleHover();
+    showToast(interactMode ? "Interact mode — press ` to select" : "Select mode");
+    e.preventDefault();
+    return;
+  }
 
   // Cmd+C — Copy selected element
   if (e.key === "c" && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !isEditing) {
@@ -1050,6 +1303,34 @@ function handleKeyDown(e: KeyboardEvent): void {
       e.preventDefault();
     }
   }
+
+  // Arrow keys = hierarchy navigation (↑ parent, ↓ child, ←/→ siblings).
+  // Only when a single element is selected and we're not typing or interacting.
+  if (
+    (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight") &&
+    !isEditing &&
+    !isInteractActive() &&
+    !e.metaKey && !e.ctrlKey && !e.altKey
+  ) {
+    if (navigateHierarchy(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  // [ / ] = move the selected element up / down among its source siblings.
+  if (
+    (e.key === "[" || e.key === "]") &&
+    !isEditing &&
+    !isInteractActive() &&
+    !e.metaKey && !e.ctrlKey && !e.altKey
+  ) {
+    if (selectedElement && currentSelection && multiSelected.size === 0) {
+      moveSelectedSibling(e.key === "[" ? "up" : "down");
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
 }
 
 function showSelectionOverlay(rect: DOMRect, _info: any): void {
@@ -1152,6 +1433,7 @@ export function deactivateSelection(): void {
   document.removeEventListener("click", handleClick, true);
   document.removeEventListener("scroll", updateSelectionPosition, true);
   window.removeEventListener("resize", updateSelectionPosition);
+  interactMode = false;
   listenersAttached = false;
   selectionLabel?.remove();
   selectionLabel = null;
@@ -1182,6 +1464,7 @@ export function setEnabled(enabled: boolean): void {
     document.removeEventListener("click", handleClick, true);
     document.removeEventListener("scroll", updateSelectionPosition, true);
     window.removeEventListener("resize", updateSelectionPosition);
+    interactMode = false;
     listenersAttached = false;
     isActive = false;
   }

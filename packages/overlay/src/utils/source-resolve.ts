@@ -91,15 +91,20 @@ export function extractFilePath(rawFileName: string): string {
 export function resolveFrameFilePath(rawFileName: string | undefined | null): string {
   if (!rawFileName) return "";
 
+  // Bundler output chunks (e.g. Turbopack's src_*._.js) can have a .js extension
+  // that bippy's isSourceFile happily accepts — reject them up front so they
+  // never reach the CLI as a (non-existent) source path.
+  if (isBundlerChunkName(rawFileName)) return "";
+
   // Try bippy's built-in normalization first
   const normalized = normalizeFileName(rawFileName);
-  if (normalized && isSourceFile(normalized)) {
+  if (normalized && isSourceFile(normalized) && !isBundlerChunkName(normalized)) {
     return normalized;
   }
 
   // Bippy rejected it — try our extraction
   const extracted = extractFilePath(rawFileName);
-  if (extracted && isSourceFile(extracted)) {
+  if (extracted && isSourceFile(extracted) && !isBundlerChunkName(extracted)) {
     return extracted;
   }
 
@@ -112,10 +117,27 @@ export function resolveFrameFilePath(rawFileName: string | undefined | null): st
     !extracted.includes("node_modules") &&
     !extracted.startsWith("../") &&            // traverses outside project
     !extracted.includes("/dist/") &&           // built library output
-    !extracted.includes("/build/")             // built library output
+    !extracted.includes("/build/") &&          // built library output
+    !isBundlerChunkName(extracted)             // bundler output chunk, not real source
   ) {
     return extracted;
   }
 
   return "";
+}
+
+/**
+ * Detect bundler output chunk names that are NOT real source files and would
+ * cause ENOENT writes if treated as source paths — e.g. Turbopack's
+ * `src_99ffcf5b._.js` or webpack hashed chunks like `app-pages._a1b2c3d4.js`.
+ * Real source filenames (`app-header.tsx`, `Button.jsx`) never contain the
+ * `._.` marker or a long hex hash segment immediately before the extension.
+ */
+export function isBundlerChunkName(filePath: string): boolean {
+  const base = filePath.split("/").pop() ?? filePath;
+  // Turbopack's `._.` marker never appears in hand-authored source filenames.
+  if (base.includes("._.")) return true;
+  // Hashed chunk: a 6+ hex-char segment right before the .js/.cjs/.mjs extension.
+  if (/[._-][0-9a-f]{6,}\.[cm]?js$/i.test(base)) return true;
+  return false;
 }

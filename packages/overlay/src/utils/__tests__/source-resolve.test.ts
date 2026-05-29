@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractFilePath } from "../source-resolve.js";
+import { extractFilePath, isBundlerChunkName, resolveFrameFilePath } from "../source-resolve.js";
 
 describe("extractFilePath", () => {
   it("strips webpack-internal prefix", () => {
@@ -82,5 +82,40 @@ describe("extractFilePath", () => {
 
   it("strips leading slash from bare paths", () => {
     expect(extractFilePath("/src/App.tsx")).toBe("src/App.tsx");
+  });
+});
+
+describe("isBundlerChunkName", () => {
+  it("flags Turbopack chunk names (._. marker)", () => {
+    expect(isBundlerChunkName("src_99ffcf5b._.js")).toBe(true);
+    expect(isBundlerChunkName("/_next/static/chunks/src_99ffcf5b._.js")).toBe(true);
+  });
+
+  it("flags hashed webpack chunks", () => {
+    expect(isBundlerChunkName("app-pages._a1b2c3d4.js")).toBe(true);
+    expect(isBundlerChunkName("main-12ab34cd.mjs")).toBe(true);
+  });
+
+  it("does NOT flag real source files", () => {
+    expect(isBundlerChunkName("src/components/app/app-header.tsx")).toBe(false);
+    expect(isBundlerChunkName("Button.jsx")).toBe(false);
+    expect(isBundlerChunkName("src/app/page.tsx")).toBe(false);
+    expect(isBundlerChunkName("useDebounce.js")).toBe(false);
+  });
+});
+
+describe("resolveFrameFilePath", () => {
+  it("returns a real source path from a webpack-internal URL", () => {
+    expect(resolveFrameFilePath("webpack-internal:///./src/components/app/app-header.tsx"))
+      .toContain("src/components/app/app-header.tsx");
+  });
+
+  it("returns empty for a Turbopack chunk name (prevents ENOENT writes)", () => {
+    expect(resolveFrameFilePath("src_99ffcf5b._.js")).toBe("");
+  });
+
+  it("returns empty for nullish input", () => {
+    expect(resolveFrameFilePath(undefined)).toBe("");
+    expect(resolveFrameFilePath(null)).toBe("");
   });
 });

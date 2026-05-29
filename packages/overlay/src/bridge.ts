@@ -1,6 +1,7 @@
 // packages/overlay/src/bridge.ts
 import type { ClientMessage, ServerMessage } from "@react-rewrite/shared";
 import { setCliTokens } from "./properties/tailwind-resolver.js";
+import { setTheme, onCommitSuccess as onThemeCommitSuccess } from "./theme-state.js";
 type MessageHandler = (msg: ServerMessage) => void;
 
 let ws: WebSocket | null = null;
@@ -40,6 +41,13 @@ export function connect(port: number): void {
       // Handle Tailwind token messages from CLI
       if (msg.type === "tailwindTokens") {
         setCliTokens(msg.tokens);
+      }
+      // Theme mode: receive the project's design tokens, and confirm writes
+      if (msg.type === "themeStyles") {
+        setTheme(msg.theme, msg.source);
+      }
+      if (msg.type === "updateThemeComplete" && msg.success) {
+        onThemeCommitSuccess();
       }
       // Surface transform commit results
       if (msg.type === "updatePropertyComplete" && commitResultListener) {

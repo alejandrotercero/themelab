@@ -193,6 +193,46 @@ export function isCanvasActive(): boolean {
   return wrapper !== null;
 }
 
+// --- Persistence across the reload an applied edit triggers ---------------
+// Applying changes does a full window.location.reload() to reflect the source
+// write, which tears down the in-memory canvas. We snapshot the view to
+// sessionStorage on unload and restore it on init so the canvas doesn't "close"
+// every time you confirm an edit. sessionStorage = per-tab, clears on tab close.
+const PERSIST_KEY = "__react_rewrite_canvas_view__";
+
+export function saveCanvasState(): void {
+  try {
+    if (!isCanvasActive()) {
+      sessionStorage.removeItem(PERSIST_KEY);
+      return;
+    }
+    const { scale, offsetX, offsetY } = getCanvasTransform();
+    sessionStorage.setItem(PERSIST_KEY, JSON.stringify({ active: true, scale, offsetX, offsetY }));
+  } catch {
+    // sessionStorage unavailable (privacy mode, etc.) — non-fatal
+  }
+}
+
+export function clearSavedCanvasState(): void {
+  try { sessionStorage.removeItem(PERSIST_KEY); } catch { /* ignore */ }
+}
+
+/** Re-enter canvas mode + restore zoom/pan after a reload. Returns true if a
+ *  saved active view was restored. */
+export function restoreCanvasState(): boolean {
+  let saved: { active?: boolean; scale?: number; offsetX?: number; offsetY?: number } | null = null;
+  try {
+    const raw = sessionStorage.getItem(PERSIST_KEY);
+    if (raw) saved = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (!saved?.active) return false;
+  if (!isCanvasActive()) initCanvasTransform();
+  setCanvasTransform(saved.scale ?? 1, saved.offsetX ?? 0, saved.offsetY ?? 0);
+  return true;
+}
+
 export function toggleCanvasTransform(): void {
   if (wrapper) {
     destroyCanvasTransform();

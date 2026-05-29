@@ -28,9 +28,10 @@ import { updateCloneFileStat } from "./clone-state.js";
 import { updateDeleteFileStat } from "./delete-state.js";
 import { initPropertyController, destroyPropertyController } from "./properties/property-controller.js";
 import { initInlineTextEdit, destroyInlineTextEdit, cancelTextEditSession } from "./inline-text-edit.js";
-import { initCanvasTransform, destroyCanvasTransform, resetCanvasTransform } from "./canvas-transform.js";
+import { initCanvasTransform, destroyCanvasTransform, resetCanvasTransform, saveCanvasState, restoreCanvasState, clearSavedCanvasState } from "./canvas-transform.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { initChangelog, destroyChangelog, addChangeEntry, isChangelogOpen, setChangelogOpen, clearChangelog } from "./changelog.js";
+import { initThemePanel, destroyThemePanel } from "./theme-panel.js";
 
 declare global {
   interface Window {
@@ -197,6 +198,7 @@ function init(): void {
   if (shadowRoot) {
     initPropertyController(shadowRoot);
     initChangelog(shadowRoot);
+    initThemePanel(shadowRoot);
   }
 
   // Phase 1 systems
@@ -396,9 +398,21 @@ function init(): void {
 
   // Clear All
   setOnClearAll(() => {
+    clearSavedCanvasState();
     resetOverlayState();
     showToast("Everything reset");
   });
+
+  // Persist the canvas view across the reload an applied edit triggers.
+  window.addEventListener("beforeunload", saveCanvasState);
+  // Restore only AFTER the framework has hydrated. Wrapping <body> children
+  // mid-hydration (e.g. Next App Router, which owns <body>) corrupts React's
+  // reconciliation and wipes unknown nodes — including the overlay. The manual
+  // toggle is safe precisely because it's always post-hydration, so we mirror
+  // that by waiting for `load` + a frame before re-entering the canvas.
+  const deferredRestore = () => requestAnimationFrame(() => setTimeout(restoreCanvasState, 200));
+  if (document.readyState === "complete") deferredRestore();
+  else window.addEventListener("load", deferredRestore, { once: true });
 
   console.log("[ReactRewrite] Overlay initialized with Phase 2A canvas tools");
 }
@@ -414,9 +428,12 @@ function close(): void {
   moveObserver?.disconnect();
   destroyToolsPanel();
   destroyChangelog();
+  destroyThemePanel();
   destroyInlineTextEdit();
   destroyInteraction();
   resetCanvas();
+  window.removeEventListener("beforeunload", saveCanvasState);
+  clearSavedCanvasState();
   destroyCanvasTransform();
   disconnect();
   destroyToolbar();

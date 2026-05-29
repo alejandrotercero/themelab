@@ -132,6 +132,101 @@ export function reorderComponent(
   return root.toSource({ quote: quoteStyle });
 }
 
+/** True for child nodes that count as a reorderable sibling (an element, a
+ *  fragment, or a conditionally-rendered element) — i.e. not whitespace/text. */
+function isReorderableSibling(node: any): boolean {
+  if (!node) return false;
+  if (node.type === "JSXElement" || node.type === "JSXFragment") return true;
+  if (node.type === "JSXExpressionContainer") {
+    const expr = node.expression;
+    return (
+      expr?.type === "JSXElement" ||
+      expr?.type === "JSXFragment" ||
+      expr?.type === "LogicalExpression" ||
+      expr?.type === "ConditionalExpression"
+    );
+  }
+  return false;
+}
+
+/**
+ * Move a resolved JSX element node one position up or down among its real AST
+ * siblings (whitespace/text ignored). Mutates the AST in place — no I/O.
+ * `node` is a jscodeshift ASTPath (e.g. from the batch resolver or findJSXElementAt).
+ * Throws a friendly Error at the boundaries or when there's no sibling container.
+ */
+export function swapWithAdjacentSibling(node: any, direction: "up" | "down"): void {
+  // Climb to the node that is a direct child of a parent holding a children array.
+  let movable = node;
+  while (movable.parent) {
+    const parentNode = movable.parent.node;
+    if (parentNode.children && parentNode.children.indexOf(movable.node) !== -1) break;
+    movable = movable.parent;
+  }
+
+  const parent = movable.parent;
+  if (!parent || !parent.node.children) {
+    throw new Error("This element has no sibling container to reorder within.");
+  }
+  const children: any[] = parent.node.children;
+
+  // Indices (within the full children array, including whitespace) of the
+  // reorderable element siblings, in document order.
+  const elementIndices: number[] = [];
+  children.forEach((c, i) => { if (isReorderableSibling(c)) elementIndices.push(i); });
+
+  const fromChildIdx = children.indexOf(movable.node);
+  const pos = elementIndices.indexOf(fromChildIdx);
+  if (pos === -1) {
+    throw new Error("Could not locate this element among its siblings.");
+  }
+
+  const swapPos = direction === "up" ? pos - 1 : pos + 1;
+  if (swapPos < 0 || swapPos >= elementIndices.length) {
+    throw new Error(direction === "up" ? "Already the first sibling." : "Already the last sibling.");
+  }
+  const toChildIdx = elementIndices[swapPos];
+
+  // Swap only the two element nodes — leave the JSXText whitespace nodes in
+  // their slots so indentation and line breaks are preserved.
+  const tmp = children[fromChildIdx];
+  children[fromChildIdx] = children[toChildIdx];
+  children[toChildIdx] = tmp;
+}
+
+/**
+ * Move the JSX element whose opening tag starts at `line` up/down among its
+ * siblings — line-based resolution (used by tests; production uses the batch
+ * resolver's jsxPath/fuzzy node, see batch-transform's "moveSibling" op).
+ */
+export function mutateMoveSibling(j: any, root: any, line: number, direction: "up" | "down"): void {
+  let target: any = null;
+  root.find(j.JSXElement).forEach((p: any) => {
+    if (!target && p.node.openingElement.loc?.start.line === line) target = p;
+  });
+  if (!target) {
+    root.find(j.JSXFragment).forEach((p: any) => {
+      if (!target && p.node.openingFragment?.loc?.start.line === line) target = p;
+    });
+  }
+  if (!target) {
+    throw new Error(`No JSX element found at line ${line}. If you have unsaved changes in your editor, save your files and try again.`);
+  }
+  swapWithAdjacentSibling(target, direction);
+}
+
+export function moveSiblingComponent(
+  filePath: string,
+  line: number,
+  direction: "up" | "down"
+): string {
+  const source = fs.readFileSync(filePath, "utf-8");
+  const { j, root, quoteStyle } = parseSource(source, filePath);
+
+  mutateMoveSibling(j, root, line, direction);
+  return root.toSource({ quote: quoteStyle });
+}
+
 export function getSiblings(
   filePath: string,
   parentLine: number
@@ -218,6 +313,8 @@ export interface ClassNameUpdate {
   relatedPrefixes?: string[];
   classPattern?: string;
   standalone?: boolean;
+  /** Responsive breakpoint variant to target (e.g. "md"); base class if omitted. */
+  variant?: string;
 }
 
 const SHORTHAND_SPLITS: Record<
@@ -275,12 +372,12 @@ const SHORTHAND_SPLITS: Record<
  * Build the target class string from an update descriptor.
  */
 function buildClass(update: ClassNameUpdate): string {
-  if (update.standalone) {
-    return update.tailwindToken ?? `${update.tailwindPrefix}-[${update.value}]`;
-  }
-  return update.tailwindToken
-    ? `${update.tailwindPrefix}-${update.tailwindToken}`
-    : `${update.tailwindPrefix}-[${update.value}]`;
+  const base = update.standalone
+    ? (update.tailwindToken ?? `${update.tailwindPrefix}-[${update.value}]`)
+    : update.tailwindToken
+      ? `${update.tailwindPrefix}-${update.tailwindToken}`
+      : `${update.tailwindPrefix}-[${update.value}]`;
+  return update.variant ? `${update.variant}:${base}` : base;
 }
 
 /**
@@ -299,6 +396,30 @@ function classMatchesPrefix(cls: string, prefix: string): boolean {
 }
 
 /**
+ * Variant-aware prefix match. When `variant` is set (e.g. "md"), matches only
+ * classes carrying exactly that responsive prefix (`md:mb-6`); when omitted,
+ * matches base classes (delegates to classMatchesPrefix, which skips `:` classes).
+ */
+function classMatchesPrefixVariant(cls: string, prefix: string, variant?: string): boolean {
+  if (!variant) return classMatchesPrefix(cls, prefix);
+  const want = `${variant}:`;
+  if (!cls.startsWith(want)) return false;
+  return classMatchesPrefix(cls.slice(want.length), prefix);
+}
+
+/** Test a classPattern against a class, honoring the update's variant prefix. */
+function classMatchesPattern(cls: string, pattern: string, variant?: string): boolean {
+  if (variant) {
+    const want = `${variant}:`;
+    if (!cls.startsWith(want)) return false;
+    return new RegExp(pattern).test(cls.slice(want.length));
+  }
+  // Base edit: never match a variant-prefixed class.
+  if (cls.includes(":")) return false;
+  return new RegExp(pattern).test(cls);
+}
+
+/**
  * Apply a single update to an array of class strings.
  * Returns the modified array.
  */
@@ -306,10 +427,12 @@ function applyUpdate(classes: string[], update: ClassNameUpdate): string[] {
   const newClass = buildClass(update);
   const result = [...classes];
 
+  const variantPrefix = update.variant ? `${update.variant}:` : "";
+
   // 1. Check relatedPrefixes for shorthand splitting
   for (const relatedPrefix of update.relatedPrefixes ?? []) {
     const existingIdx = result.findIndex((c) =>
-      classMatchesPrefix(c, relatedPrefix)
+      classMatchesPrefixVariant(c, relatedPrefix, update.variant)
     );
     if (existingIdx === -1) continue;
 
@@ -317,27 +440,30 @@ function applyUpdate(classes: string[], update: ClassNameUpdate): string[] {
     const split = SHORTHAND_SPLITS[relatedPrefix];
     if (!split) continue;
 
-    const token = split.extractToken(existingCls);
+    // Extract the token from the (de-variant-ed) shorthand class, e.g. md:p-4 → 4.
+    const bareExisting = update.variant ? existingCls.slice(variantPrefix.length) : existingCls;
+    const token = split.extractToken(bareExisting);
     // Remove the shorthand class
     result.splice(existingIdx, 1);
-    // Insert individual side classes, replacing the edited side with the new value
+    // Insert individual side classes, replacing the edited side with the new value.
+    // Untouched sides keep the same variant prefix so responsiveness is preserved.
     const expansions: string[] = [];
     for (const side of split.sides) {
       if (side === update.tailwindPrefix) {
         expansions.push(newClass);
       } else {
-        expansions.push(token === "DEFAULT" ? side : `${side}-${token}`);
+        expansions.push(`${variantPrefix}${token === "DEFAULT" ? side : `${side}-${token}`}`);
       }
     }
     result.splice(existingIdx, 0, ...expansions);
     return result;
   }
 
-  // 2. Find and replace existing class with same prefix
+  // 2. Find and replace existing class with same prefix (and matching variant)
   const directIdx = result.findIndex((c) =>
     update.classPattern
-      ? new RegExp(update.classPattern).test(c)
-      : classMatchesPrefix(c, update.tailwindPrefix)
+      ? classMatchesPattern(c, update.classPattern, update.variant)
+      : classMatchesPrefixVariant(c, update.tailwindPrefix, update.variant)
   );
 
   if (directIdx !== -1) {

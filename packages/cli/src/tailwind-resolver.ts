@@ -652,7 +652,7 @@ export function resolveV4Config(projectRoot: string): typeof DEFAULT_V4_THEME {
  * Finds CSS files in a project root (up to 2 levels deep) that are candidates
  * for Tailwind v4 @theme declarations.
  */
-function findCssFiles(projectRoot: string): string[] {
+export function findCssFiles(projectRoot: string): string[] {
   const results: string[] = [];
   const searchDirs = [
     projectRoot,

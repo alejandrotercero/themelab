@@ -9,15 +9,18 @@ import { send, onMessage, requestFileDiscovery } from "../bridge.js";
 import { getCachedFilePath, setCachedFilePath } from "../file-discovery-cache.js";
 import { addChangeEntry } from "../changelog.js";
 import { showToast } from "../toolbar.js";
-import type { PropertyControl } from "./controls/types.js";
+import type { PropertyControl, ControlContext } from "./controls/types.js";
 import { addPendingPropertyOperation, pushUndoAction, type PropertyChangeRuntime } from "../canvas-state.js";
 import { dismissOnboarding } from "../onboarding.js";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
 import { getOwnerStack } from "bippy/source";
 import { resolveFrameFilePath } from "../utils/source-resolve.js";
 import { computeNthOfType } from "../utils/nth-of-type.js";
-import { classMatchesPrefix } from "../utils/class-matches-prefix.js";
+import { classMatchesPrefix, pickWinningVariant } from "../utils/class-matches-prefix.js";
 import { setStyle, clearStyle } from "../utils/style-access.js";
+import { navigate, getNavAvailability, moveSelectedSibling } from "../selection.js";
+import { getValue as getThemeValue, getColorTokenNames } from "../theme-state.js";
+import { toRenderableCss } from "../utils/color-format.js";
 
 // Display values that enable flex layout controls
 const FLEX_DISPLAYS = new Set(["flex", "inline-flex"]);
@@ -78,6 +81,10 @@ interface PendingUpdate {
   tailwindToken: string | null;
   relatedPrefixes?: string[];
   originalValue: string;
+  /** Overrides the descriptor's classPattern for this update — used when binding
+   *  a color to a theme token so the matcher also replaces semantic color
+   *  classes (e.g. `text-foreground`) the descriptor pattern wouldn't catch. */
+  classPatternOverride?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +378,15 @@ function destroyControls(): void {
 /**
  * Re-renders sections (e.g., when display changes and flex controls need to appear/disappear).
  */
+/** Context passed to control factories — currently the selected element's
+ *  className (for theme-binding detection) + the bind callback. */
+function buildControlContext(): ControlContext {
+  return {
+    selectedClassName: state.selectedElement?.className || undefined,
+    onBindToken: bindToken,
+  };
+}
+
 function rerenderSections(): void {
   if (!state.selectedElement || !state.componentInfo) return;
   destroyControls();
@@ -391,6 +407,7 @@ function rerenderSections(): void {
     preview,
     scheduledCommit,
     onShowAll,
+    buildControlContext(),
   );
   controls = newControls;
   sidebar.replaceContent(container);
@@ -472,13 +489,21 @@ function addPendingFromCurrentState(): void {
       jsxPath: state.componentInfo?.jsxPath,
       updates: [...state.pendingBatch.values()].map((entry) => {
         const desc = DESCRIPTOR_MAP.get(entry.property);
+        // Pick the responsive variant winning at the current viewport so the edit
+        // targets the class actually in effect (e.g. md:mb-6) instead of a base
+        // class (mb-0) that a breakpoint variant silently overrides.
+        const matchesBare = desc?.classPattern
+          ? (bare: string) => new RegExp(desc.classPattern!).test(bare)
+          : (bare: string) => classMatchesPrefix(bare, entry.tailwindPrefix);
+        const variant = pickWinningVariant(classes, matchesBare, window.innerWidth);
         return {
           tailwindPrefix: entry.tailwindPrefix,
           tailwindToken: entry.tailwindToken,
           value: entry.value,
           relatedPrefixes: entry.relatedPrefixes,
-          classPattern: desc?.classPattern,
+          classPattern: entry.classPatternOverride ?? desc?.classPattern,
           standalone: desc?.standalone,
+          variant: variant || undefined,
         };
       }),
     },
@@ -528,6 +553,12 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
     cancel();
     destroyControls();
     resetState();
+  }, (dir) => {
+    // Hierarchy nav buttons — delegate to the selection module.
+    navigate(dir);
+  }, (dir) => {
+    // Move-sibling buttons — reorder the element in source.
+    moveSelectedSibling(dir);
   });
 
   const handleCommitResult = (success: boolean, errorCode?: string, errorMessage?: string) => {
@@ -726,6 +757,7 @@ export function inspect(element: HTMLElement, info: ComponentInfo): void {
     preview,
     scheduledCommit,
     onShowAll,
+    buildControlContext(),
   );
   controls = newControls;
 
@@ -735,6 +767,7 @@ export function inspect(element: HTMLElement, info: ComponentInfo): void {
 
   // Show sidebar
   sidebar.show(info.componentName, info.filePath, info.lineNumber, container);
+  sidebar.updateNav(getNavAvailability());
   if (!info.filePath) {
     sidebar.showWarning("Source file couldn't be resolved for this element", "Dismiss", () => sidebar.clearWarning());
   } else {
@@ -805,6 +838,57 @@ export function preview(key: string, cssValue: string): void {
 }
 
 /**
+ * Bind a color property to a shadcn theme token (e.g. write `bg-primary`
+ * instead of a raw color). The element references the token, so editing the
+ * token in the Theme panel updates it everywhere — and it survives dark mode.
+ */
+export function bindToken(key: string, token: string): void {
+  const desc = DESCRIPTOR_MAP.get(key);
+  if (!desc || !state.selectedElement) return;
+
+  // Live-preview with the token's *resolved* color. We can't preview with a bare
+  // `var(--token)` because shadcn stores colors as HSL/RGB channel triples
+  // (e.g. `222 47% 11%`) consumed via `hsl(var(--token))` — `var(--token)` alone
+  // is invalid for background-color and wouldn't render. The committed class
+  // (`bg-primary`) resolves correctly and tracks light/dark after write.
+  const themeVal = getThemeValue(token);
+  const cssValue = (themeVal ? toRenderableCss(themeVal) : null) ?? `var(--${token})`;
+  setStyle(state.selectedElement, desc.key, cssValue);
+  state.activeOverrides.set(key, cssValue);
+  state.currentValues.set(key, cssValue);
+
+  // The `color` descriptor's classPattern only matches Tailwind scale colors
+  // (text-red-500) and keywords — not semantic tokens (text-foreground). For an
+  // overloaded prefix like `text-` we can't fall back to bare prefix matching
+  // (it'd clobber text-lg/text-center), so widen the pattern to also match the
+  // known theme color tokens, ensuring an existing `text-foreground` is replaced
+  // rather than left behind. bg has no classPattern → prefix match already works.
+  let classPatternOverride: string | undefined;
+  if (desc.classPattern) {
+    const tokenAlt = getColorTokenNames()
+      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    const extra = tokenAlt ? `|${tokenAlt}` : "";
+    classPatternOverride = `^${desc.tailwindPrefix}-(\\w+-\\d+|black|white|transparent|current|inherit${extra}|\\[.+\\])$`;
+  }
+
+  // Pending update carries the token explicitly → buildClass writes `${prefix}-${token}`.
+  state.pendingBatch.set(key, {
+    property: key,
+    cssProperty: desc.cssProperty,
+    value: cssValue,
+    tailwindPrefix: desc.tailwindPrefix,
+    tailwindToken: token,
+    relatedPrefixes: desc.relatedPrefixes,
+    originalValue: state.originalValues.get(key) || desc.defaultValue,
+    classPatternOverride,
+  });
+
+  showToast(`Bound ${desc.label ?? key} → ${desc.tailwindPrefix}-${token}`);
+  scheduledCommit();
+}
+
+/**
  * Sends all pending property changes to the CLI via WebSocket.
  */
 export function commit(): void {
@@ -824,7 +908,7 @@ export function commit(): void {
       tailwindToken: u.tailwindToken,
       value: u.value,
       relatedPrefixes: u.relatedPrefixes,
-      classPattern: desc?.classPattern,
+      classPattern: u.classPatternOverride ?? desc?.classPattern,
       standalone: desc?.standalone,
     };
   });

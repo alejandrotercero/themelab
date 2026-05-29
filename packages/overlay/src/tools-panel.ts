@@ -3,7 +3,7 @@ import type { ToolType } from "@react-rewrite/shared";
 import { getActiveTool, setActiveTool } from "./canvas-state.js";
 import { getShadowRoot } from "./toolbar.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
-import { toggleCanvasTransform, isCanvasActive } from "./canvas-transform.js";
+import { toggleCanvasTransform, isCanvasActive, onCanvasWrapperChange } from "./canvas-transform.js";
 import { isTextEditing } from "./inline-text-edit.js";
 import { getActiveCount, isChangelogOpen, onChangelogChange, setChangelogOpen } from "./changelog.js";
 
@@ -452,9 +452,11 @@ export function initToolsPanel(): void {
   canvasBtn.title = "Toggle Infinite Canvas";
   canvasBtn.addEventListener("click", () => {
     toggleCanvasTransform();
-    // Visual feedback: toggle active state
-    canvasBtn.style.color = isCanvasActive() ? COLORS.accent : "";
   });
+  // Reflect canvas state reactively — covers manual toggle AND restore-after-reload.
+  const syncCanvasBtn = () => { canvasBtn.style.color = isCanvasActive() ? COLORS.accent : ""; };
+  onCanvasWrapperChange(syncCanvasBtn);
+  syncCanvasBtn();
   panelEl.appendChild(canvasBtn);
 
   // Help button — shows keyboard shortcuts
@@ -537,6 +539,11 @@ function openShortcutsOverlay(): void {
     {
       label: "Actions",
       items: [
+        { action: "Toggle interact mode", keys: ["`"] },
+        { action: "Multi-select", keys: [MOD_LABEL, "Click"] },
+        { action: "Select parent / child", keys: ["↑", "↓"] },
+        { action: "Select sibling", keys: ["←", "→"] },
+        { action: "Move element up / down", keys: ["[", "]"] },
         { action: "Copy", keys: [MOD_LABEL, "C"] },
         { action: "Paste", keys: [MOD_LABEL, "V"] },
         { action: "Duplicate", keys: [MOD_LABEL, "D"] },

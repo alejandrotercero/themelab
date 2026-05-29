@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reorderComponent, getSiblings } from "../transform.js";
+import { reorderComponent, getSiblings, moveSiblingComponent } from "../transform.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -129,6 +129,71 @@ describe("reorderComponent", () => {
     expect(() => reorderComponent(fixturePath, mainLine, navbarLine)).toThrow(
       /not siblings/i
     );
+  });
+});
+
+describe("moveSiblingComponent", () => {
+  const order = (result: string) =>
+    result
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => /^<(Navbar|Hero|Features|Pricing|Footer) \/>$/.test(l));
+
+  it("moves an element up (swaps with previous sibling)", () => {
+    const fixturePath = path.join(fixturesDir, "basic.tsx");
+    const heroLine = findLine("basic.tsx", "Hero");
+    const result = moveSiblingComponent(fixturePath, heroLine, "up");
+    expect(order(result)).toEqual(["<Hero />", "<Navbar />", "<Features />"]);
+  });
+
+  it("moves an element down (swaps with next sibling)", () => {
+    const fixturePath = path.join(fixturesDir, "basic.tsx");
+    const heroLine = findLine("basic.tsx", "Hero");
+    const result = moveSiblingComponent(fixturePath, heroLine, "down");
+    expect(order(result)).toEqual(["<Navbar />", "<Features />", "<Hero />"]);
+  });
+
+  it("moves a middle element up in a 5-sibling list", () => {
+    const fixturePath = path.join(fixturesDir, "five-siblings.tsx");
+    const featuresLine = findLine("five-siblings.tsx", "Features");
+    const result = moveSiblingComponent(fixturePath, featuresLine, "up");
+    expect(order(result)).toEqual([
+      "<Navbar />",
+      "<Features />",
+      "<Hero />",
+      "<Pricing />",
+      "<Footer />",
+    ]);
+  });
+
+  it("preserves indentation when swapping", () => {
+    const fixturePath = path.join(fixturesDir, "basic.tsx");
+    const heroLine = findLine("basic.tsx", "Hero");
+    const result = moveSiblingComponent(fixturePath, heroLine, "up");
+    // Each component line keeps its 6-space indentation inside <main>
+    expect(result).toMatch(/\n {6}<Hero \/>/);
+    expect(result).toMatch(/\n {6}<Navbar \/>/);
+  });
+
+  it("throws a friendly error when already the first sibling", () => {
+    const fixturePath = path.join(fixturesDir, "basic.tsx");
+    const navbarLine = findLine("basic.tsx", "Navbar");
+    expect(() => moveSiblingComponent(fixturePath, navbarLine, "up")).toThrow(
+      /already the first sibling/i
+    );
+  });
+
+  it("throws a friendly error when already the last sibling", () => {
+    const fixturePath = path.join(fixturesDir, "basic.tsx");
+    const featuresLine = findLine("basic.tsx", "Features");
+    expect(() => moveSiblingComponent(fixturePath, featuresLine, "down")).toThrow(
+      /already the last sibling/i
+    );
+  });
+
+  it("throws when no element exists at the given line", () => {
+    const fixturePath = path.join(fixturesDir, "basic.tsx");
+    expect(() => moveSiblingComponent(fixturePath, 999, "up")).toThrow(/no jsx element found/i);
   });
 });
 

@@ -41,9 +41,16 @@ export function createProxyServer(
     // Normalize URL to prevent path traversal
     const normalizedUrl = new URL(req.url || "/", "http://localhost").pathname;
 
-    // Serve overlay bundle
+    // Serve overlay bundle — never cache it, so a plain reload always gets the
+    // freshly built code (otherwise the browser caches it and stale overlay UI
+    // persists across rebuilds even after a refresh).
     if (normalizedUrl === "/__react-rewrite/overlay.js") {
-      res.writeHead(200, { "Content-Type": "application/javascript" });
+      res.writeHead(200, {
+        "Content-Type": "application/javascript",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      });
       fs.createReadStream(overlayPath).pipe(res);
       return;
     }

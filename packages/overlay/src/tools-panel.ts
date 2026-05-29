@@ -1,11 +1,13 @@
 // packages/overlay/src/tools-panel.ts
 import type { ToolType } from "@react-rewrite/shared";
 import { getActiveTool, setActiveTool } from "./canvas-state.js";
-import { getShadowRoot } from "./toolbar.js";
+import { getShadowRoot, getToolbarToolsSlot } from "./toolbar.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { toggleCanvasTransform, isCanvasActive, onCanvasWrapperChange } from "./canvas-transform.js";
 import { isTextEditing } from "./inline-text-edit.js";
 import { getActiveCount, isChangelogOpen, onChangelogChange, setChangelogOpen } from "./changelog.js";
+import { toggleThemePanel, isThemePanelOpen, onThemePanelToggle } from "./theme-panel.js";
+import { hasTheme, onThemeChange } from "./theme-state.js";
 
 const ICONS = {
   pointer: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13.9093 12.3603L17.0007 20.8537L14.1816 21.8798L11.0902 13.3864L6.91797 16.5422L8.4087 1.63318L19.134 12.0959L13.9093 12.3603Z"></path></svg>`,
@@ -14,6 +16,7 @@ const ICONS = {
   logs: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 6h12"></path><path d="M7 12h12"></path><path d="M7 18h12"></path><path d="M3.5 6h.01"></path><path d="M3.5 12h.01"></path><path d="M3.5 18h.01"></path></svg>`,
   undo: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7.18,4,8.6,5.44,6.06,8h9.71a6,6,0,0,1,0,12h-2V18h2a4,4,0,0,0,0-8H6.06L8.6,12.51,7.18,13.92,2.23,9Z"></path></svg>`,
   reset: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12C22 17.5228 17.5229 22 12 22C6.4772 22 2 17.5228 2 12C2 6.47715 6.4772 2 12 2V4C7.5817 4 4 7.58172 4 12C4 16.4183 7.5817 20 12 20C16.4183 20 20 16.4183 20 12C20 9.53614 18.8862 7.33243 17.1346 5.86492L15 8V2L21 2L18.5535 4.44656C20.6649 6.28002 22 8.9841 22 12Z"></path></svg>`,
+  theme: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.49 2 2 6.49 2 12C2 17.51 6.49 22 12 22C12.926 22 13.674 21.252 13.674 20.326C13.674 19.894 13.504 19.502 13.244 19.208C12.994 18.924 12.824 18.532 12.824 18.1C12.824 17.174 13.572 16.426 14.498 16.426H16.474C19.526 16.426 22 13.952 22 10.9C22 5.984 17.514 2 12 2ZM6.5 12C5.672 12 5 11.328 5 10.5C5 9.672 5.672 9 6.5 9C7.328 9 8 9.672 8 10.5C8 11.328 7.328 12 6.5 12ZM9.5 8C8.672 8 8 7.328 8 6.5C8 5.672 8.672 5 9.5 5C10.328 5 11 5.672 11 6.5C11 7.328 10.328 8 9.5 8ZM14.5 8C13.672 8 13 7.328 13 6.5C13 5.672 13.672 5 14.5 5C15.328 5 16 5.672 16 6.5C16 7.328 15.328 8 14.5 8ZM17.5 12C16.672 12 16 11.328 16 10.5C16 9.672 16.672 9 17.5 9C18.328 9 19 9.672 19 10.5C19 11.328 18.328 12 17.5 12Z"></path></svg>`,
 };
 
 const MOD_KEY = navigator.platform.includes("Mac") ? "\u2318" : "Ctrl+";
@@ -62,7 +65,6 @@ const PANEL_STYLES = `
     justify-content: center;
     background: transparent;
     border: none;
-    border-left: 2px solid transparent;
     color: ${COLORS.textSecondary};
     cursor: pointer;
     border-radius: 50%;
@@ -87,15 +89,13 @@ const PANEL_STYLES = `
   .tool-btn.active {
     background: ${COLORS.accentSoft};
     color: ${COLORS.accent};
-    border-left-color: ${COLORS.accent};
-    border-radius: 0 50% 50% 0;
   }
   .tool-btn .tooltip {
     display: none;
     position: absolute;
-    left: 44px;
-    top: 50%;
-    transform: translateY(-50%);
+    bottom: 42px;
+    left: 50%;
+    transform: translateX(-50%);
     background: ${COLORS.bgPrimary};
     border: 1px solid ${COLORS.border};
     box-shadow: ${SHADOWS.sm};
@@ -343,7 +343,7 @@ const PANEL_STYLES = `
   }
 `;
 
-let panelEl: HTMLDivElement | null = null;
+let panelEl: HTMLElement | null = null;
 let subOptionsEl: HTMLDivElement | null = null;
 let toolButtons: Map<ToolType, HTMLButtonElement> = new Map();
 let canvasUndoBtn: HTMLButtonElement | null = null;
@@ -376,50 +376,36 @@ export function initToolsPanel(): void {
   style.textContent = PANEL_STYLES;
   shadowRoot.appendChild(style);
 
-  panelEl = document.createElement("div");
-  panelEl.className = "tools-panel";
+  // Mount the tool/action buttons inside the bottom toolbar so it's one unified
+  // bar — no separate floating left strip.
+  panelEl = getToolbarToolsSlot();
+  if (!panelEl) return;
+  panelEl.innerHTML = "";
 
-  const groups = [
-    ["select"],
-  ];
+  for (const def of TOOL_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = `tool-btn${def.type === "select" ? " active" : ""}`;
+    btn.innerHTML = `${def.icon}<span class="tooltip">${def.label}<span class="shortcut-badge">${MOD_KEY}${def.shortcut}</span></span>`;
+    btn.addEventListener("click", () => setActiveTool(def.type));
 
-  for (let gi = 0; gi < groups.length; gi++) {
-    if (gi > 0) {
-      const divider = document.createElement("div");
-      divider.className = "tool-divider";
-      panelEl.appendChild(divider);
-    }
-    for (const toolType of groups[gi]) {
-      const def = TOOL_DEFS.find(d => d.type === toolType)!;
-      const btn = document.createElement("button");
-      btn.className = `tool-btn${def.type === "select" ? " active" : ""}`;
-      btn.innerHTML = `${def.icon}<span class="tooltip">${def.label}<span class="shortcut-badge">${MOD_KEY}${def.shortcut}</span></span>`;
-      btn.addEventListener("click", () => setActiveTool(def.type));
+    // 400ms tooltip delay
+    let tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+    btn.addEventListener("mouseenter", () => {
+      tooltipTimer = setTimeout(() => btn.classList.add("tooltip-visible"), 400);
+    });
+    btn.addEventListener("mouseleave", () => {
+      if (tooltipTimer) clearTimeout(tooltipTimer);
+      btn.classList.remove("tooltip-visible");
+    });
 
-      // 400ms tooltip delay
-      let tooltipTimer: ReturnType<typeof setTimeout> | null = null;
-      btn.addEventListener("mouseenter", () => {
-        tooltipTimer = setTimeout(() => btn.classList.add("tooltip-visible"), 400);
-      });
-      btn.addEventListener("mouseleave", () => {
-        if (tooltipTimer) clearTimeout(tooltipTimer);
-        btn.classList.remove("tooltip-visible");
-      });
-
-      panelEl.appendChild(btn);
-      toolButtons.set(def.type, btn);
-    }
+    panelEl.appendChild(btn);
+    toolButtons.set(def.type, btn);
   }
 
-  // Sub-options container
+  // Sub-options container (used by future tools; harmless when empty)
   subOptionsEl = document.createElement("div");
   subOptionsEl.className = "sub-options hidden";
   panelEl.appendChild(subOptionsEl);
-
-  // Bottom section: undo + reset
-  const bottomDivider = document.createElement("div");
-  bottomDivider.className = "tool-divider";
-  panelEl.appendChild(bottomDivider);
 
   canvasUndoBtn = document.createElement("button");
   canvasUndoBtn.className = "action-btn";
@@ -459,6 +445,21 @@ export function initToolsPanel(): void {
   syncCanvasBtn();
   panelEl.appendChild(canvasBtn);
 
+  // Theme button — toggles the left Theme sidebar. Hidden until a theme loads.
+  const themeBtn = document.createElement("button");
+  themeBtn.className = "action-btn";
+  themeBtn.innerHTML = ICONS.theme;
+  themeBtn.title = "Toggle Theme panel";
+  const syncThemeBtn = () => {
+    themeBtn.style.display = hasTheme() ? "" : "none";
+    themeBtn.classList.toggle("active", isThemePanelOpen());
+  };
+  themeBtn.addEventListener("click", () => toggleThemePanel());
+  onThemeChange(syncThemeBtn);      // theme arrival → show/hide the button
+  onThemePanelToggle(syncThemeBtn); // open/close from button or panel ✕ → keep active state in sync
+  syncThemeBtn();
+  panelEl.appendChild(themeBtn);
+
   // Help button — shows keyboard shortcuts
   const helpBtn = document.createElement("button");
   helpBtn.className = "help-btn";
@@ -467,7 +468,9 @@ export function initToolsPanel(): void {
   helpBtn.addEventListener("click", () => toggleShortcutsOverlay());
   panelEl.appendChild(helpBtn);
 
-  shadowRoot.appendChild(panelEl);
+  // NOTE: panelEl IS the toolbar's tools slot — it's already mounted inside the
+  // toolbar. Do NOT re-append it to the shadow root (that would tear the whole
+  // tools group back out of the bar and drop it into normal flow at the page edge).
   document.addEventListener("keydown", handleToolShortcut, true);
   cleanupChangelogSubscription = onChangelogChange(updateLogsButton);
   updateLogsButton();
@@ -660,7 +663,9 @@ export function destroyToolsPanel(): void {
   cleanupChangelogSubscription?.();
   cleanupChangelogSubscription = null;
   closeShortcutsOverlay();
-  panelEl?.remove();
+  // panelEl is the toolbar's tools slot — clear its children, don't remove the
+  // node itself (the toolbar owns it and tears down separately).
+  if (panelEl) panelEl.innerHTML = "";
   panelEl = null;
   subOptionsEl = null;
   canvasUndoBtn = null;

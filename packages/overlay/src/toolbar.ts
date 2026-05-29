@@ -50,6 +50,11 @@ const TOOLBAR_STYLES = `
     background: ${COLORS.border};
     flex-shrink: 0;
   }
+  .toolbar-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
   .icon-btn {
     width: 28px;
     height: 28px;
@@ -174,7 +179,13 @@ const TOOLBAR_STYLES = `
 export function mountToolbar(onClose: () => void): void {
   const host = document.createElement("div");
   host.id = "react-rewrite-root";
-  document.body.appendChild(host);
+  // Mount on <html>, not <body>. Frameworks that own <body> via React (Next.js
+  // App Router) reconcile its children and can pull the overlay into the
+  // infinite-canvas transform wrapper — which reparents our fixed UI under a
+  // transformed ancestor, shifting/clipping the whole toolbar. <html> is outside
+  // React's body subtree and outside the canvas wrapper, so fixed positioning
+  // stays viewport-relative no matter what the app does to <body>.
+  document.documentElement.appendChild(host);
 
   shadowRoot = host.attachShadow({ mode: "open" });
 
@@ -185,6 +196,8 @@ export function mountToolbar(onClose: () => void): void {
   toolbar.className = "toolbar";
 
   toolbar.innerHTML = `
+    <div class="toolbar-tools"></div>
+    <span class="divider"></span>
     <div class="component-detail empty">No selection</div>
     <span class="divider"></span>
     <button class="icon-btn undo-btn" disabled title="Undo Reorder">
@@ -308,6 +321,12 @@ export function destroyToolbar(): void {
 
 export function getShadowRoot(): ShadowRoot | null {
   return shadowRoot;
+}
+
+/** The slot inside the bottom toolbar where the tool/action buttons mount,
+ *  so they form one unified bar instead of a separate floating left strip. */
+export function getToolbarToolsSlot(): HTMLElement | null {
+  return shadowRoot?.querySelector(".toolbar-tools") ?? null;
 }
 
 export function setOnGenerate(fn: () => void): void { onGenerate = fn; }

@@ -33,6 +33,9 @@ let unsubscribe: (() => void) | null = null;
 
 export function initThemePanel(shadowRoot: ShadowRoot): void {
   root = shadowRoot;
+  const style = document.createElement("style");
+  style.textContent = `@keyframes rrThemeSlideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }`;
+  shadowRoot.appendChild(style);
   unsubscribe = onThemeChange(() => {
     // Only rebuild on structural changes (theme arrival, mode switch), not on
     // every keystroke preview — otherwise the focused input would be recreated.
@@ -52,10 +55,33 @@ export function destroyThemePanel(): void {
   expanded = false;
 }
 
+// Visibility listeners — let the bottom-bar Theme button reflect open/close
+// regardless of whether the toggle came from the button or the panel's ✕.
+type VisListener = () => void;
+const visListeners = new Set<VisListener>();
+export function onThemePanelToggle(fn: VisListener): () => void {
+  visListeners.add(fn);
+  return () => visListeners.delete(fn);
+}
+function notifyVis(): void {
+  for (const fn of visListeners) fn();
+}
+
+function setExpanded(next: boolean): void {
+  expanded = next;
+  render();
+  notifyVis();
+}
+
 export function toggleThemePanel(): void {
   if (!hasTheme()) return;
-  expanded = !expanded;
-  render();
+  setExpanded(!expanded);
+}
+
+/** True when the theme sidebar is currently open — lets the bottom-bar toggle
+ *  reflect state. */
+export function isThemePanelOpen(): boolean {
+  return expanded && hasTheme();
 }
 
 function render(): void {
@@ -66,61 +92,34 @@ function render(): void {
   }
   lastStructuralKey = `${getMode()}|${getTokenNames().join(",")}|${hasTheme()}`;
 
-  // No theme detected → hide entirely.
-  if (!hasTheme()) {
+  // Hidden unless a theme exists AND the panel is toggled open (the bottom-bar
+  // Theme button is the trigger). When open it docks as a full-height sidebar
+  // on the LEFT edge, mirroring the property sidebar on the right — no more
+  // floating dock.
+  if (!hasTheme() || !expanded) {
     dock.style.display = "none";
-    return;
-  }
-  dock.style.display = "block";
-  // Top-left, aligned with the bottom toolbar's former left edge. Clears the
-  // left tools strip, the (now-centered) bottom toolbar, and the right sidebar.
-  dock.style.cssText = `
-    position: fixed; top: 16px; left: 76px; z-index: 2147483646;
-    font-family: ${FONT_FAMILY}; pointer-events: auto;
-  `;
-
-  if (!expanded) {
     dock.innerHTML = "";
-    dock.appendChild(pillButton());
     return;
   }
 
   dock.innerHTML = "";
-  const panel = document.createElement("div");
-  panel.style.cssText = `
-    width: 280px; max-height: 70vh; display: flex; flex-direction: column;
-    background: ${COLORS.bgPrimary}; border: 1px solid ${COLORS.border};
-    border-radius: ${RADII.lg}; box-shadow: ${SHADOWS.lg}; overflow: hidden;
+  dock.style.cssText = `
+    position: fixed; top: 0; left: 0; bottom: 0; width: 380px; z-index: 2147483646;
+    display: flex; flex-direction: column; overflow: hidden;
+    background: ${COLORS.bgPrimary}; border-right: 1px solid ${COLORS.border};
+    box-shadow: ${SHADOWS.lg}; font-family: ${FONT_FAMILY}; pointer-events: auto;
+    animation: rrThemeSlideIn ${TRANSITIONS.settle};
   `;
-  panel.appendChild(header());
-  panel.appendChild(tokenList());
-  panel.appendChild(footer());
-  dock.appendChild(panel);
-}
-
-function pillButton(): HTMLElement {
-  const btn = document.createElement("button");
-  btn.textContent = "🎨 Theme";
-  btn.style.cssText = `
-    display: flex; align-items: center; gap: 6px;
-    padding: 8px 14px; font: 600 13px/1 ${FONT_FAMILY};
-    color: ${COLORS.textPrimary}; background: ${COLORS.bgPrimary};
-    border: 1px solid ${COLORS.border}; border-radius: 999px;
-    box-shadow: ${SHADOWS.md}; cursor: pointer; transition: ${TRANSITIONS.fast};
-  `;
-  if (hasPendingEdits()) {
-    btn.style.borderColor = COLORS.accent;
-    btn.textContent = "🎨 Theme •";
-  }
-  btn.addEventListener("click", () => { expanded = true; render(); });
-  return btn;
+  dock.appendChild(header());
+  dock.appendChild(tokenList());
+  dock.appendChild(footer());
 }
 
 function header(): HTMLElement {
   const bar = document.createElement("div");
   bar.style.cssText = `
     display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-    border-bottom: 1px solid ${COLORS.border};
+    border-bottom: 1px solid ${COLORS.border}; flex: 0 0 auto;
   `;
   const title = document.createElement("span");
   title.textContent = "Theme";
@@ -152,14 +151,14 @@ function header(): HTMLElement {
   close.textContent = "✕";
   close.title = "Collapse";
   close.style.cssText = `border: none; background: transparent; cursor: pointer; color: ${COLORS.textTertiary}; font-size: 13px; padding: 2px 4px;`;
-  close.addEventListener("click", () => { expanded = false; render(); });
+  close.addEventListener("click", () => setExpanded(false));
   bar.appendChild(close);
   return bar;
 }
 
 function tokenList(): HTMLElement {
   const list = document.createElement("div");
-  list.style.cssText = `overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px;`;
+  list.style.cssText = `flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px;`;
 
   const source = getSource();
   if (source) {
@@ -208,7 +207,7 @@ function tokenRow(name: string, value: string): HTMLElement {
   input.value = value;
   input.spellcheck = false;
   input.style.cssText = `
-    flex: 0 0 96px; width: 96px; padding: 3px 6px; font: 400 11px/1.2 ui-monospace, monospace;
+    flex: 0 0 168px; width: 168px; padding: 3px 6px; font: 400 11px/1.2 ui-monospace, monospace;
     color: ${COLORS.textPrimary}; background: ${COLORS.bgSecondary};
     border: 1px solid ${COLORS.border}; border-radius: ${RADII.xs}; outline: none;
   `;
@@ -252,7 +251,7 @@ let resetBtn: HTMLButtonElement | null = null;
 
 function footer(): HTMLElement {
   const bar = document.createElement("div");
-  bar.style.cssText = `display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid ${COLORS.border};`;
+  bar.style.cssText = `display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid ${COLORS.border}; flex: 0 0 auto;`;
 
   resetBtn = document.createElement("button");
   resetBtn.textContent = "Reset";

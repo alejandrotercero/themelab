@@ -10,10 +10,10 @@ export const COLORS = {
   textPrimary: "#1a1a1a",
   textSecondary: "#6b6b6b",
   textTertiary: "#9b9b9b",
-  accent: "#a259ff",
-  accentHover: "#8b3ee0",
-  accentSoft: "rgba(162,89,255,0.08)",
-  accentMedium: "rgba(162,89,255,0.15)",
+  accent: "#ec003f",
+  accentHover: "#c40034",
+  accentSoft: "rgba(236,0,63,0.08)",
+  accentMedium: "rgba(236,0,63,0.15)",
   danger: "#e5484d",
   dangerSoft: "rgba(229,72,77,0.08)",
   textOnAccent: "#ffffff",
@@ -21,7 +21,7 @@ export const COLORS = {
   marginBoxBorder: "rgba(200,150,0,0.4)",
   paddingBoxBg: "rgba(100,180,255,0.12)",
   paddingBoxBorder: "rgba(50,120,200,0.35)",
-  focusRing: "rgba(162,89,255,0.25)",
+  focusRing: "rgba(236,0,63,0.25)",
 } as const;
 
 // --- Shadows ---

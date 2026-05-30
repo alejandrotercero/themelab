@@ -1,27 +1,29 @@
 // packages/overlay/src/design-tokens.ts
 
 // --- Colors ---
+// Dark navy theme (per Figma node 115:322), applied across the whole overlay.
+// Surfaces/text/borders are navy; `accent`/`danger` stay the brand colors.
 export const COLORS = {
-  bgPrimary: "#ffffff",
-  bgSecondary: "#f7f7f8",
-  bgTertiary: "#efefef",
-  border: "rgba(0,0,0,0.08)",
-  borderStrong: "rgba(0,0,0,0.15)",
-  textPrimary: "#1a1a1a",
-  textSecondary: "#6b6b6b",
-  textTertiary: "#9b9b9b",
+  bgPrimary: "#12121a",
+  bgSecondary: "#1d222d",
+  bgTertiary: "#262d3b",
+  border: "#333950",
+  borderStrong: "#43506d",
+  textPrimary: "#d1cdcd",
+  textSecondary: "#8b8b95",
+  textTertiary: "#5f6470",
   accent: "#ec003f",
   accentHover: "#c40034",
-  accentSoft: "rgba(236,0,63,0.08)",
-  accentMedium: "rgba(236,0,63,0.15)",
+  accentSoft: "rgba(236,0,63,0.12)",
+  accentMedium: "rgba(236,0,63,0.22)",
   danger: "#e5484d",
-  dangerSoft: "rgba(229,72,77,0.08)",
+  dangerSoft: "rgba(229,72,77,0.14)",
   textOnAccent: "#ffffff",
   marginBoxBg: "rgba(255,200,100,0.15)",
   marginBoxBorder: "rgba(200,150,0,0.4)",
   paddingBoxBg: "rgba(100,180,255,0.12)",
   paddingBoxBorder: "rgba(50,120,200,0.35)",
-  focusRing: "rgba(236,0,63,0.25)",
+  focusRing: "rgba(236,0,63,0.3)",
 } as const;
 
 // --- Shadows ---
@@ -46,8 +48,45 @@ export const TRANSITIONS = {
   settle: "200ms ease",    // move shadow on drop, panel entrance
 } as const;
 
+// --- Property panel palette (dark navy, per Figma node 115:322) ---
+// Scoped to the property sidebar only — the rest of the overlay keeps COLORS.
+export const PANEL = {
+  bg: "#12121a",
+  surface: "#1d222d",        // section header bars + input chips
+  border: "#333950",         // input chip border
+  text: "#d1cdcd",           // labels + values
+  textDim: "#8b8b95",        // secondary / file path
+  textGhost: "#333040",      // disabled value (e.g. unset "flex")
+  accent: "#4d679e",         // var / bound-token blue
+  btnBg: "#333950",          // active arrow/move button
+  btnBorder: "#43506d",
+  btnBgInactive: "#1d222d",  // disabled button
+  focusRing: "rgba(77,103,158,0.4)",
+} as const;
+
 // --- Typography ---
-export const FONT_FAMILY = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+// The whole overlay uses Google Sans Code (mono) for the code-tool aesthetic.
+export const FONT_MONO =
+  "'Google Sans Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
+
+export const FONT_FAMILY = FONT_MONO;
+
+let panelFontInjected = false;
+/** Injects the Google Sans Code stylesheet once (font-face is global, so it
+ *  reaches the shadow DOM). Safe to call on every panel creation. */
+export function ensurePanelFont(): void {
+  if (panelFontInjected) return;
+  panelFontInjected = true;
+  try {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500&display=swap";
+    document.head.appendChild(link);
+  } catch {
+    // document.head unavailable — fall back to the monospace stack
+  }
+}
 
 export const FONT_FACE_CSS = `
   @font-face {

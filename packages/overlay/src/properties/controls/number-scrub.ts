@@ -1,7 +1,7 @@
 import type { PropertyDescriptor } from "@react-rewrite/shared";
 import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
 import { getSnapPoints } from "../tailwind-resolver.js";
-import { COLORS, FONT_FAMILY } from "../../design-tokens.js";
+import { PANEL, FONT_MONO } from "../../design-tokens.js";
 
 const VALID_KEYWORDS = new Set(["auto", "none", "normal", "inherit", "initial"]);
 
@@ -15,15 +15,15 @@ export function createNumberScrub(
   const scaleName = descriptor.tailwindScale as Parameters<typeof getSnapPoints>[0];
 
   const container = document.createElement("div");
-  container.style.cssText = `display:flex; align-items:center; gap:4px;`;
+  container.style.cssText = `display:flex; align-items:center; gap:6px;`;
 
   const input = document.createElement("input");
   input.type = "text";
   input.className = "prop-input";
-  input.style.cssText = `width:60px; cursor:text;`;
+  input.style.cssText = `flex:1; min-width:0; cursor:text;`;
 
   const tokenLabel = document.createElement("span");
-  tokenLabel.style.cssText = `font-size:10px; color:${COLORS.textSecondary}; font-family:${FONT_FAMILY};`;
+  tokenLabel.style.cssText = `font-size:11px; color:${PANEL.accent}; font-family:${FONT_MONO}; white-space:nowrap; flex-shrink:0;`;
 
   container.appendChild(input);
   container.appendChild(tokenLabel);

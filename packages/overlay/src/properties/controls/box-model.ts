@@ -1,6 +1,6 @@
 import type { PropertyDescriptor } from "@react-rewrite/shared";
 import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
-import { COLORS, FONT_FAMILY, RADII } from "../../design-tokens.js";
+import { COLORS, PANEL, FONT_MONO, RADII } from "../../design-tokens.js";
 
 type Side = "top" | "right" | "bottom" | "left";
 
@@ -47,9 +47,9 @@ export function createBoxModel(
     display:flex;
     flex-direction:column;
     gap:4px;
-    font-family:${FONT_FAMILY};
+    font-family:${FONT_MONO};
     font-size:10px;
-    color:${COLORS.textSecondary};
+    color:${PANEL.textDim};
     position:relative;
   `.trim().replace(/\n\s*/g, " ");
 
@@ -98,10 +98,10 @@ export function createBoxModel(
     grid-row:2;
     grid-column:2;
     text-align:center;
-    color:${COLORS.textTertiary};
+    color:${PANEL.textDim};
     font-size:9px;
     padding:4px 6px;
-    background:${COLORS.bgSecondary};
+    background:${PANEL.surface};
     border-radius:3px;
     user-select:none;
   `.trim().replace(/\n\s*/g, " ");
@@ -124,9 +124,9 @@ export function createBoxModel(
     span.title = descriptor.label;
     span.style.cssText = `
       cursor:pointer;
-      color:${COLORS.textPrimary};
+      color:${PANEL.text};
       font-size:10px;
-      font-family:${FONT_FAMILY};
+      font-family:${FONT_MONO};
       padding:1px 4px;
       border-radius:3px;
       text-align:center;
@@ -136,7 +136,7 @@ export function createBoxModel(
     `.trim().replace(/\n\s*/g, " ");
 
     span.addEventListener("mouseenter", () => {
-      span.style.background = COLORS.bgTertiary;
+      span.style.background = PANEL.surface;
     });
     span.addEventListener("mouseleave", () => {
       if (document.activeElement !== editInput || editInput.dataset.key !== descriptor.key) {
@@ -270,7 +270,7 @@ export function createBoxModel(
     el.textContent = text;
     el.style.cssText = `
       font-size:9px;
-      color:${COLORS.textTertiary};
+      color:${PANEL.textDim};
       text-transform:uppercase;
       letter-spacing:0.05em;
       user-select:none;
@@ -293,7 +293,7 @@ export function createBoxModel(
     if (!entry) {
       const placeholder = document.createElement("span");
       placeholder.textContent = "-";
-      placeholder.style.cssText = `text-align:center; color:${COLORS.textTertiary};`;
+      placeholder.style.cssText = `text-align:center; color:${PANEL.textGhost};`;
       return placeholder;
     }
     return makeValueCell(entry.descriptor);

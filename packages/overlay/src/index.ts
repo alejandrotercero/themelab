@@ -29,7 +29,7 @@ import { updateDeleteFileStat } from "./delete-state.js";
 import { initPropertyController, destroyPropertyController } from "./properties/property-controller.js";
 import { initInlineTextEdit, destroyInlineTextEdit, cancelTextEditSession } from "./inline-text-edit.js";
 import { initCanvasTransform, destroyCanvasTransform, resetCanvasTransform, saveCanvasState, restoreCanvasState, clearSavedCanvasState } from "./canvas-transform.js";
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
+import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY, ensurePanelFont } from "./design-tokens.js";
 import { initChangelog, destroyChangelog, addChangeEntry, isChangelogOpen, setChangelogOpen, clearChangelog } from "./changelog.js";
 import { initThemePanel, destroyThemePanel } from "./theme-panel.js";
 
@@ -190,6 +190,7 @@ function init(): void {
 
   if (document.getElementById("react-rewrite-root")) return; // Already initialized
 
+  ensurePanelFont(); // Load Google Sans Code before any UI paints
   connect(wsPort);
   mountToolbar(close);
 

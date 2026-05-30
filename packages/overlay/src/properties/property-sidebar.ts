@@ -1,4 +1,4 @@
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "../design-tokens.js";
+import { COLORS, SHADOWS, RADII, TRANSITIONS, PANEL, FONT_MONO, ensurePanelFont } from "../design-tokens.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -20,11 +20,11 @@ const SIDEBAR_STYLES = `
     top: 0;
     right: 0;
     height: 100vh;
-    background: ${COLORS.bgPrimary};
-    border-left: 1px solid ${COLORS.border};
+    background: ${PANEL.bg};
+    border-left: 1px solid ${PANEL.border};
     box-shadow: ${SHADOWS.lg};
     z-index: 2147483645;
-    font-family: ${FONT_FAMILY};
+    font-family: ${FONT_MONO};
     display: flex;
     flex-direction: column;
     transform: translateX(100%);
@@ -45,12 +45,12 @@ const SIDEBAR_STYLES = `
   }
   .prop-sidebar-resize:hover,
   .prop-sidebar-resize.active {
-    background: ${COLORS.accent};
-    opacity: 0.3;
+    background: ${PANEL.accent};
+    opacity: 0.5;
   }
   .prop-sidebar-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid ${COLORS.border};
+    padding: 14px 12px;
+    border-bottom: 1px solid ${PANEL.surface};
     flex-shrink: 0;
     display: flex;
     align-items: flex-start;
@@ -68,27 +68,27 @@ const SIDEBAR_STYLES = `
     border: none;
     background: none;
     cursor: pointer;
-    color: ${COLORS.textTertiary};
+    color: ${PANEL.textDim};
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: ${RADII.sm};
+    border-radius: ${RADII.xs};
   }
   .prop-sidebar-close:hover {
-    background: ${COLORS.bgTertiary};
-    color: ${COLORS.textPrimary};
+    background: ${PANEL.surface};
+    color: ${PANEL.text};
   }
   .prop-sidebar-component-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: ${COLORS.textPrimary};
+    font-size: 12px;
+    font-weight: 500;
+    color: ${PANEL.text};
     margin: 0 0 4px;
     line-height: 1.3;
   }
   .prop-sidebar-file-path {
     font-size: 11px;
-    color: ${COLORS.textTertiary};
+    color: ${PANEL.textDim};
     margin: 0;
     line-height: 1.3;
     white-space: nowrap;
@@ -102,7 +102,7 @@ const SIDEBAR_STYLES = `
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: ${COLORS.accent};
+    background: ${PANEL.accent};
     margin-left: 6px;
     vertical-align: middle;
     opacity: 0;
@@ -123,7 +123,7 @@ const SIDEBAR_STYLES = `
     padding: 8px 12px;
     background: ${COLORS.dangerSoft};
     border-bottom: 1px solid ${COLORS.danger};
-    font-family: ${FONT_FAMILY};
+    font-family: ${FONT_MONO};
     font-size: 11px;
     color: ${COLORS.danger};
     flex-shrink: 0;
@@ -136,7 +136,7 @@ const SIDEBAR_STYLES = `
     border: 1px solid ${COLORS.danger};
     background: none;
     color: ${COLORS.danger};
-    font-family: ${FONT_FAMILY};
+    font-family: ${FONT_MONO};
     font-size: 10px;
     font-weight: 600;
     padding: 2px 8px;
@@ -151,70 +151,70 @@ const SIDEBAR_STYLES = `
   .prop-sidebar-nav {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
-    padding: 8px 16px;
-    border-bottom: 1px solid ${COLORS.border};
+    gap: 2px;
+    padding: 10px 12px;
+    border-bottom: 1px solid ${PANEL.surface};
     flex-shrink: 0;
   }
   .prop-sidebar-nav-btn {
-    height: 26px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    border: 1px solid ${COLORS.border};
-    background: ${COLORS.bgSecondary};
-    color: ${COLORS.textSecondary};
-    border-radius: ${RADII.sm};
+    border: 1px solid ${PANEL.btnBorder};
+    background: ${PANEL.btnBg};
+    color: ${PANEL.text};
+    border-radius: ${RADII.xs};
     cursor: pointer;
-    font-family: ${FONT_FAMILY};
+    font-family: ${FONT_MONO};
     font-size: 13px;
     line-height: 1;
     padding: 0;
     transition: ${TRANSITIONS.fast};
   }
   .prop-sidebar-nav-btn:hover:not(:disabled) {
-    background: ${COLORS.bgTertiary};
-    color: ${COLORS.textPrimary};
-    border-color: ${COLORS.borderStrong};
+    border-color: ${PANEL.accent};
+    color: #ffffff;
   }
   .prop-sidebar-nav-btn:disabled {
-    opacity: 0.35;
+    background: ${PANEL.btnBgInactive};
+    border-color: ${PANEL.surface};
+    color: ${PANEL.textGhost};
     cursor: default;
   }
   .prop-sidebar-move {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 4px;
-    padding: 0 16px 10px;
+    gap: 2px;
+    padding: 0 12px 12px;
     flex-shrink: 0;
   }
   .prop-sidebar-move-btn {
-    height: 26px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
-    border: 1px solid ${COLORS.border};
-    background: ${COLORS.bgSecondary};
-    color: ${COLORS.textSecondary};
-    border-radius: ${RADII.sm};
+    border: 1px solid ${PANEL.btnBorder};
+    background: ${PANEL.btnBg};
+    color: ${PANEL.text};
+    border-radius: ${RADII.xs};
     cursor: pointer;
-    font-family: ${FONT_FAMILY};
+    font-family: ${FONT_MONO};
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 400;
     line-height: 1;
     padding: 0;
     transition: ${TRANSITIONS.fast};
   }
   .prop-sidebar-move-btn:hover {
-    background: ${COLORS.bgTertiary};
-    color: ${COLORS.textPrimary};
-    border-color: ${COLORS.borderStrong};
+    border-color: ${PANEL.accent};
+    color: #ffffff;
   }
   .prop-sidebar-move-btn .kbd {
     font-size: 10px;
-    color: ${COLORS.textTertiary};
+    color: ${PANEL.accent};
   }
   .prop-sidebar-content {
     flex: 1;
@@ -228,7 +228,7 @@ const SIDEBAR_STYLES = `
     background: transparent;
   }
   .prop-sidebar-content::-webkit-scrollbar-thumb {
-    background: ${COLORS.borderStrong};
+    background: ${PANEL.border};
     border-radius: 3px;
   }
 `;
@@ -284,6 +284,9 @@ export function createSidebar(
   hideSaving: () => void;
   updateNav: (availability: Record<NavDir, boolean>) => void;
 } {
+  // Load the panel's monospace font (Google Sans Code) once
+  ensurePanelFont();
+
   // Inject styles
   const style = document.createElement("style");
   style.textContent = SIDEBAR_STYLES;

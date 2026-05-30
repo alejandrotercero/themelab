@@ -1,6 +1,6 @@
 import type { PropertyDescriptor } from "@react-rewrite/shared";
 import type { PropertyControl, OnPreview, OnCommit, ControlContext } from "./types.js";
-import { COLORS, FONT_FAMILY, RADII, SHADOWS } from "../../design-tokens.js";
+import { PANEL, FONT_MONO, RADII, SHADOWS } from "../../design-tokens.js";
 import { openColorPicker, closeColorPicker } from "../../color-picker.js";
 import { getTokenMap, resolveTokenForValue } from "../tailwind-resolver.js";
 import { hasTheme, getColorTokenNames, getValue as getThemeValue } from "../../theme-state.js";
@@ -31,8 +31,8 @@ export function createColorSwatch(
   swatch.style.cssText = `
     width:20px;
     height:20px;
-    border-radius:${RADII.sm};
-    border:1px solid ${COLORS.borderStrong};
+    border-radius:${RADII.xs};
+    border:1px solid ${PANEL.border};
     cursor:pointer;
     flex-shrink:0;
   `.trim().replace(/\n\s*/g, " ");
@@ -44,7 +44,7 @@ export function createColorSwatch(
   input.style.cssText = `flex:1; min-width:0;`;
 
   const tokenLabel = document.createElement("span");
-  tokenLabel.style.cssText = `font-size:10px; color:${COLORS.textSecondary}; font-family:${FONT_FAMILY}; white-space:nowrap;`;
+  tokenLabel.style.cssText = `font-size:11px; color:${PANEL.accent}; font-family:${FONT_MONO}; white-space:nowrap;`;
 
   // "Bind to theme variable" trigger — only shown when a theme is loaded and the
   // controller gave us a bind callback.
@@ -52,9 +52,9 @@ export function createColorSwatch(
   varsBtn.textContent = "var";
   varsBtn.title = "Bind to a theme variable";
   varsBtn.style.cssText = `
-    flex-shrink:0; padding:2px 6px; font:600 10px/1 ${FONT_FAMILY};
-    color:${COLORS.textSecondary}; background:${COLORS.bgSecondary};
-    border:1px solid ${COLORS.border}; border-radius:${RADII.xs}; cursor:pointer;
+    flex-shrink:0; padding:3px 7px; font:400 11px/1 ${FONT_MONO};
+    color:${PANEL.accent}; background:transparent;
+    border:1px solid ${PANEL.border}; border-radius:${RADII.xs}; cursor:pointer;
   `.trim().replace(/\n\s*/g, " ");
   const canBind = hasTheme() && !!ctx?.onBindToken;
   if (!canBind) varsBtn.style.display = "none";
@@ -117,12 +117,12 @@ export function createColorSwatch(
       swatch.style.background = renderable ?? cssValue;
       input.value = `var(--${boundToken})`;
       tokenLabel.textContent = `🔗 ${boundToken}`;
-      tokenLabel.style.color = COLORS.accent;
+      tokenLabel.style.color = PANEL.accent;
       return;
     }
 
     input.value = cssValue;
-    tokenLabel.style.color = COLORS.textSecondary;
+    tokenLabel.style.color = PANEL.accent;
     if (cssValue === "transparent") {
       swatch.style.background = `repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 0 0 / 10px 10px`;
     } else {
@@ -185,8 +185,8 @@ export function createColorSwatch(
     varMenu.style.cssText = `
       position:absolute; top:26px; right:0; z-index:2147483647;
       width:200px; max-height:260px; overflow-y:auto;
-      background:${COLORS.bgPrimary}; border:1px solid ${COLORS.border};
-      border-radius:${RADII.sm}; box-shadow:${SHADOWS.lg}; padding:4px;
+      background:${PANEL.bg}; border:1px solid ${PANEL.border};
+      border-radius:${RADII.xs}; box-shadow:${SHADOWS.lg}; padding:4px;
     `.trim().replace(/\n\s*/g, " ");
 
     for (const name of names) {
@@ -195,19 +195,19 @@ export function createColorSwatch(
       const renderable = val ? toRenderableCss(val) : null;
       row.style.cssText = `
         display:flex; align-items:center; gap:8px; width:100%; padding:5px 6px;
-        border:none; background:${name === boundToken ? COLORS.bgTertiary : "transparent"};
+        border:none; background:${name === boundToken ? PANEL.surface : "transparent"};
         border-radius:${RADII.xs}; cursor:pointer; text-align:left;
-        font:500 11px/1.2 ${FONT_FAMILY}; color:${COLORS.textPrimary};
+        font:400 11px/1.2 ${FONT_MONO}; color:${PANEL.text};
       `.trim().replace(/\n\s*/g, " ");
       const sw = document.createElement("span");
-      sw.style.cssText = `flex:0 0 auto; width:14px; height:14px; border-radius:3px; border:1px solid ${COLORS.border}; background:${renderable ?? "transparent"};`;
+      sw.style.cssText = `flex:0 0 auto; width:14px; height:14px; border-radius:3px; border:1px solid ${PANEL.border}; background:${renderable ?? "transparent"};`;
       const label = document.createElement("span");
       label.textContent = name;
       label.style.cssText = `flex:1 1 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
       row.appendChild(sw);
       row.appendChild(label);
-      row.addEventListener("mouseenter", () => { row.style.background = COLORS.bgTertiary; });
-      row.addEventListener("mouseleave", () => { row.style.background = name === boundToken ? COLORS.bgTertiary : "transparent"; });
+      row.addEventListener("mouseenter", () => { row.style.background = PANEL.surface; });
+      row.addEventListener("mouseleave", () => { row.style.background = name === boundToken ? PANEL.surface : "transparent"; });
       row.addEventListener("click", () => {
         boundToken = name;
         updateDisplay(currentValue);

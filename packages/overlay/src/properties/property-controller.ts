@@ -29,7 +29,7 @@ const FLEX_DISPLAYS = new Set(["flex", "inline-flex"]);
 const ESSENTIAL_GROUPS: Set<PropertyGroup> = new Set(["layout", "spacing", "size"]);
 
 // Groups whose CSS properties are deferred until the section is expanded
-const DEFERRED_GROUPS: Set<PropertyGroup> = new Set(["typography", "background"]);
+const DEFERRED_GROUPS: Set<PropertyGroup> = new Set(["typography", "background", "border"]);
 
 // Tags that are inherently text-oriented
 const TEXT_TAGS = new Set([
@@ -43,7 +43,7 @@ const TEXT_TAGS = new Set([
  * Future: for multi-select, compute intersection of relevant groups across all elements
  */
 function getRelevantGroups(element: HTMLElement): Set<PropertyGroup> {
-  const groups = new Set<PropertyGroup>(["spacing", "size", "background"] as PropertyGroup[]);
+  const groups = new Set<PropertyGroup>(["spacing", "size", "background", "border"] as PropertyGroup[]);
   const computed = getComputedStyle(element);
 
   // Layout: flex/grid containers or elements with children (potential containers)

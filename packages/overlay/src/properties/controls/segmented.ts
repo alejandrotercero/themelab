@@ -1,6 +1,6 @@
 import type { PropertyDescriptor } from "@react-rewrite/shared";
 import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
-import { COLORS, FONT_FAMILY, RADII } from "../../design-tokens.js";
+import { PANEL, FONT_MONO, RADII } from "../../design-tokens.js";
 
 export function createSegmented(
   descriptors: PropertyDescriptor[],
@@ -16,8 +16,9 @@ export function createSegmented(
     display:flex;
     align-items:center;
     gap:2px;
-    background:${COLORS.bgTertiary};
-    border-radius:${RADII.sm};
+    background:${PANEL.surface};
+    border:1px solid ${PANEL.border};
+    border-radius:${RADII.xs};
     padding:2px;
     flex-wrap:wrap;
   `.trim().replace(/\n\s*/g, " ");
@@ -30,8 +31,8 @@ export function createSegmented(
     activeValue = cssValue;
     for (const { btn, value, opt } of buttons) {
       const isActive = value === cssValue;
-      btn.style.background = isActive ? COLORS.accent : "transparent";
-      btn.style.color = isActive ? COLORS.textOnAccent : COLORS.textSecondary;
+      btn.style.background = isActive ? PANEL.btnBg : "transparent";
+      btn.style.color = isActive ? "#ffffff" : PANEL.textDim;
       // Show Tailwind class as tooltip on the active segment
       btn.title = isActive && opt.tailwindValue
         ? `${opt.label} (${opt.tailwindValue})`
@@ -45,14 +46,14 @@ export function createSegmented(
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:2px 6px;
+      padding:3px 8px;
       border:none;
       border-radius:${RADII.xs};
-      font-family:${FONT_FAMILY};
-      font-size:10px;
+      font-family:${FONT_MONO};
+      font-size:12px;
       cursor:pointer;
       background:transparent;
-      color:${COLORS.textSecondary};
+      color:${PANEL.textDim};
       min-width:20px;
       transition:background 100ms ease, color 100ms ease;
       white-space:nowrap;

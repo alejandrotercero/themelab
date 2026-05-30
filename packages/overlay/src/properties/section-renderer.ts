@@ -4,7 +4,7 @@ import { createNumberScrub } from "./controls/number-scrub.js";
 import { createSegmented } from "./controls/segmented.js";
 import { createColorSwatch } from "./controls/color-swatch.js";
 import { createBoxModel } from "./controls/box-model.js";
-import { COLORS, FONT_FAMILY, RADII, TRANSITIONS } from "../design-tokens.js";
+import { PANEL, FONT_MONO, RADII, TRANSITIONS } from "../design-tokens.js";
 
 // Persists collapse state across re-renders and element selections
 const collapsedGroups = new Set<string>();
@@ -37,6 +37,7 @@ const GROUP_LABELS: Record<PropertyGroup, string> = {
   size: "Size",
   typography: "Typography",
   background: "Background",
+  border: "Border",
 };
 
 type ControlFactory = (
@@ -59,10 +60,10 @@ const CONTROL_FACTORIES: Record<string, ControlFactory> = {
 // ---------------------------------------------------------------------------
 
 const SECTION_STYLES = `
-  .prop-section {
-    border-bottom: 1px solid ${COLORS.border};
+  .prop-sections {
+    font-family: ${FONT_MONO};
   }
-  .prop-section:last-child {
+  .prop-section {
     border-bottom: none;
   }
   .prop-section-header {
@@ -72,68 +73,68 @@ const SECTION_STYLES = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
-    background: ${COLORS.bgSecondary};
+    padding: 8px 12px;
+    background: ${PANEL.surface};
     cursor: pointer;
     user-select: none;
-    font-family: ${FONT_FAMILY};
+    font-family: ${FONT_MONO};
     font-size: 11px;
-    font-weight: 600;
-    color: ${COLORS.textSecondary};
+    font-weight: 400;
+    color: ${PANEL.text};
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1.1px;
   }
-  .prop-section-header:hover {
-    background: ${COLORS.bgTertiary};
+  .prop-section-header:hover .prop-section-chevron {
+    color: ${PANEL.text};
   }
   .prop-section-chevron {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     transition: transform 150ms ease;
-    color: ${COLORS.textTertiary};
+    color: ${PANEL.textDim};
   }
   .prop-section-chevron.collapsed {
     transform: rotate(-90deg);
   }
   .prop-section-body {
-    padding: 10px 14px 14px;
+    padding: 16px 12px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 15px;
   }
   .prop-section-body.collapsed {
     display: none;
   }
   .prop-input {
-    background: ${COLORS.bgTertiary};
-    border: 1px solid ${COLORS.border};
+    background: ${PANEL.surface};
+    border: 1px solid ${PANEL.border};
     border-radius: ${RADII.xs};
-    padding: 4px 6px;
-    font-family: ${FONT_FAMILY};
-    font-size: 11px;
-    color: ${COLORS.textPrimary};
+    padding: 4px 8px;
+    font-family: ${FONT_MONO};
+    font-size: 12px;
+    color: ${PANEL.text};
     outline: none;
     box-sizing: border-box;
     transition: border-color ${TRANSITIONS.fast}, box-shadow ${TRANSITIONS.fast};
   }
   .prop-input:hover {
-    border-color: ${COLORS.borderStrong};
+    border-color: ${PANEL.btnBorder};
   }
   .prop-input:focus {
-    border-color: ${COLORS.accent};
-    box-shadow: 0 0 0 2px ${COLORS.focusRing};
+    border-color: ${PANEL.accent};
+    box-shadow: 0 0 0 2px ${PANEL.focusRing};
   }
   .prop-control-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
   .prop-control-label {
-    width: 48px;
+    width: 80px;
     flex-shrink: 0;
-    font-size: 10px;
-    font-family: ${FONT_FAMILY};
-    color: ${COLORS.textTertiary};
+    font-size: 12px;
+    font-family: ${FONT_MONO};
+    color: ${PANEL.text};
     text-transform: capitalize;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -144,16 +145,16 @@ const SECTION_STYLES = `
     min-width: 0;
   }
   .prop-show-all {
-    padding: 8px 14px;
-    font-family: ${FONT_FAMILY};
+    padding: 12px;
+    font-family: ${FONT_MONO};
     font-size: 11px;
-    color: ${COLORS.textTertiary};
+    color: ${PANEL.textDim};
     cursor: pointer;
     text-align: center;
     user-select: none;
   }
   .prop-show-all:hover {
-    color: ${COLORS.accent};
+    color: ${PANEL.accent};
   }
 `;
 

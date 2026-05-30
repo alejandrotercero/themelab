@@ -362,7 +362,7 @@ export interface SiblingInfo {
 // --- Property Inspector Types ---
 
 export type ControlType = "number-scrub" | "segmented" | "color-swatch" | "box-model";
-export type PropertyGroup = "layout" | "spacing" | "size" | "typography" | "background";
+export type PropertyGroup = "layout" | "spacing" | "size" | "typography" | "background" | "border";
 
 export interface PropertyDescriptor {
   key: string;

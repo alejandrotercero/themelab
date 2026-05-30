@@ -21,4 +21,7 @@ export interface ControlContext {
   /** Bind a color property to a theme token, writing e.g. `bg-primary`
    *  instead of a raw color. Editing the token then updates it everywhere. */
   onBindToken?: (key: string, token: string) => void;
+  /** Apply a Tailwind palette color, writing the token class (e.g. `bg-red-500`).
+   *  `css` is the renderable color for live preview. */
+  onPickTailwind?: (key: string, token: string, css: string) => void;
 }

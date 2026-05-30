@@ -42,11 +42,12 @@ export const LAYOUT_DESCRIPTORS: PropertyDescriptor[] = [
     key: "justifyContent",
     label: "Justify",
     group: "layout",
-    controlType: "segmented",
+    controlType: "align-segmented",
     cssProperty: "justify-content",
     tailwindPrefix: "justify",
     tailwindScale: "justifyContent",
     defaultValue: "flex-start",
+    classPattern: "^justify-(start|center|end|between|around|evenly|normal|stretch)$",
     enumValues: [
       { value: "flex-start", tailwindValue: "start", label: "Start" },
       { value: "center", tailwindValue: "center", label: "Center" },
@@ -60,11 +61,12 @@ export const LAYOUT_DESCRIPTORS: PropertyDescriptor[] = [
     key: "alignItems",
     label: "Align",
     group: "layout",
-    controlType: "segmented",
+    controlType: "align-segmented",
     cssProperty: "align-items",
     tailwindPrefix: "items",
     tailwindScale: "alignItems",
     defaultValue: "stretch",
+    classPattern: "^items-(start|center|end|stretch|baseline)$",
     enumValues: [
       { value: "flex-start", tailwindValue: "start", label: "Start" },
       { value: "center", tailwindValue: "center", label: "Center" },
@@ -101,12 +103,14 @@ export const SPACING_DESCRIPTORS: PropertyDescriptor[] = [
 ];
 
 // --- Size ---
+// Ordered so the 2-column grid pairs width (left) with height (right) per row:
+// W | H, Min W | Min H, Max W | Max H.
 export const SIZE_DESCRIPTORS: PropertyDescriptor[] = [
   { key: "width", label: "W", group: "size", controlType: "number-scrub", cssProperty: "width", tailwindPrefix: "w", tailwindScale: "spacing", defaultValue: "auto", min: 0 },
   { key: "height", label: "H", group: "size", controlType: "number-scrub", cssProperty: "height", tailwindPrefix: "h", tailwindScale: "spacing", defaultValue: "auto", min: 0 },
   { key: "minWidth", label: "Min W", group: "size", controlType: "number-scrub", cssProperty: "min-width", tailwindPrefix: "min-w", tailwindScale: "spacing", defaultValue: "0", min: 0 },
-  { key: "maxWidth", label: "Max W", group: "size", controlType: "number-scrub", cssProperty: "max-width", tailwindPrefix: "max-w", tailwindScale: "spacing", defaultValue: "none" },
   { key: "minHeight", label: "Min H", group: "size", controlType: "number-scrub", cssProperty: "min-height", tailwindPrefix: "min-h", tailwindScale: "spacing", defaultValue: "0", min: 0 },
+  { key: "maxWidth", label: "Max W", group: "size", controlType: "number-scrub", cssProperty: "max-width", tailwindPrefix: "max-w", tailwindScale: "spacing", defaultValue: "none" },
   { key: "maxHeight", label: "Max H", group: "size", controlType: "number-scrub", cssProperty: "max-height", tailwindPrefix: "max-h", tailwindScale: "spacing", defaultValue: "none" },
 ];
 

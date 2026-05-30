@@ -4,9 +4,9 @@ import { COLORS, SHADOWS, RADII, TRANSITIONS, PANEL, FONT_MONO, ensurePanelFont 
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_WIDTH = 300;
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 380;
+const DEFAULT_WIDTH = MAX_WIDTH; // open at full width by default
 const STORAGE_KEY = "react-rewrite-sidebar-width";
 const RESIZE_HANDLE_WIDTH = 4;
 
@@ -249,7 +249,8 @@ function loadWidth(): number {
   } catch {
     // localStorage not available
   }
-  return Math.min(DEFAULT_WIDTH, Math.floor(window.innerWidth * 0.22));
+  // Default to full width, but never wider than ~45% of the viewport.
+  return Math.min(DEFAULT_WIDTH, Math.floor(window.innerWidth * 0.45));
 }
 
 function saveWidth(width: number): void {

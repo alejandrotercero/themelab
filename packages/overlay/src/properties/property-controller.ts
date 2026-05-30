@@ -384,6 +384,7 @@ function buildControlContext(): ControlContext {
   return {
     selectedClassName: state.selectedElement?.className || undefined,
     onBindToken: bindToken,
+    onPickTailwind: pickTailwindColor,
   };
 }
 
@@ -813,6 +814,12 @@ export function preview(key: string, cssValue: string): void {
     originalValue: state.originalValues.get(key) || desc.defaultValue,
   });
 
+  // When flex-direction changes, re-render so the alignment icons re-orient
+  // (justify/align-items swap horizontal↔vertical with the main axis).
+  if (key === "flexDirection") {
+    rerenderSections();
+  }
+
   // When display changes, re-render sections so flex controls appear/disappear
   if (key === "display") {
     rerenderSections();
@@ -885,6 +892,35 @@ export function bindToken(key: string, token: string): void {
   });
 
   showToast(`Bound ${desc.label ?? key} → ${desc.tailwindPrefix}-${token}`);
+  scheduledCommit();
+}
+
+/**
+ * Apply a Tailwind palette color to a property — writes the token class
+ * (e.g. `bg-red-500`) rather than an arbitrary `bg-[#hex]`. `css` is the
+ * renderable color used for the live inline preview only.
+ */
+export function pickTailwindColor(key: string, token: string, css: string): void {
+  const desc = DESCRIPTOR_MAP.get(key);
+  if (!desc || !state.selectedElement) return;
+
+  setStyle(state.selectedElement, desc.key, css);
+  state.activeOverrides.set(key, css);
+  state.currentValues.set(key, css);
+
+  // Scale tokens (red-500) already satisfy the color descriptors' classPattern
+  // (`\w+-\d+`), and bg has no pattern → prefix match replaces. No override needed.
+  state.pendingBatch.set(key, {
+    property: key,
+    cssProperty: desc.cssProperty,
+    value: css,
+    tailwindPrefix: desc.tailwindPrefix,
+    tailwindToken: token,
+    relatedPrefixes: desc.relatedPrefixes,
+    originalValue: state.originalValues.get(key) || desc.defaultValue,
+  });
+
+  showToast(`${desc.label ?? key} → ${desc.tailwindPrefix}-${token}`);
   scheduledCommit();
 }
 

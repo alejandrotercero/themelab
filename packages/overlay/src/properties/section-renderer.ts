@@ -4,6 +4,7 @@ import { createNumberScrub } from "./controls/number-scrub.js";
 import { createSegmented } from "./controls/segmented.js";
 import { createColorSwatch } from "./controls/color-swatch.js";
 import { createBoxModel } from "./controls/box-model.js";
+import { createAlignSegmented } from "./controls/align-segmented.js";
 import { PANEL, FONT_MONO, RADII, TRANSITIONS } from "../design-tokens.js";
 
 // Persists collapse state across re-renders and element selections
@@ -53,6 +54,7 @@ const CONTROL_FACTORIES: Record<string, ControlFactory> = {
   "segmented": createSegmented,
   "color-swatch": createColorSwatch,
   "box-model": createBoxModel,
+  "align-segmented": createAlignSegmented,
 };
 
 // ---------------------------------------------------------------------------
@@ -143,6 +145,51 @@ const SECTION_STYLES = `
   .prop-control-value {
     flex: 1;
     min-width: 0;
+  }
+  .prop-size-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .prop-size-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: ${PANEL.surface};
+    border: 1px solid ${PANEL.border};
+    border-radius: ${RADII.xs};
+    padding: 0 8px;
+    min-width: 0;
+    transition: border-color ${TRANSITIONS.fast}, box-shadow ${TRANSITIONS.fast};
+  }
+  .prop-size-cell:hover {
+    border-color: ${PANEL.btnBorder};
+  }
+  .prop-size-cell:focus-within {
+    border-color: ${PANEL.accent};
+    box-shadow: 0 0 0 2px ${PANEL.focusRing};
+  }
+  .prop-size-label {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-family: ${FONT_MONO};
+    color: ${PANEL.textDim};
+  }
+  /* Inside a size cell the chip IS the border — strip the inner input chrome. */
+  .prop-size-cell .prop-input {
+    border: none;
+    background: transparent;
+    padding: 5px 0;
+    box-shadow: none;
+  }
+  .prop-size-cell .prop-input:hover,
+  .prop-size-cell .prop-input:focus {
+    border: none;
+    box-shadow: none;
+  }
+  /* Drop the token-suffix hint in the compact size cells (no room). */
+  .prop-size-cell .prop-input + span {
+    display: none;
   }
   .prop-show-all {
     padding: 12px;
@@ -297,14 +344,41 @@ export function renderSections(
 
     // Controls
     const entries = splitCompound(filteredDescs);
+
+    // Size group renders as a compact 2-column grid of [label][input] chips
+    // (W | H, Min W | Min H, Max W | Max H) instead of full-width rows.
+    if (group === "size") {
+      const grid = document.createElement("div");
+      grid.className = "prop-size-grid";
+      for (const entry of entries) {
+        const factory = CONTROL_FACTORIES[entry.controlType];
+        if (!factory) continue;
+        const control = factory(entry.descriptors, currentValues, onPreview, onCommit, ctx);
+        const cell = document.createElement("div");
+        cell.className = "prop-size-cell";
+        const label = document.createElement("span");
+        label.className = "prop-size-label";
+        label.textContent = entry.descriptors[0].label;
+        label.title = entry.descriptors[0].label;
+        cell.appendChild(label);
+        cell.appendChild(control.element);
+        grid.appendChild(cell);
+        allControls.push(control);
+      }
+      body.appendChild(grid);
+      section.appendChild(body);
+      container.appendChild(section);
+      continue;
+    }
+
     for (const entry of entries) {
       const factory = CONTROL_FACTORIES[entry.controlType];
       if (!factory) continue;
 
       const control = factory(entry.descriptors, currentValues, onPreview, onCommit, ctx);
 
-      // Compound controls (box-model) have their own layout — no label wrapper
-      if (entry.descriptors.length > 1 || entry.controlType === "box-model") {
+      // Compound / self-headered controls own their layout — no label wrapper
+      if (entry.descriptors.length > 1 || entry.controlType === "box-model" || entry.controlType === "align-segmented") {
         body.appendChild(control.element);
       } else {
         const row = document.createElement("div");

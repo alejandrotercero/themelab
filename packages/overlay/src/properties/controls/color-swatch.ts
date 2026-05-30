@@ -5,6 +5,7 @@ import { openColorPicker, closeColorPicker } from "../../color-picker.js";
 import { getTokenMap, resolveTokenForValue } from "../tailwind-resolver.js";
 import { hasTheme, getColorTokenNames, getValue as getThemeValue } from "../../theme-state.js";
 import { toRenderableCss } from "../../utils/color-format.js";
+import { openTailwindPalette, closeTailwindPalette, isTailwindPaletteOpen, tailwindLogoSvg } from "../tailwind-palette.js";
 
 let _colorCtx: CanvasRenderingContext2D | null = null;
 function getColorCtx(): CanvasRenderingContext2D {
@@ -59,12 +60,26 @@ export function createColorSwatch(
   const canBind = hasTheme() && !!ctx?.onBindToken;
   if (!canBind) varsBtn.style.display = "none";
 
+  // Tailwind palette trigger (swoosh logo) — opens the full TW v4 picker.
+  const twBtn = document.createElement("button");
+  twBtn.title = "Pick a Tailwind color";
+  twBtn.innerHTML = tailwindLogoSvg(14);
+  twBtn.style.cssText = `
+    flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    width:24px; height:22px; background:transparent;
+    border:1px solid ${PANEL.border}; border-radius:${RADII.xs}; cursor:pointer;
+  `.trim().replace(/\n\s*/g, " ");
+  const canPickTw = !!ctx?.onPickTailwind;
+  if (!canPickTw) twBtn.style.display = "none";
+
   container.appendChild(swatch);
   container.appendChild(input);
   container.appendChild(tokenLabel);
   container.appendChild(varsBtn);
+  container.appendChild(twBtn);
 
   let currentValue = values.get(descriptor.key) ?? descriptor.defaultValue;
+  let currentScaleToken: string | null = null; // resolved Tailwind token (e.g. "red-500")
   let pickerOpen = false;
   let varMenu: HTMLDivElement | null = null;
 
@@ -133,8 +148,10 @@ export function createColorSwatch(
     try {
       const tokenMap = getTokenMap();
       const token = resolveTokenForValue(cssValue, tokenMap.colorsReverse);
+      currentScaleToken = token ?? null;
       tokenLabel.textContent = token ? `${prefix}-${token}` : "";
     } catch {
+      currentScaleToken = null;
       tokenLabel.textContent = "";
     }
   }
@@ -226,6 +243,31 @@ export function createColorSwatch(
     openVarMenu();
   });
 
+  // Tailwind palette: open the picker; on pick, write the token class.
+  twBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isTailwindPaletteOpen()) { closeTailwindPalette(); return; }
+    const root = container.getRootNode();
+    const mount = (root instanceof ShadowRoot ? root : document.body) as ShadowRoot | HTMLElement;
+    openTailwindPalette({
+      anchorRect: twBtn.getBoundingClientRect(),
+      anchorEl: twBtn,
+      mount,
+      currentToken: currentScaleToken,
+      onPick: (token, css) => {
+        // Detach any theme binding — this is a raw scale color now.
+        boundToken = null;
+        currentValue = css;
+        currentScaleToken = token;
+        swatch.style.background = css;
+        input.value = css;
+        tokenLabel.textContent = `${prefix}-${token}`;
+        tokenLabel.style.color = PANEL.accent;
+        ctx?.onPickTailwind?.(descriptor.key, token, css);
+      },
+    });
+  });
+
   // Swatch click — open color picker (this detaches from any theme binding)
   swatch.addEventListener("click", () => {
     if (pickerOpen) {
@@ -285,6 +327,7 @@ export function createColorSwatch(
     },
     destroy(): void {
       closeVarMenu();
+      closeTailwindPalette();
       if (pickerOpen) {
         closeColorPicker();
         pickerOpen = false;

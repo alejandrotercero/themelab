@@ -6,6 +6,7 @@
 
 import { COLORS, RADII, SHADOWS, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { openColorPicker } from "./color-picker.js";
+import { openTailwindPalette, closeTailwindPalette, isTailwindPaletteOpen, tailwindLogoSvg } from "./properties/tailwind-palette.js";
 import { detectColorKind, toRenderableCss, toHex, serializeToKind } from "./utils/color-format.js";
 import {
   hasTheme,
@@ -242,6 +243,34 @@ function tokenRow(name: string, value: string): HTMLElement {
         onClose: () => {},
       });
     });
+
+    // Tailwind palette: pick a TW color, written back in the token's format.
+    const twBtn = document.createElement("button");
+    twBtn.title = "Pick a Tailwind color";
+    twBtn.innerHTML = tailwindLogoSvg(14);
+    twBtn.style.cssText = `
+      flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; background: transparent;
+      border: 1px solid ${COLORS.border}; border-radius: ${RADII.xs}; cursor: pointer;
+    `;
+    twBtn.addEventListener("click", () => {
+      if (isTailwindPaletteOpen()) { closeTailwindPalette(); return; }
+      const root = row.getRootNode();
+      const mount = (root instanceof ShadowRoot ? root : document.body) as ShadowRoot | HTMLElement;
+      openTailwindPalette({
+        anchorRect: twBtn.getBoundingClientRect(),
+        anchorEl: twBtn,
+        mount,
+        onPick: (_token, css) => {
+          const kind = detectColorKind(input.value) ?? "hex";
+          const hex = toHex(css) ?? css;
+          const serialized = serializeToKind(hex, kind);
+          input.value = serialized;
+          apply(serialized);
+        },
+      });
+    });
+    row.appendChild(twBtn);
   }
   return row;
 }

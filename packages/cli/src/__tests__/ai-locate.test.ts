@@ -94,6 +94,28 @@ describe("ai-locate: executeBatchWithAi", () => {
     expect(res.results[0].error).toMatch(/AMBIGUOUS/);
   });
 
+  it("escalates a no-match with ZERO candidates (component-instance case)", async () => {
+    // No <p> exists in this file — the element is rendered by a reused component.
+    // This is the case the deterministic resolver can't help with, and the one
+    // that was wrongly excluded from escalation.
+    const src = `export default function Page() {
+  return <div className="wrap"><span>hi</span></div>;
+}`;
+    const { filePath } = setup("no-candidates.tsx", src);
+    const before = fs.readFileSync(filePath, "utf-8");
+    let seenCandidates: unknown = "unset";
+    const locate: LocateFn = async (input) => {
+      seenCandidates = input.candidates;
+      return { filePath: input.primaryFile.path, line: 2, col: 10, kind: "instance", reasoning: "rendered by a component" };
+    };
+    const op = classOp(filePath, { tagName: "p", className: "" }); // 0 <p> candidates
+    const res = await executeBatchWithAi([op], path.dirname(filePath), { apiKey: "k", enableAi: true, locate });
+    expect(seenCandidates).toEqual([]); // escalated even with no candidates
+    expect(res.proposals?.length).toBe(1); // cross-component → proposal, not auto-write
+    expect(res.proposals![0].target.kind).toBe("instance");
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
+  });
+
   it("keeps undo integrity across a mixed batch (resolvable + AI-resolved, same file)", async () => {
     // op A: the wrapper div, resolvable directly by id; op B: ambiguous card → AI.
     const src = `export default function App() {

@@ -363,10 +363,22 @@ function identityOf(op: BatchOperation): LocateIdentity {
 
 function isEscalatable(r: OperationResult): boolean {
   if (r.success) return false;
-  if (!r.candidates || r.candidates.length === 0) return false;
   const e = r.error ?? "";
   if (e.startsWith("FILE_CHANGED:")) return false; // stale → re-select, never escalate
+  // Escalate on ambiguity OR no-match — the no-match-with-zero-candidates case
+  // (element rendered by a reused component / not in this file) is exactly what
+  // the locator's code-reading is for. Candidates may be empty.
   return e.startsWith("AMBIGUOUS:") || e.startsWith("No JSX element found");
+}
+
+// Per-element resolution cache: property scrubbing fires many commits for the
+// same element, so cache WHERE (not the edit value). Positive results live for
+// the process; negatives expire so a fix (e.g. enabling AI) can retry.
+const NEG_TTL_MS = 60_000;
+const locateCache = new Map<string, { result: LocateResult | null; at: number }>();
+
+function cacheKey(op: any): string {
+  return `${op.file}|${op.line}|${op.col}|${op.tagName ?? ""}|${op.className ?? ""}`;
 }
 
 // ── Orchestrator ───────────────────────────────────────────────────────────
@@ -404,20 +416,31 @@ export async function executeBatchWithAi(
       continue;
     }
 
-    let answer: LocateResult | null = null;
-    try {
-      answer = await locate(
-        {
-          intent: describeIntent(op),
-          identity: identityOf(op),
-          candidates: r.candidates!,
-          primaryFile: { path: op.file, content },
-          projectRoot,
-        },
-        { apiKey: ai.apiKey, baseURL: ai.baseURL, model: ai.model },
-      );
-    } catch (err) {
-      logger.warn("[ai-locate] locator threw:", err instanceof Error ? err.message : String(err));
+    let answer: LocateResult | null;
+    const key = cacheKey(op);
+    const cached = locateCache.get(key);
+    if (cached && (cached.result !== null || Date.now() - cached.at < NEG_TTL_MS)) {
+      answer = cached.result;
+      logger.debug(`[ai-locate] cache hit ${key} → ${answer ? answer.kind : "null"}`);
+    } else {
+      logger.info(`[ai-locate] escalating ${op.op} @ ${op.file} (${(r.error ?? "").slice(0, 48)})`);
+      answer = null;
+      try {
+        answer = await locate(
+          {
+            intent: describeIntent(op),
+            identity: identityOf(op),
+            candidates: r.candidates ?? [],
+            primaryFile: { path: op.file, content },
+            projectRoot,
+          },
+          { apiKey: ai.apiKey, baseURL: ai.baseURL, model: ai.model },
+        );
+      } catch (err) {
+        logger.warn("[ai-locate] locator threw:", err instanceof Error ? err.message : String(err));
+      }
+      locateCache.set(key, { result: answer, at: Date.now() });
+      logger.info(`[ai-locate] → ${answer ? `${answer.filePath}:${answer.line} (${answer.kind})` : "no resolution"}`);
     }
     if (!answer) continue;
 

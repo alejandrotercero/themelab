@@ -2,6 +2,7 @@
 import type { ToolType } from "@react-rewrite/shared";
 import { getActiveTool, setActiveTool } from "./canvas-state.js";
 import { getShadowRoot, getToolbarToolsSlot } from "./toolbar.js";
+import { createSettingsButton } from "./settings-panel.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { toggleCanvasTransform, isCanvasActive, onCanvasWrapperChange } from "./canvas-transform.js";
 import { isTextEditing } from "./inline-text-edit.js";
@@ -467,6 +468,9 @@ export function initToolsPanel(): void {
   helpBtn.title = `Keyboard Shortcuts (${MOD_KEY}/)`;
   helpBtn.addEventListener("click", () => toggleShortcutsOverlay());
   panelEl.appendChild(helpBtn);
+
+  // AI locator settings (gear)
+  panelEl.appendChild(createSettingsButton());
 
   // NOTE: panelEl IS the toolbar's tools slot — it's already mounted inside the
   // toolbar. Do NOT re-append it to the shadow root (that would tear the whole

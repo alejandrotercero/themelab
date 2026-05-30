@@ -288,7 +288,10 @@ export type ClientMessage =
       type: "commitBatch";
       operations: BatchOperation[];
     }
-  | { type: "fileStat"; filePath: string };
+  | { type: "fileStat"; filePath: string }
+  | { type: "getSettings" }
+  | { type: "saveSettings"; ai: AiSettingsPatch }
+  | { type: "confirmResolution"; id: string; accept: boolean };
 
 export type ServerMessage =
   | { type: "reorderComplete"; success: boolean; error?: string }
@@ -324,11 +327,50 @@ export type ServerMessage =
         success: boolean;
         error?: string;
         undoId?: string;
+        resolvedBy?: "ai";
+        aiKind?: string;
+        aiReasoning?: string;
       }>;
       error?: string;
       undoIds: string[];
     }
-  | { type: "fileStatResult"; filePath: string; mtime: number; size: number };
+  | { type: "fileStatResult"; filePath: string; mtime: number; size: number }
+  | { type: "settings"; ai: AiSettingsView }
+  | {
+      // A structural / cross-file resolution the AI proposes — awaits confirm.
+      type: "aiProposal";
+      id: string;
+      kind: string;
+      reasoning: string;
+      filePath: string;
+      line: number;
+    }
+  | {
+      type: "aiProposalComplete";
+      id: string;
+      success: boolean;
+      error?: string;
+      undoId?: string;
+      kind?: string;
+      filePath?: string;
+    };
+
+/** Settings patch sent from the overlay (apiKey omitted = unchanged, "" = clear). */
+export interface AiSettingsPatch {
+  apiKey?: string;
+  baseURL?: string;
+  model?: string;
+  enabled?: boolean;
+}
+
+/** Settings view sent to the overlay — never includes the raw API key. */
+export interface AiSettingsView {
+  enabled: boolean;
+  hasApiKey: boolean;
+  baseURL?: string;
+  model?: string;
+  source: { apiKey: "env" | "file" | "none"; baseURL: "env" | "file" | "none"; model: "env" | "file" | "none" };
+}
 
 export interface ComponentInfo {
   tagName: string;

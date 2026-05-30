@@ -109,6 +109,14 @@ export interface OperationResult {
   line: number;
   success: boolean;
   error?: string;
+  /** Contender locations for a failed resolution — seed hints for the AI locator.
+   *  Only present on AMBIGUOUS / no-match failures. */
+  candidates?: Array<{ line: number; col: number; snippet: string }>;
+  /** Provenance: set when the AI locator resolved this op. */
+  resolvedBy?: "ai";
+  /** AI resolution metadata (kind of routing + the model's short rationale). */
+  aiKind?: string;
+  aiReasoning?: string;
 }
 
 // ── Internal types ───────────────────────────────────────────────────────
@@ -123,6 +131,9 @@ interface ResolvedOp {
   priority: number;
   /** Error from resolution phase. */
   error?: string;
+  /** Contender jscodeshift paths when resolution failed (ambiguous / no-match) —
+   *  seed hints for the AI locator. Only populated on the cold failure path. */
+  ambiguousCandidates?: any[];
 }
 
 // ── Node resolution helpers ──────────────────────────────────────────────
@@ -282,6 +293,29 @@ function containsText(node: any, text: string): boolean {
   return false;
 }
 
+/**
+ * Map contender jscodeshift paths to {line, col, snippet} for the AI locator.
+ * snippet is the source line at the element's opening tag. Cold-path only.
+ */
+function candidatePathsToLocations(
+  paths: any[] | undefined,
+  source: string,
+): Array<{ line: number; col: number; snippet: string }> | undefined {
+  if (!paths || paths.length === 0) return undefined;
+  const lines = source.split("\n");
+  const out: Array<{ line: number; col: number; snippet: string }> = [];
+  for (const p of paths) {
+    const loc = p?.node?.openingElement?.loc?.start;
+    if (!loc) continue;
+    out.push({
+      line: loc.line,
+      col: loc.column,
+      snippet: (lines[loc.line - 1] ?? "").trim().slice(0, 120),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 // ── Identity verification ────────────────────────────────────────────────
 
 type VerifyVerdict = { ok: true } | { ok: false; reason: "tag" | "class" | "id" };
@@ -402,6 +436,9 @@ function resolveNodes(
     // signal breaks the tie — surfaced as a loud AMBIGUOUS failure rather than
     // a silent guess.
     let ambiguousCount = 0;
+    // Contender paths captured when we can't resolve — handed to the AI locator
+    // as seed hints (it may read code and pick beyond these).
+    let ambiguousCandidates: any[] = [];
     if (!node && op.tagName) {
       const candidates: any[] = [];
       root.find(j.JSXElement).forEach((p: any) => {
@@ -475,7 +512,7 @@ function resolveNodes(
               const byNth = subsetMatches.filter((p: any) => computeASTNthOfType(p) === op.nthOfType);
               if (byNth.length === 1) node = byNth[0];
             }
-            if (!node) ambiguousCount = subsetMatches.length;
+            if (!node) { ambiguousCount = subsetMatches.length; ambiguousCandidates = subsetMatches; }
           } else {
             // 0 subset matches — source may have diverged from the captured
             // className. Last resort: bidirectional overlap, but require a clear
@@ -499,9 +536,11 @@ function resolveNodes(
                 const tied = scored.filter(s => s.overlap >= scored[0].overlap - 0.1).map(s => s.c);
                 const byNth = tied.find((p: any) => computeASTNthOfType(p) === op.nthOfType);
                 if (byNth) node = byNth;
-                else ambiguousCount = tied.length;
+                else { ambiguousCount = tied.length; ambiguousCandidates = tied; }
               } else {
-                ambiguousCount = scored.filter(s => s.overlap >= scored[0].overlap - 0.1).length;
+                const tied = scored.filter(s => s.overlap >= scored[0].overlap - 0.1).map(s => s.c);
+                ambiguousCount = tied.length;
+                ambiguousCandidates = tied;
               }
             }
           }
@@ -512,6 +551,11 @@ function resolveNodes(
           const byNth = candidates.filter((p: any) => computeASTNthOfType(p) === op.nthOfType);
           if (byNth.length === 1) node = byNth[0];
         }
+
+        // Unresolved with multiple same-tag candidates — keep them as seed hints
+        // for the AI locator (no-match case, e.g. the real target is a map
+        // template or a conditional branch we didn't enumerate).
+        if (!node && ambiguousCandidates.length === 0) ambiguousCandidates = candidates;
       }
     }
 
@@ -527,6 +571,7 @@ function resolveNodes(
         error: `AMBIGUOUS: ${ambiguousCount} elements match the captured identity (tag=${op.tagName}` +
           (op.className ? `, className="${op.className.slice(0, 60)}"` : "") +
           `) and no disambiguator (id, key, nthOfType) singles one out. Re-select the element.`,
+        ambiguousCandidates,
       });
       continue;
     }
@@ -550,6 +595,7 @@ function resolveNodes(
         error: `No JSX element found at ${op.line}:${op.col}` +
           (op.tagName ? ` (tag=${op.tagName})` : "") +
           (op.className ? ` (className=${op.className})` : ""),
+        ambiguousCandidates,
       });
       continue;
     }
@@ -1612,7 +1658,14 @@ export function executeBatch(
       const line = getOpLine(rop.op);
 
       if (rop.error) {
-        results[rop.index] = { op: rop.op.op, file, line, success: false, error: rop.error };
+        results[rop.index] = {
+          op: rop.op.op,
+          file,
+          line,
+          success: false,
+          error: rop.error,
+          candidates: candidatePathsToLocations(rop.ambiguousCandidates, beforeContent),
+        };
         continue;
       }
 

@@ -32,6 +32,7 @@ import { initCanvasTransform, destroyCanvasTransform, resetCanvasTransform, save
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY, ensurePanelFont } from "./design-tokens.js";
 import { initChangelog, destroyChangelog, addChangeEntry, isChangelogOpen, setChangelogOpen, clearChangelog } from "./changelog.js";
 import { initThemePanel, destroyThemePanel } from "./theme-panel.js";
+import { initSettingsPanel } from "./settings-panel.js";
 
 declare global {
   interface Window {
@@ -200,6 +201,7 @@ function init(): void {
     initPropertyController(shadowRoot);
     initChangelog(shadowRoot);
     initThemePanel(shadowRoot);
+    initSettingsPanel(shadowRoot);
   }
 
   // Phase 1 systems

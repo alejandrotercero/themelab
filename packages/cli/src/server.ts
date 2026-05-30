@@ -20,9 +20,13 @@ import { writeThemeVars } from "./theme-writer.js";
 import { isProjectFilePathSafe, resolveProjectFilePath } from "./path-resolver.js";
 import { discoverFile } from "./file-discovery.js";
 import { executeBatch } from "./batch-transform.js";
+import { executeBatchWithAi, type AiOptions, type AiProposal } from "./ai-locate.js";
+import { resolveAiConfig, updateAiConfig } from "./config.js";
 
 interface SketchServerOptions {
   port: number;
+  /** Force-enable/disable the AI locator. Defaults to !!process.env.ANTHROPIC_API_KEY. */
+  enableAi?: boolean;
 }
 
 interface SketchServer {
@@ -57,6 +61,23 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
   const port = typeof portOrOptions === "number" ? portOrOptions : portOrOptions.port;
   const wss = new WebSocketServer({ port });
   const projectRoot = path.resolve(process.cwd());
+
+  // AI locator config: merged from the persisted settings file + env overrides.
+  // `enableAi:false` on the server options force-disables regardless.
+  const forceDisableAi = typeof portOrOptions === "object" && portOrOptions.enableAi === false;
+  function buildAiOptions(): AiOptions {
+    const cfg = resolveAiConfig();
+    return {
+      apiKey: cfg.apiKey,
+      baseURL: cfg.baseURL,
+      model: cfg.model,
+      enableAi: !forceDisableAi && cfg.enabled,
+    };
+  }
+  let aiOptions: AiOptions = buildAiOptions();
+  // Pending AI proposals (structural / cross-file) awaiting user confirmation.
+  const pendingProposals = new Map<string, AiProposal>();
+  if (aiOptions.enableAi) logger.info("[ReactRewrite] AI locator enabled");
   const undoStack: UndoEntry[] = [];
   let activeClient: WebSocket | null = null;
   let processing = false;
@@ -76,7 +97,26 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
     "updateText",
     "revertChanges",
     "commitBatch",
+    "confirmResolution",
+    "saveSettings",
   ]);
+
+  /** Send an AI proposal (structural / cross-file resolution) for confirmation. */
+  function emitProposals(ws: WebSocket, proposals: AiProposal[] | undefined) {
+    if (!proposals) return;
+    for (const p of proposals) {
+      const id = randomUUID();
+      pendingProposals.set(id, p);
+      send(ws, {
+        type: "aiProposal",
+        id,
+        kind: p.target.kind,
+        reasoning: p.target.reasoning,
+        filePath: p.target.filePath,
+        line: p.target.line,
+      });
+    }
+  }
 
   function extractErrorCode(err: unknown): TransformErrorCode | undefined {
     if (err instanceof Error) {
@@ -253,7 +293,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
 
           // Route through batch engine for the resolution chain (handles React 19 owner stack positions)
           logger.debug(`[updateProperty] ${msg.filePath}:${msg.lineNumber} tag=${msg.tagName} class="${(msg.className || "").slice(0, 40)}"`);
-          const batchResult = executeBatch(
+          const batchResult = await executeBatchWithAi(
             [{
               op: "updateClass" as const,
               file: msg.filePath,
@@ -271,6 +311,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               updates,
             }],
             projectRoot,
+            aiOptions,
           );
 
           const opResult = batchResult.results[0];
@@ -290,6 +331,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               errorCode,
             });
           }
+          emitProposals(ws, batchResult.proposals);
           break;
         }
 
@@ -303,7 +345,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             break;
           }
           // Route through batch engine for the resolution chain
-          const textBatchResult = executeBatch(
+          const textBatchResult = await executeBatchWithAi(
             [{
               op: "updateText" as const,
               file: msg.filePath,
@@ -323,6 +365,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               textAnchor: msg.textAnchor,
             }],
             projectRoot,
+            aiOptions,
           );
 
           const textResult = textBatchResult.results[0];
@@ -341,13 +384,14 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               reason,
             });
           }
+          emitProposals(ws, textBatchResult.proposals);
           break;
         }
 
         case "commitBatch": {
           logger.info(`[commitBatch] Received ${msg.operations.length} operations:`, msg.operations.map((o: BatchOperation) => `${o.op}@${o.file}:${o.op === "reorder" ? o.fromLine : o.line}`));
           try {
-            const batchResult = executeBatch(msg.operations, projectRoot);
+            const batchResult = await executeBatchWithAi(msg.operations, projectRoot, aiOptions);
             const failedOps = batchResult.results.filter(r => !r.success);
             if (failedOps.length > 0) {
               logger.error(`[commitBatch] ${failedOps.length}/${batchResult.results.length} operations failed:`);
@@ -387,6 +431,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               results: resultsWithUndo,
               undoIds: batchUndoIds,
             });
+            emitProposals(ws, batchResult.proposals);
           } catch (err) {
             logger.error(`[commitBatch] Exception:`, err instanceof Error ? err.message : String(err));
             send(ws, {
@@ -402,6 +447,54 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               undoIds: [],
             });
           }
+          break;
+        }
+
+        case "confirmResolution": {
+          const proposal = pendingProposals.get(msg.id);
+          pendingProposals.delete(msg.id);
+          if (!proposal) {
+            send(ws, { type: "aiProposalComplete", id: msg.id, success: false, error: "Proposal expired" });
+            break;
+          }
+          if (!msg.accept) {
+            send(ws, { type: "aiProposalComplete", id: msg.id, success: false, error: "Declined" });
+            break;
+          }
+          // Apply the confirmed location deterministically (no second AI call).
+          const { op, target } = proposal;
+          const rerun = executeBatch(
+            [{ ...op, file: target.filePath, line: target.line, col: target.col } as BatchOperation],
+            projectRoot,
+          );
+          const rr = rerun.results[0];
+          if (rr?.success) {
+            const undoId = randomUUID();
+            for (const entry of rerun.undoEntries) {
+              undoStack.push({ id: undoId, filePath: entry.filePath, content: entry.content, afterContent: entry.afterContent, timestamp: Date.now() });
+            }
+            send(ws, { type: "aiProposalComplete", id: msg.id, success: true, undoId, kind: target.kind, filePath: target.filePath });
+          } else {
+            send(ws, { type: "aiProposalComplete", id: msg.id, success: false, error: rr?.error || "Could not apply at resolved location" });
+          }
+          break;
+        }
+
+        case "saveSettings": {
+          updateAiConfig(msg.ai);
+          aiOptions = buildAiOptions();
+          logger.info(`[ReactRewrite] AI settings updated (enabled=${aiOptions.enableAi})`);
+          const cfg = resolveAiConfig();
+          send(ws, {
+            type: "settings",
+            ai: {
+              enabled: cfg.enabled,
+              hasApiKey: !!cfg.apiKey,
+              baseURL: cfg.baseURL,
+              model: cfg.model,
+              source: cfg.source,
+            },
+          });
           break;
         }
 
@@ -527,6 +620,21 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         case "ping":
           send(ws, { type: "pong" });
           break;
+
+        case "getSettings": {
+          const cfg = resolveAiConfig();
+          send(ws, {
+            type: "settings",
+            ai: {
+              enabled: cfg.enabled,
+              hasApiKey: !!cfg.apiKey,
+              baseURL: cfg.baseURL,
+              model: cfg.model,
+              source: cfg.source,
+            },
+          });
+          break;
+        }
 
         case "getSiblings":
           // Can run concurrently (read-only)

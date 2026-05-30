@@ -59,6 +59,39 @@ describe("ai-locate: executeBatchWithAi", () => {
     expect(res.proposals).toBeUndefined();
   });
 
+  it("auto-applies a cross-file 'conditional' resolution and ignores the stale baseline", async () => {
+    // The real live case: owner stack pointed at the wrong file (page.tsx has no
+    // <p>), the AI located the empty-state <p> in another file's conditional, and
+    // the op carried page.tsx's staleness baseline. Must apply to the resolved
+    // file without FILE_CHANGED, and without a confirm step (it's the selected element).
+    const pageSrc = `export default function Page() {
+  return <div className="wrap"><Card /></div>;
+}`;
+    const compSrc = `export function Card({ items }) {
+  if (items.length > 0) return <ul/>;
+  return <p className="empty">No active assignments</p>;
+}`;
+    const page = setup("page.tsx", pageSrc);
+    const comp = setup("comp.tsx", compSrc);
+    const dir = path.dirname(page.filePath);
+    const pageStat = fs.statSync(page.filePath);
+    const compRel = path.basename(comp.filePath);
+    const locate: LocateFn = async () => ({
+      filePath: compRel, line: 3, col: 9, kind: "conditional", reasoning: "else branch of the items check",
+    });
+    const op = classOp(page.filePath, {
+      tagName: "p", className: "", text: "No active assignments",
+      fileMtime: pageStat.mtimeMs, fileSize: pageStat.size, // baseline is for page.tsx
+    });
+    const res = await executeBatchWithAi([op], dir, { apiKey: "k", enableAi: true, locate });
+    expect(res.results[0].success).toBe(true); // not blocked by FILE_CHANGED
+    expect(res.results[0].resolvedBy).toBe("ai");
+    expect(res.results[0].file).toBe(compRel);
+    expect(res.proposals).toBeUndefined(); // conditional = the selected element → no confirm
+    expect(fs.readFileSync(comp.filePath, "utf-8")).toContain('className="empty bg-red-500"');
+    expect(fs.readFileSync(page.filePath, "utf-8")).toBe(pageSrc); // page untouched
+  });
+
   it("returns a proposal (no write) for a structural 'map-template' resolution", async () => {
     const { filePath } = setup("structural.tsx", TWO_CARDS);
     const before = fs.readFileSync(filePath, "utf-8");

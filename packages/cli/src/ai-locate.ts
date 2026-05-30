@@ -69,6 +69,8 @@ export interface AiProposal {
   index: number;
   op: BatchOperation;
   target: LocateResult;
+  /** Human description of the deterministic change (the WHAT), for the confirm UI. */
+  intent: string;
 }
 
 export interface AiOptions {
@@ -230,7 +232,7 @@ When sure, call resolve_location exactly once with the opening-tag position of t
 - 'conditional' — the correct branch of a conditional/ternary/state-driven render.
 - 'instance' — the relevant node inside a reused component (possibly another file).
 
-Prefer the deterministic candidates provided if one is clearly correct. The 'col' is the 0-based column of the opening '<'. Keep 'reasoning' to one sentence.`;
+Prefer the deterministic candidates provided if one is clearly correct. The 'col' is the 0-based column of the opening '<'. 'reasoning' is ONE sentence on WHY this is the right node (which file/element and how you identified it) — do NOT restate or guess the styling change; that is applied deterministically.`;
 
 function buildSeedMessage(input: LocateInput): string {
   const id = input.identity;
@@ -335,9 +337,12 @@ function describeIntent(op: BatchOperation): string {
   switch (op.op) {
     case "updateClass": {
       const changes = (o.updates ?? [])
-        .map((u: any) => (u.value ? `${u.tailwindPrefix}-${u.value}` : u.tailwindPrefix))
+        .map((u: any) => {
+          const suffix = u.tailwindToken || u.value; // token holds the real class suffix
+          return suffix ? `${u.tailwindPrefix}-${suffix}` : u.tailwindPrefix;
+        })
         .join(", ");
-      return `Apply Tailwind class change(s): ${changes || "(class edit)"} on the selected <${o.tagName ?? "element"}>.`;
+      return `Apply Tailwind class(es) [${changes || "class edit"}] to the selected <${o.tagName ?? "element"}>${o.text ? ` (text: "${String(o.text).slice(0, 40)}")` : ""}.`;
     }
     case "updateText":
       return `Change text "${(o.originalText ?? "").slice(0, 60)}" → "${(o.newText ?? "").slice(0, 60)}".`;
@@ -444,24 +449,31 @@ export async function executeBatchWithAi(
     }
     if (!answer) continue;
 
-    const sameFile = answer.filePath === op.file;
-    if (answer.kind === "direct" && sameFile) {
-      // Low-stakes same-file disambiguation — apply deterministically now.
+    // 'direct'/'conditional' = the specific element the user selected (even if
+    // the owner stack pointed at the wrong file) → apply now. 'map-template' and
+    // 'instance' affect MORE than the selection (all items / a shared component)
+    // → confirm first.
+    const autoApply = answer.kind === "direct" || answer.kind === "conditional";
+    if (autoApply) {
       const rerun = executeBatch(
-        [{ ...op, line: answer.line, col: answer.col } as BatchOperation],
+        // Apply at the resolved location (possibly a different file than the bad
+        // owner-stack pointer). Drop the staleness baseline — it was captured for
+        // the original file/element; the locator just read the target fresh, so
+        // a card.tsx baseline must not gate a dashboard.tsx write.
+        [{ ...op, file: answer.filePath, line: answer.line, col: answer.col, fileMtime: undefined, fileSize: undefined } as BatchOperation],
         projectRoot,
       );
       const rr = rerun.results[0];
       if (rr?.success) {
-        base.results[i] = { ...rr, resolvedBy: "ai", aiKind: answer.kind, aiReasoning: answer.reasoning };
+        base.results[i] = { ...rr, file: answer.filePath, resolvedBy: "ai", aiKind: answer.kind, aiReasoning: answer.reasoning };
         base.undoEntries.push(...rerun.undoEntries);
       } else {
-        // AI's pick didn't apply cleanly — leave the original failure, annotate.
+        // Resolved location didn't apply cleanly — keep the original failure.
         base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning };
       }
     } else {
-      // Structural / cross-file routing — surface for confirmation, don't write.
-      proposals.push({ index: i, op, target: answer });
+      // map-template / instance — surface for confirmation, don't write.
+      proposals.push({ index: i, op, target: answer, intent: describeIntent(op) });
       base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning };
     }
   }

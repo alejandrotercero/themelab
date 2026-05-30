@@ -344,7 +344,10 @@ export type ServerMessage =
       type: "aiProposal";
       id: string;
       kind: string;
+      /** The model's one-sentence rationale for the LOCATION. */
       reasoning: string;
+      /** The deterministic change being applied (the WHAT) — from our intent. */
+      summary: string;
       filePath: string;
       line: number;
     }

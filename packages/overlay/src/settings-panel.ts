@@ -225,8 +225,10 @@ function showProposal(msg: Extract<import("@react-rewrite/shared").ServerMessage
     instance: "Inside a reused component",
   };
   confirmEl.innerHTML =
-    `<div class="rr-confirm-title">AI resolved this element</div>` +
-    `<div class="rr-confirm-body">${escapeHtml(kindLabel[msg.kind] ?? msg.kind)} — ${escapeHtml(msg.reasoning)}<br><span class="rr-hint">${escapeHtml(msg.filePath)}:${msg.line}</span></div>`;
+    `<div class="rr-confirm-title">AI located this element</div>` +
+    `<div class="rr-confirm-body">${escapeHtml(msg.summary)}<br>` +
+    `<span class="rr-hint">${escapeHtml(kindLabel[msg.kind] ?? msg.kind)} — ${escapeHtml(msg.reasoning)}</span><br>` +
+    `<span class="rr-hint">${escapeHtml(msg.filePath)}:${msg.line}</span></div>`;
   const actions = document.createElement("div");
   actions.className = "rr-confirm-actions";
   const dismiss = document.createElement("button");

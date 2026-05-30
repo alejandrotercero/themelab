@@ -112,6 +112,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         id,
         kind: p.target.kind,
         reasoning: p.target.reasoning,
+        summary: p.intent,
         filePath: p.target.filePath,
         line: p.target.line,
       });
@@ -462,9 +463,11 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             break;
           }
           // Apply the confirmed location deterministically (no second AI call).
+          // Drop the staleness baseline — it was captured for the original
+          // (often wrong) file; the AI resolved against the target's fresh state.
           const { op, target } = proposal;
           const rerun = executeBatch(
-            [{ ...op, file: target.filePath, line: target.line, col: target.col } as BatchOperation],
+            [{ ...op, file: target.filePath, line: target.line, col: target.col, fileMtime: undefined, fileSize: undefined } as BatchOperation],
             projectRoot,
           );
           const rr = rerun.results[0];

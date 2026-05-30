@@ -222,7 +222,7 @@ const SYSTEM_PROMPT = `You are a precise source-location resolver for a React + 
 
 Your ONLY job: identify the EXACT source location (file, line, column) that must be edited to fulfill ONE specific change the user made in a visual editor. A deterministic tool already tried and could not disambiguate the element — usually because the DOM does not map 1:1 to the source: a .map() renders many instances from one template, an element lives in a reused component defined elsewhere, or it sits inside conditional/state-dependent rendering.
 
-You may READ code to understand the structure (read_file, grep, list_dir) — follow imports, find where a mapped item or component is defined, inspect conditionals. You may NOT modify anything, propose other edits, write code, or do anything beyond locating this one element.
+You may READ code to understand the structure (read_file, grep, list_dir) — follow imports, find where a mapped item or component is defined, inspect conditionals. The owner-stack file/line is often WRONG (it can point at a shared UI primitive like card.tsx instead of the real usage): if the primary file has no matching element, grep the project for the element's distinctive visible text or className to find where it actually lives. You may NOT modify anything, propose other edits, write code, or do anything beyond locating this one element.
 
 When sure, call resolve_location exactly once with the opening-tag position of the node to edit:
 - 'direct' — the element itself, in this file.
@@ -357,7 +357,7 @@ function identityOf(op: BatchOperation): LocateIdentity {
     parentClassName: o.parentClassName,
     nthOfType: o.nthOfType,
     componentName: o.componentName,
-    text: o.originalText,
+    text: o.text ?? o.originalText,
   };
 }
 

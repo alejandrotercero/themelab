@@ -6,6 +6,7 @@ import { createSidebar } from "./property-sidebar.js";
 import { getTokenMap, resolveTokenForValue } from "./tailwind-resolver.js";
 import type { MergedTokenMap } from "./tailwind-resolver.js";
 import { send, onMessage, requestFileDiscovery, requestFileStat } from "../bridge.js";
+import { getElementVisibleText } from "../text-model.js";
 import { getCachedFilePath, setCachedFilePath } from "../file-discovery-cache.js";
 import { addChangeEntry } from "../changelog.js";
 import { showToast } from "../toolbar.js";
@@ -487,6 +488,7 @@ function addPendingFromCurrentState(): void {
       parentClassName: parentEl?.className || undefined,
       nthOfType: computeNthOfType(el),
       id: el.id || undefined,
+      text: getElementVisibleText(el).trim().slice(0, 80) || undefined,
       jsxPath: state.componentInfo?.jsxPath,
       fileMtime: state.componentInfo?.fileMtime,
       fileSize: state.componentInfo?.fileSize,

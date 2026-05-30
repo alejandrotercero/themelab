@@ -56,6 +56,9 @@ export type BatchOperation =
       nthOfType?: number;
       id?: string;
       jsxKey?: string;
+      /** Visible text of the selected element — disambiguation hint (resolver +
+       *  AI locator), the same signal text edits already carry. */
+      text?: string;
       fileMtime?: number;
       fileSize?: number;
       jsxPath?: JSXStructuralPath;

@@ -318,6 +318,33 @@ describe("element-resolution: deterministic chain", () => {
     expect(updated).not.toMatch(/bg-red-500[^"]*text-white/); // not the decoy
   });
 
+  // ── 10b. Class edit disambiguated by visible text ───────────────────
+
+  it("disambiguates identical-class siblings by visible text on a class edit", () => {
+    const src = `export default function App() {
+  return (
+    <div className="row">
+      <button className="btn">Save</button>
+      <button className="btn">Cancel</button>
+    </div>
+  );
+}`;
+    const { filePath } = setup("text-hint.tsx", src);
+    // Both buttons share className "btn" — only the text tells them apart.
+    const result = executeBatch(
+      [{
+        op: "updateClass", file: filePath, line: 999, col: 0,
+        tagName: "button", className: "btn", text: "Cancel",
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(true);
+    const updated = fs.readFileSync(filePath, "utf-8");
+    expect(updated).toMatch(/className="btn bg-red-500">Cancel/);
+    expect(updated).not.toMatch(/className="btn bg-red-500">Save/);
+  });
+
   // ── 11. Genuine ambiguity fails loudly (no silent guess) ────────────
 
   it("fails with AMBIGUOUS when identical siblings can't be disambiguated", () => {

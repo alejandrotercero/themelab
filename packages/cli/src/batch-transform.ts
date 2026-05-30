@@ -473,12 +473,15 @@ function resolveNodes(
           if (byKey.length === 1) node = byKey[0];
         }
 
-        // B2.5: For updateText ops, filter candidates by text content match
-        if (!node && op.op === "updateText") {
-          const textOp = op as Extract<BatchOperation, { op: "updateText" }>;
-          const textCandidates = candidates.filter(c => {
-            return containsText(c.node, textOp.originalText);
-          });
+        // B2.5: Filter by text content — for text edits (originalText) and now
+        // class edits too (the element's visible text). A button/heading/link
+        // edited for its className is uniquely identified by its text, resolving
+        // many otherwise-ambiguous cases deterministically (no AI needed).
+        const textHint = op.op === "updateText"
+          ? (op as Extract<BatchOperation, { op: "updateText" }>).originalText
+          : (op as { text?: string }).text;
+        if (!node && textHint) {
+          const textCandidates = candidates.filter(c => containsText(c.node, textHint));
           if (textCandidates.length === 1) {
             node = textCandidates[0];
             const loc = node.node.openingElement?.loc?.start;

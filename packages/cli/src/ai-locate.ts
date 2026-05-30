@@ -83,6 +83,9 @@ export interface AiOptions {
   enableAi?: boolean;
   /** Injectable locator (default = SDK tool-use loop). Tests pass a stub. */
   locate?: LocateFn;
+  /** Called when the AI loop actually starts (not on cache hits) — for a UI
+   *  "locating…" indicator. */
+  onEscalate?: () => void;
 }
 
 export interface AiBatchResult extends BatchResult {
@@ -428,6 +431,7 @@ export async function executeBatchWithAi(
       answer = cached.result;
       logger.debug(`[ai-locate] cache hit ${key} → ${answer ? answer.kind : "null"}`);
     } else {
+      ai.onEscalate?.();
       logger.info(`[ai-locate] escalating ${op.op} @ ${op.file} (${(r.error ?? "").slice(0, 48)})`);
       answer = null;
       try {

@@ -75,6 +75,11 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
     };
   }
   let aiOptions: AiOptions = buildAiOptions();
+  // Per-request options: adds a "locating…" signal when the AI loop starts.
+  const aiOptionsFor = (ws: WebSocket): AiOptions => ({
+    ...aiOptions,
+    onEscalate: () => send(ws, { type: "aiResolving" }),
+  });
   // Pending AI proposals (structural / cross-file) awaiting user confirmation.
   const pendingProposals = new Map<string, AiProposal>();
   if (aiOptions.enableAi) logger.info("[ReactRewrite] AI locator enabled");
@@ -312,7 +317,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               updates,
             }],
             projectRoot,
-            aiOptions,
+            aiOptionsFor(ws),
           );
 
           const opResult = batchResult.results[0];
@@ -366,7 +371,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               textAnchor: msg.textAnchor,
             }],
             projectRoot,
-            aiOptions,
+            aiOptionsFor(ws),
           );
 
           const textResult = textBatchResult.results[0];
@@ -392,7 +397,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         case "commitBatch": {
           logger.info(`[commitBatch] Received ${msg.operations.length} operations:`, msg.operations.map((o: BatchOperation) => `${o.op}@${o.file}:${o.op === "reorder" ? o.fromLine : o.line}`));
           try {
-            const batchResult = await executeBatchWithAi(msg.operations, projectRoot, aiOptions);
+            const batchResult = await executeBatchWithAi(msg.operations, projectRoot, aiOptionsFor(ws));
             const failedOps = batchResult.results.filter(r => !r.success);
             if (failedOps.length > 0) {
               logger.error(`[commitBatch] ${failedOps.length}/${batchResult.results.length} operations failed:`);

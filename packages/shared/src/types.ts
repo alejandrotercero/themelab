@@ -339,6 +339,7 @@ export type ServerMessage =
     }
   | { type: "fileStatResult"; filePath: string; mtime: number; size: number }
   | { type: "settings"; ai: AiSettingsView }
+  | { type: "aiResolving" }
   | {
       // A structural / cross-file resolution the AI proposes — awaits confirm.
       type: "aiProposal";

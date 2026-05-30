@@ -66,6 +66,23 @@ const STYLES = `
 .rr-confirm-title { font-size: 11px; color: ${COLORS.accent}; text-transform: uppercase; letter-spacing: 0.04em; }
 .rr-confirm-body { font-size: 12px; line-height: 1.4; }
 .rr-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.rr-ai-ind {
+  position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(8px);
+  display: none; align-items: center; gap: 8px; padding: 7px 12px;
+  background: ${COLORS.bgPrimary}; border: 1px solid ${COLORS.border};
+  border-radius: 999px; box-shadow: ${SHADOWS.md}; z-index: 2147483647;
+  font: 500 12px ${FONT_FAMILY}; color: ${COLORS.textPrimary};
+  opacity: 0; transition: opacity ${TRANSITIONS.medium}, transform ${TRANSITIONS.medium};
+}
+.rr-ai-ind.visible { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+.rr-ai-ind .rr-spark { display: flex; color: ${COLORS.accent}; }
+.rr-ai-ind.resolving .rr-spark { animation: rrSparkPulse 1s ease-in-out infinite; }
+.rr-ai-ind.notfound .rr-spark { color: ${COLORS.textSecondary}; }
+@keyframes rrSparkPulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.85) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.12) rotate(8deg); }
+}
 `;
 
 const GEAR_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
@@ -161,10 +178,20 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
   shadowRoot.appendChild(panelEl);
   inputs = { apiKey, baseURL, model, enabled };
 
+  buildIndicator(shadowRoot);
+
   onMessage((msg) => {
     if (msg.type === "settings") applyView(msg.ai);
-    else if (msg.type === "aiProposal") showProposal(msg);
+    else if (msg.type === "aiResolving") indResolving();
+    else if (msg.type === "aiProposal") { indFound("Located it — confirm below"); showProposal(msg); }
     else if (msg.type === "aiProposalComplete") onProposalComplete(msg);
+    else if (msg.type === "commitBatchComplete") {
+      if (msg.success || msg.results.some((r) => r.resolvedBy === "ai")) indFound("Found it");
+      else indMaybeNotFound();
+    } else if (msg.type === "updatePropertyComplete" || msg.type === "updateTextComplete") {
+      if (msg.success) indFound("Found it");
+      else indMaybeNotFound();
+    }
   });
 }
 
@@ -207,6 +234,71 @@ export function createSettingsButton(): HTMLButtonElement {
     btn.classList.toggle("active", open);
   });
   return btn;
+}
+
+// ── "Locating with AI…" indicator (trying → found) ─────────────────────────
+
+const SPARKLE_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>`;
+
+let indEl: HTMLDivElement | null = null;
+let indActive = false;
+let indSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+let indPendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+function buildIndicator(shadowRoot: ShadowRoot): void {
+  indEl = document.createElement("div");
+  indEl.className = "rr-ai-ind";
+  indEl.innerHTML = `<span class="rr-spark">${SPARKLE_SVG}</span><span class="rr-ind-text"></span>`;
+  shadowRoot.appendChild(indEl);
+}
+
+function clearIndTimers(): void {
+  if (indSafetyTimer) { clearTimeout(indSafetyTimer); indSafetyTimer = null; }
+  if (indPendingTimer) { clearTimeout(indPendingTimer); indPendingTimer = null; }
+}
+
+function indSetText(t: string): void {
+  const span = indEl?.querySelector(".rr-ind-text");
+  if (span) span.textContent = t;
+}
+
+function indResolving(): void {
+  if (!indEl) return;
+  indActive = true;
+  clearIndTimers();
+  indEl.className = "rr-ai-ind resolving visible";
+  indSetText("Locating with AI…");
+  indSafetyTimer = setTimeout(indHide, 25000); // safety: never hang forever
+}
+
+function indFound(text: string): void {
+  if (!indEl || !indActive) return;
+  indActive = false;
+  clearIndTimers();
+  indEl.className = "rr-ai-ind visible";
+  indSetText(text);
+  indSafetyTimer = setTimeout(indHide, 1700);
+}
+
+/** A failed completion arrived while resolving — wait briefly for a proposal,
+ *  then conclude "couldn't locate" if none follows. */
+function indMaybeNotFound(): void {
+  if (!indActive || indPendingTimer) return;
+  indPendingTimer = setTimeout(() => {
+    indPendingTimer = null;
+    if (!indActive || !indEl) return;
+    indActive = false;
+    clearIndTimers();
+    indEl.className = "rr-ai-ind notfound visible";
+    indSetText("Couldn't locate it");
+    indSafetyTimer = setTimeout(indHide, 2000);
+  }, 350);
+}
+
+function indHide(): void {
+  clearIndTimers();
+  indActive = false;
+  indEl?.classList.remove("visible");
 }
 
 // ── Proposal confirm ───────────────────────────────────────────────────────

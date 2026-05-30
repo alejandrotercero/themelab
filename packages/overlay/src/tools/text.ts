@@ -73,7 +73,7 @@ function commitText(): void {
   addAnnotation({
     type: "text",
     id,
-    position: clickPos,
+    position: { x: clickPos.pageX, y: clickPos.pageY },
     content,
     fontSize: opts.fontSize,
     color: opts.textColor,

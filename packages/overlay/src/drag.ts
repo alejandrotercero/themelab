@@ -134,7 +134,7 @@ function handleDragStart(e: MouseEvent, el: HTMLElement, selection: ComponentInf
       if (!fiber) continue;
 
       // Walk up to find the nearest composite fiber with source info
-      let current = fiber;
+      let current: typeof fiber | null = fiber;
       while (current) {
         if (isCompositeFiber(current)) {
           const debugSource = getDebugSource(current);

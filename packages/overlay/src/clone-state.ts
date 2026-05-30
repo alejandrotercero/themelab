@@ -185,7 +185,7 @@ export function getOriginalForCloneChild(el: HTMLElement): HTMLElement | null {
   const path: number[] = [];
   let current: HTMLElement | null = el;
   while (current && current !== cloneEntry.element) {
-    const parent = current.parentElement;
+    const parent: HTMLElement | null = current.parentElement;
     if (!parent) return null;
     const index = Array.from(parent.children).indexOf(current);
     if (index < 0) return null;

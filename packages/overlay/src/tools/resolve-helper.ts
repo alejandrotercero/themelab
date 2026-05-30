@@ -78,7 +78,7 @@ export async function resolveComponentAtPoint(clientX: number, clientY: number):
 
   // Fallback: synchronous fiber walk (React 18 / _debugSource)
   if (!result) {
-    let current = fiber;
+    let current: typeof fiber | null = fiber;
     while (current) {
       if (isCompositeFiber(current)) {
         const name = getDisplayName(current.type);
@@ -163,7 +163,7 @@ export async function resolveComponentFromElement(el: HTMLElement): Promise<Comp
   }
 
   if (!result) {
-    let current = fiber;
+    let current: typeof fiber | null = fiber;
     while (current) {
       if (isCompositeFiber(current)) {
         const name = getDisplayName(current.type);

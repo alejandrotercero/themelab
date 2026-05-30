@@ -7,7 +7,7 @@
     "build:overlay": "pnpm --filter @react-rewrite/overlay build",
     "build:cli": "pnpm --filter react-rewrite-cli build",
     "dev": "pnpm build:overlay && pnpm --filter react-rewrite-cli dev",
-    "typecheck": "pnpm build:shared && pnpm --filter react-rewrite-cli exec tsc --noEmit",
+    "typecheck": "pnpm build:shared && pnpm --filter react-rewrite-cli --filter @react-rewrite/overlay exec tsc --noEmit",
     "test": "pnpm --filter react-rewrite-cli test",
     "changeset": "changeset",
     "version": "changeset version",

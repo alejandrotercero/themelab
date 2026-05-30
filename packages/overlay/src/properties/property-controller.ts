@@ -289,7 +289,7 @@ async function resolveFreshComponentInfo(
   }
 
   // Try _debugSource (React 18)
-  let current = fiber;
+  let current: typeof fiber | null = fiber;
   while (current) {
     if (isCompositeFiber(current)) {
       const name = getDisplayName(current.type);

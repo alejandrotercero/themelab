@@ -32,7 +32,7 @@ export function buildJSXPath(
   if (!fiber) return null;
 
   const segments: JSXPathSegment[] = [];
-  let current = fiber;
+  let current: typeof fiber | null = fiber;
   let foundBoundary = false;
 
   while (current) {

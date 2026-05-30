@@ -5,7 +5,7 @@ import { renderSections, isGroupCollapsed, onSectionExpand } from "./section-ren
 import { createSidebar } from "./property-sidebar.js";
 import { getTokenMap, resolveTokenForValue } from "./tailwind-resolver.js";
 import type { MergedTokenMap } from "./tailwind-resolver.js";
-import { send, onMessage, requestFileDiscovery } from "../bridge.js";
+import { send, onMessage, requestFileDiscovery, requestFileStat } from "../bridge.js";
 import { getCachedFilePath, setCachedFilePath } from "../file-discovery-cache.js";
 import { addChangeEntry } from "../changelog.js";
 import { showToast } from "../toolbar.js";
@@ -488,6 +488,8 @@ function addPendingFromCurrentState(): void {
       nthOfType: computeNthOfType(el),
       id: el.id || undefined,
       jsxPath: state.componentInfo?.jsxPath,
+      fileMtime: state.componentInfo?.fileMtime,
+      fileSize: state.componentInfo?.fileSize,
       updates: [...state.pendingBatch.values()].map((entry) => {
         const desc = DESCRIPTOR_MAP.get(entry.property);
         // Pick the responsive variant winning at the current viewport so the edit
@@ -606,6 +608,8 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
             DYNAMIC_CLASSNAME: "Cannot modify dynamic className expression",
             CONFLICTING_CLASS: "Conflicting conditional class detected",
             ELEMENT_NOT_FOUND: "Could not find element in source",
+            FILE_CHANGED: "File changed since selection — re-select the element",
+            AMBIGUOUS: "Couldn't pinpoint the element — re-select it",
           };
           const msg = friendlyMessages[errorCode || ""] || errorMessage || "Failed to write changes";
           sidebar.showWarning(msg, "Dismiss", () => sidebar.clearWarning());
@@ -616,6 +620,8 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
         DYNAMIC_CLASSNAME: "Cannot modify dynamic className expression",
         CONFLICTING_CLASS: "Conflicting conditional class detected",
         ELEMENT_NOT_FOUND: "Could not find element in source",
+        FILE_CHANGED: "File changed since selection — re-select the element",
+        AMBIGUOUS: "Couldn't pinpoint the element — re-select it",
       };
       const msg = friendlyMessages[errorCode || ""] || errorMessage || "Failed to write changes";
       sidebar.showWarning(msg, "Dismiss", () => sidebar.clearWarning());
@@ -629,7 +635,7 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
     if (!propertyResult) return;
 
     const errorCodeMatch = propertyResult.error?.match(
-      /^(DYNAMIC_CLASSNAME|FILE_CHANGED|MAPPED_ELEMENT|CONFLICTING_CLASS|ELEMENT_NOT_FOUND)/
+      /^(DYNAMIC_CLASSNAME|FILE_CHANGED|MAPPED_ELEMENT|CONFLICTING_CLASS|ELEMENT_NOT_FOUND|AMBIGUOUS)/
     );
 
     handleCommitResult(
@@ -637,6 +643,10 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
       errorCodeMatch?.[1],
       propertyResult.error || msg.error,
     );
+
+    // Our own write changed the file — refresh the staleness baseline so the
+    // next edit on this same selection isn't rejected as stale.
+    if (propertyResult.success) captureStaleBaseline();
   });
 
   // Listen for successful commits to add changelog entries
@@ -671,6 +681,25 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
 }
 
 /**
+ * Capture (or refresh) the staleness baseline — the file's mtime/size — for the
+ * current selection. Called at selection time and after our own successful
+ * writes so iterative edits on the same element aren't flagged stale. File-level
+ * stat, so it's guarded only on the filePath being unchanged when it resolves.
+ */
+function captureStaleBaseline(): void {
+  const filePath = state.componentInfo?.filePath;
+  if (!filePath) return;
+  requestFileStat(filePath)
+    .then(({ mtime, size }) => {
+      if (mtime <= 0) return; // stat failed / file unresolved
+      if (state.componentInfo?.filePath !== filePath) return; // selection moved on
+      state.componentInfo.fileMtime = mtime;
+      state.componentInfo.fileSize = size;
+    })
+    .catch(() => {});
+}
+
+/**
  * Inspect an element: read its computed styles, render controls, show sidebar.
  * If there are pending changes from a previous selection, commits them first.
  */
@@ -702,11 +731,15 @@ export function inspect(element: HTMLElement, info: ComponentInfo): void {
           setCachedFilePath(info.componentName, discovered);
           if (state.componentInfo?.componentName === info.componentName) {
             state.componentInfo = { ...state.componentInfo, filePath: discovered };
+            captureStaleBaseline();
           }
         }
       });
     }
   }
+
+  // Snapshot the file's mtime/size as the staleness baseline for this selection.
+  captureStaleBaseline();
 
   state.elementIdentity = {
     componentName: info.componentName,

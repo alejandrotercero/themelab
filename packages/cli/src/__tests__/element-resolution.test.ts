@@ -244,4 +244,164 @@ describe("element-resolution: deterministic chain", () => {
     expect(updated).toContain("-translate-y-8");
     expect(updated).not.toContain("translate-y-4");
   });
+
+  // ── 9. Staleness guards the structural path ─────────────────────────
+
+  it("rejects a stale edit even when the structural path resolves", () => {
+    const src = `export default function App() {
+  return <div className="p-4">Hi</div>;
+}`;
+    const { filePath } = setup("stale-path.tsx", src);
+    const result = executeBatch(
+      [{
+        op: "updateClass", file: filePath, line: 2, col: 9,
+        tagName: "div",
+        // A structural path that WOULD resolve — proving staleness now runs first.
+        jsxPath: { componentName: "App", filePath, segments: [{ name: "div", discriminator: { type: "root" } }] },
+        fileMtime: 1, fileSize: 999, // deliberately stale
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(false);
+    expect(result.results[0].error).toMatch(/FILE_CHANGED|stale|modified/i);
+    expect(fs.readFileSync(filePath, "utf-8")).not.toContain("bg-red-500");
+  });
+
+  it("succeeds when the staleness baseline matches the current file", () => {
+    const src = `export default function App() {
+  return <div className="p-4">Hi</div>;
+}`;
+    const { filePath } = setup("fresh-stat.tsx", src);
+    const stat = fs.statSync(filePath);
+    const result = executeBatch(
+      [{
+        op: "updateClass", file: filePath, line: 2, col: 9,
+        tagName: "div",
+        fileMtime: stat.mtimeMs, fileSize: stat.size, // accurate baseline
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(true);
+    expect(fs.readFileSync(filePath, "utf-8")).toContain("bg-red-500");
+  });
+
+  // ── 10. Subset matching beats bidirectional overlap ─────────────────
+
+  it("prefers the subset match over a sibling with higher raw class overlap", () => {
+    // DOM className includes runtime-injected classes (bg-blue-500, px-2) that
+    // the source does NOT have. The true node's static classes are a subset of
+    // the DOM set; the decoy sibling shares MORE raw classes with the DOM but
+    // isn't a subset (its bg-red-500 isn't in the DOM). Old overlap scoring
+    // picked the decoy; subset matching picks the true node.
+    const src = `export default function App() {
+  return (
+    <section>
+      <div className="flex gap-4">A</div>
+      <div className="flex gap-4 bg-red-500 px-2">B</div>
+    </section>
+  );
+}`;
+    const { filePath } = setup("subset-vs-overlap.tsx", src);
+    const result = executeBatch(
+      [{
+        op: "updateClass", file: filePath, line: 999, col: 0,
+        tagName: "div", className: "flex gap-4 bg-blue-500 px-2",
+        updates: [{ tailwindPrefix: "text", tailwindToken: "white", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(true);
+    const updated = fs.readFileSync(filePath, "utf-8");
+    expect(updated).toContain('className="flex gap-4 text-white"'); // true node
+    expect(updated).not.toMatch(/bg-red-500[^"]*text-white/); // not the decoy
+  });
+
+  // ── 11. Genuine ambiguity fails loudly (no silent guess) ────────────
+
+  it("fails with AMBIGUOUS when identical siblings can't be disambiguated", () => {
+    const src = `export default function App() {
+  return (
+    <div className="wrap">
+      <div className="card">A</div>
+      <div className="card">B</div>
+    </div>
+  );
+}`;
+    const { filePath } = setup("ambiguous.tsx", src);
+    const result = executeBatch(
+      [{
+        op: "updateClass", file: filePath, line: 999, col: 0,
+        tagName: "div", className: "card", // no id/key/nthOfType to break the tie
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(false);
+    expect(result.results[0].error).toMatch(/AMBIGUOUS/);
+    expect(fs.readFileSync(filePath, "utf-8")).not.toContain("bg-red-500");
+  });
+
+  // ── 12. Structural path gated by identity (tag), then falls through ──
+
+  it("rejects a tag-contradicting structural path and resolves via fuzzy", () => {
+    const src = `export default function App() {
+  return (
+    <div className="wrapper">
+      <span className="target text-red-500">Hi</span>
+    </div>
+  );
+}`;
+    const { filePath } = setup("path-tag-gate.tsx", src);
+    const result = executeBatch(
+      [{
+        op: "updateClass", file: filePath, line: 999, col: 0,
+        // Path resolves to the root <div>, but the captured element is a <span>.
+        // verifyIdentity rejects on tag, so it falls through to fuzzy hints.
+        tagName: "span", className: "target text-red-500",
+        jsxPath: { componentName: "App", filePath, segments: [{ name: "div", discriminator: { type: "root" } }] },
+        updates: [{ tailwindPrefix: "text", tailwindToken: "blue-500", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(true);
+    const updated = fs.readFileSync(filePath, "utf-8");
+    expect(updated).toContain("text-blue-500");
+    expect(updated).toContain('className="wrapper"'); // div untouched
+  });
+
+  // ── 13. classHint corrects fiber-vs-AST index drift ─────────────────
+
+  it("uses classHint to correct a wrong positional index in the structural path", () => {
+    const src = `export default function App() {
+  return (
+    <ul>
+      <li className="a">A</li>
+      <li className="b">B</li>
+    </ul>
+  );
+}`;
+    const { filePath } = setup("classhint-index.tsx", src);
+    const result = executeBatch(
+      [{
+        op: "updateClass", file: filePath, line: 999, col: 0,
+        tagName: "li", className: "b",
+        // index points at the FIRST <li> (a), but classHint identifies the second.
+        jsxPath: {
+          componentName: "App", filePath,
+          segments: [
+            { name: "ul", discriminator: { type: "root" } },
+            { name: "li", discriminator: { type: "index", value: 0 }, classHint: ["b"] },
+          ],
+        },
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "green-500", value: "" }],
+      }],
+      path.dirname(filePath),
+    );
+    expect(result.results[0].success).toBe(true);
+    const updated = fs.readFileSync(filePath, "utf-8");
+    expect(updated).toMatch(/className="b bg-green-500"/);
+    expect(updated).not.toMatch(/className="a bg-green-500"/);
+  });
 });

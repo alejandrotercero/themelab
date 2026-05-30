@@ -538,6 +538,8 @@ function commitAndExit(options?: {
         nthOfType: editingElement ? computeNthOfType(editingElement) : undefined,
         elementId: editingElement?.id || undefined,
         jsxPath: componentInfo.jsxPath,
+        fileMtime: componentInfo.fileMtime,
+        fileSize: componentInfo.fileSize,
       });
       addChangeEntry({
         type: "textAnnotation",

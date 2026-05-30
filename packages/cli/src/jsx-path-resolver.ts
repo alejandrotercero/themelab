@@ -51,6 +51,43 @@ function getStringAttr(node: any, attrName: string): string | null {
 }
 
 /**
+ * Extract a JSX element's static className tokens (string literal, template
+ * literal quasis, or cn()/clsx() string args). Used to validate the positional
+ * `index` discriminator against the captured classHint.
+ */
+function staticClassesOf(node: any): string[] {
+  const attrs = node.openingElement?.attributes ?? [];
+  const attr = attrs.find(
+    (a: any) => a.type === "JSXAttribute" && a.name?.name === "className",
+  );
+  const val = attr?.value;
+  if (!val) return [];
+  if (val.type === "StringLiteral" || val.type === "Literal") {
+    return String(val.value ?? "").split(/\s+/).filter(Boolean);
+  }
+  if (val.type === "JSXExpressionContainer") {
+    const expr = val.expression;
+    if (expr?.type === "TemplateLiteral") {
+      const out: string[] = [];
+      for (const q of expr.quasis ?? []) {
+        out.push(...String(q.value?.raw ?? "").split(/\s+/).filter(Boolean));
+      }
+      return out;
+    }
+    if (expr?.type === "CallExpression") {
+      const out: string[] = [];
+      for (const a of expr.arguments ?? []) {
+        if (a.type === "StringLiteral" || a.type === "Literal") {
+          out.push(...String(a.value ?? "").split(/\s+/).filter(Boolean));
+        }
+      }
+      return out;
+    }
+  }
+  return [];
+}
+
+/**
  * Find the root JSX element returned by a component function.
  * Searches for function declarations, arrow functions, and export defaults.
  */
@@ -253,7 +290,37 @@ function resolveSegmentNode(
       ) ?? null;
     }
     case "index": {
-      return sameNameChildren[disc.value] ?? null;
+      const picked = sameNameChildren[disc.value] ?? null;
+      // Validate the positional pick against the captured classHint. Runtime
+      // fiber order can diverge from static AST child order (conditionals,
+      // fragments, mapped children), so if a single sibling matches the hinted
+      // classes strictly better than the positional pick, prefer it. Kept
+      // conservative: only override on a unique, unambiguous improvement.
+      const hint = segment.classHint;
+      if (hint && hint.length > 0) {
+        const score = (child: any): number => {
+          const cls = new Set(staticClassesOf(child));
+          return hint.filter((h) => cls.has(h)).length;
+        };
+        const pickedScore = picked ? score(picked) : -1;
+        let best = picked;
+        let bestScore = pickedScore;
+        let tie = false;
+        for (const child of sameNameChildren) {
+          const s = score(child);
+          if (s > bestScore) {
+            best = child;
+            bestScore = s;
+            tie = false;
+          } else if (s === bestScore && child !== best) {
+            tie = true;
+          }
+        }
+        if (best && best !== picked && bestScore > pickedScore && !tie) {
+          return best;
+        }
+      }
+      return picked;
     }
     case "root": {
       // Should not appear after index 0, but handle gracefully

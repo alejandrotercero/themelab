@@ -80,7 +80,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
 
   function extractErrorCode(err: unknown): TransformErrorCode | undefined {
     if (err instanceof Error) {
-      const match = err.message.match(/^(DYNAMIC_CLASSNAME|FILE_CHANGED|MAPPED_ELEMENT|CONFLICTING_CLASS)/);
+      const match = err.message.match(/^(DYNAMIC_CLASSNAME|FILE_CHANGED|MAPPED_ELEMENT|CONFLICTING_CLASS|AMBIGUOUS)/);
       if (match) return match[1] as TransformErrorCode;
     }
     return undefined;
@@ -266,6 +266,8 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               nthOfType: msg.nthOfType,
               id: msg.elementId,
               jsxPath: msg.jsxPath,
+              fileMtime: msg.fileMtime,
+              fileSize: msg.fileSize,
               updates,
             }],
             projectRoot,
@@ -314,6 +316,8 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               nthOfType: msg.nthOfType,
               id: msg.elementId,
               jsxPath: msg.jsxPath,
+              fileMtime: msg.fileMtime,
+              fileSize: msg.fileSize,
               originalText: msg.originalText,
               newText: msg.newText,
               textAnchor: msg.textAnchor,

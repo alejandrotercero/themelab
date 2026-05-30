@@ -282,6 +282,40 @@ function containsText(node: any, text: string): boolean {
   return false;
 }
 
+// ── Identity verification ────────────────────────────────────────────────
+
+type VerifyVerdict = { ok: true } | { ok: false; reason: "tag" | "class" | "id" };
+
+/**
+ * Confirm a resolved AST node is not a *contradiction* of the captured identity.
+ *
+ * Deliberately conservative: it rejects only on positive evidence of a wrong
+ * match (tag mismatch, ids that both exist and differ, or both sides carrying
+ * classes with zero overlap). Mere absence of confirmation (e.g. node has no
+ * static className) never fails — that would block legitimate edits. Subset
+ * matching is used for *disambiguation* among candidates (see resolveNodes B3),
+ * not as a hard gate here.
+ */
+function verifyIdentity(node: any, op: any): VerifyVerdict {
+  const astTag = getJSXTagName(node);
+  if (op.tagName && astTag && !tagOrComponentMatches(astTag, op)) {
+    return { ok: false, reason: "tag" };
+  }
+  if (op.id) {
+    const astId = getJSXId(node);
+    if (astId && astId !== op.id) return { ok: false, reason: "id" };
+  }
+  if (op.className) {
+    const astClasses = getJSXStaticClasses(node);
+    if (astClasses.length > 0) {
+      const domClasses = op.className.split(/\s+/).filter(Boolean);
+      const overlaps = astClasses.some((c: string) => domClasses.includes(c));
+      if (!overlaps) return { ok: false, reason: "class" };
+    }
+  }
+  return { ok: true };
+}
+
 // ── Node resolution ──────────────────────────────────────────────────────
 
 function resolveNodes(
@@ -294,7 +328,8 @@ function resolveNodes(
 
   for (const { index, op } of ops) {
     if (op.op === "reorder") {
-      // Reorder uses line-based resolution (handled during mutation)
+      // Reorder uses line-based resolution (handled during mutation) and carries
+      // no staleness baseline — resolve it before the staleness gate below.
       resolved.push({
         index,
         op,
@@ -304,22 +339,11 @@ function resolveNodes(
       continue;
     }
 
-    // ── Step 0: Try JSX structural path (preferred) ───────────────────
-    if ('jsxPath' in op && op.jsxPath && op.jsxPath.segments.length > 0) {
-      const pathNode = resolveJSXPath(j, root, op.jsxPath);
-      if (pathNode) {
-        // Cross-validate tag name if hint is available
-        const actualTag = getJSXTagName(pathNode.node);
-        if (!op.tagName || !actualTag || tagNameMatches(actualTag, op.tagName)) {
-          const priority = op.op === "updateClass" || op.op === "updateText" || op.op === "moveSpacing" ? 0 : 1;
-          resolved.push({ index, op, node: pathNode, priority });
-          continue;
-        }
-      }
-      // If path resolution failed, fall through to line:col + fuzzy (existing code)
-    }
-
-    // ── Staleness check ──────────────────────────────────────────────
+    // ── Staleness check (before resolution — guards every path below) ──
+    // The whole point of the staleness guard is "the captured intent may be
+    // invalid because the file changed", so it must run before any resolution
+    // attempt — including the preferred structural path, which previously
+    // bypassed it.
     if (op.fileMtime != null && op.fileSize != null) {
       try {
         const stat = fs.statSync(resolvedPath);
@@ -332,8 +356,9 @@ function resolveNodes(
             op,
             node: null,
             priority: 0,
-            error: `File has been modified since the overlay captured this element (stale). ` +
-              `Expected mtime=${op.fileMtime}/size=${op.fileSize}, got mtime=${currentMtime}/size=${currentSize}`,
+            error: `FILE_CHANGED: File has been modified since the overlay captured this element (stale). ` +
+              `Re-select the element and try again. ` +
+              `Expected mtime=${expectedMtime}/size=${op.fileSize}, got mtime=${currentMtime}/size=${currentSize}`,
           });
           continue;
         }
@@ -342,19 +367,41 @@ function resolveNodes(
       }
     }
 
+    // ── Step 0: Try JSX structural path (preferred) ───────────────────
+    if ('jsxPath' in op && op.jsxPath && op.jsxPath.segments.length > 0) {
+      const pathNode = resolveJSXPath(j, root, op.jsxPath);
+      if (pathNode) {
+        // Gate the structural-path result through full identity verification
+        // (not just tag): a stale path that still resolves to a tag-matching
+        // but wrong node would otherwise be edited silently.
+        const verdict = verifyIdentity(pathNode.node, op);
+        if (verdict.ok) {
+          const priority = op.op === "updateClass" || op.op === "updateText" || op.op === "moveSpacing" ? 0 : 1;
+          resolved.push({ index, op, node: pathNode, priority });
+          continue;
+        }
+        logger.debug(`[resolve] structural path rejected by verify (${verdict.reason}) — falling through to line:col + fuzzy`);
+      }
+      // If path resolution failed, fall through to line:col + fuzzy (existing code)
+    }
+
     // ── Step A: Try exact line:col match ─────────────────────────────
     let node = findJSXElementAt(j, root, op.line, op.col);
 
-    // Cross-validate tag name if we got a hit and hint is available
-    if (node && op.tagName) {
-      const actualTag = getJSXTagName(node.node);
-      if (actualTag && !tagOrComponentMatches(actualTag, op)) {
-        // Exact position hit wrong tag — clear and fall through
+    // Verify the exact-position hit against captured identity
+    if (node) {
+      const verdict = verifyIdentity(node.node, op);
+      if (!verdict.ok) {
+        // Exact position contradicts identity — clear and fall through
         node = null;
       }
     }
 
     // ── Step B: Fallback — fuzzy resolution using hints ──────────────
+    // Set when multiple candidates remain equally plausible and no captured
+    // signal breaks the tie — surfaced as a loud AMBIGUOUS failure rather than
+    // a silent guess.
+    let ambiguousCount = 0;
     if (!node && op.tagName) {
       const candidates: any[] = [];
       root.find(j.JSXElement).forEach((p: any) => {
@@ -368,7 +415,12 @@ function resolveNodes(
       logger.debug(`[resolve] ${candidates.length} <${op.tagName}> candidates, DOM className="${op.className?.slice(0, 60) ?? ""}"`);
 
       if (candidates.length === 1) {
-        node = candidates[0];
+        // A single tag match is a strong signal, but reject if it positively
+        // contradicts the captured identity (e.g. disjoint classes) — then fail
+        // loudly rather than edit a node we have evidence is wrong.
+        const verdict = verifyIdentity(candidates[0].node, op);
+        if (verdict.ok) node = candidates[0];
+        else logger.debug(`[resolve] sole <${op.tagName}> candidate rejected by verify (${verdict.reason})`);
       } else if (candidates.length > 1) {
         // ── Disambiguate ───────────────────────────────────────────
 
@@ -401,61 +453,56 @@ function resolveNodes(
           }
         }
 
-        // B3: Filter by className — pick the candidate with the highest class overlap
+        // B3: Filter by className — prefer AST ⊆ DOM (subset) matches.
+        // The DOM className legitimately includes runtime-injected classes
+        // (cn(), CSS-in-JS), so the true element's *static* classes should all
+        // appear in the DOM set. This is the correct primary signal; the prior
+        // bidirectional-overlap score penalised the true node for the DOM
+        // carrying extra classes and could tie it with a sibling.
         if (!node && op.className) {
-          const domClasses = op.className.split(/\s+/).filter(Boolean);
-          let bestMatch: any = null;
-          let bestOverlap = 0;
+          const subsetMatches = candidates.filter((c: any) =>
+            classNameSubsetMatch(getJSXStaticClasses(c.node), op.className!),
+          );
+          logger.debug(`[resolve]   ${subsetMatches.length}/${candidates.length} subset matches for className`);
 
-          for (const candidate of candidates) {
-            const astClasses = getJSXStaticClasses(candidate.node);
-            if (astClasses.length === 0) continue;
-
-            // Count overlap in both directions
-            const astInDom = astClasses.filter((c: string) => domClasses.includes(c)).length;
-            const domInAst = domClasses.filter((c: string) => astClasses.includes(c)).length;
-            // Overlap = matched classes / max(ast, dom) — rewards both precision and recall
-            const overlap = (astInDom + domInAst) / (astClasses.length + domClasses.length);
-
-            const loc = candidate.node.openingElement?.loc?.start;
-            logger.debug(`[resolve]   candidate @${loc?.line}: AST="${astClasses.slice(0, 5).join(" ")}" overlap=${overlap.toFixed(2)}`);
-
-            if (overlap > bestOverlap) {
-              bestOverlap = overlap;
-              bestMatch = candidate;
+          if (subsetMatches.length === 1) {
+            node = subsetMatches[0];
+          } else if (subsetMatches.length > 1) {
+            // Several subset matches (e.g. identical siblings) — only nthOfType
+            // can break the tie. If it can't, this is genuinely ambiguous: fail
+            // loudly instead of editing a guessed node.
+            if (op.nthOfType != null) {
+              const byNth = subsetMatches.filter((p: any) => computeASTNthOfType(p) === op.nthOfType);
+              if (byNth.length === 1) node = byNth[0];
             }
-          }
-
-          // Require at least 30% overlap to accept
-          if (bestMatch && bestOverlap >= 0.3) {
-            // Check if there's a close second — if so, use nthOfType to disambiguate
-            const secondBest = candidates
-              .filter(c => c !== bestMatch)
-              .reduce((best, c) => {
+            if (!node) ambiguousCount = subsetMatches.length;
+          } else {
+            // 0 subset matches — source may have diverged from the captured
+            // className. Last resort: bidirectional overlap, but require a clear
+            // winner (no silent pick when the top scores are close).
+            const domClasses = op.className.split(/\s+/).filter(Boolean);
+            const scored = candidates
+              .map((c: any) => {
                 const astClasses = getJSXStaticClasses(c.node);
+                if (astClasses.length === 0) return { c, overlap: 0 };
                 const astInDom = astClasses.filter((cl: string) => domClasses.includes(cl)).length;
                 const domInAst = domClasses.filter((cl: string) => astClasses.includes(cl)).length;
-                const overlap = (astInDom + domInAst) / (astClasses.length + domClasses.length);
-                return overlap > best ? overlap : best;
-              }, 0);
+                return { c, overlap: (astInDom + domInAst) / (astClasses.length + domClasses.length) };
+              })
+              .sort((a, b) => b.overlap - a.overlap);
 
-            if (bestOverlap - secondBest > 0.1) {
-              // Clear winner
-              node = bestMatch;
-            } else if (op.nthOfType != null) {
-              // Close match — use nthOfType to break tie
-              const tiedCandidates = candidates.filter(c => {
-                const astClasses = getJSXStaticClasses(c.node);
-                const astInDom = astClasses.filter((cl: string) => domClasses.includes(cl)).length;
-                const domInAst = domClasses.filter((cl: string) => astClasses.includes(cl)).length;
-                const overlap = (astInDom + domInAst) / (astClasses.length + domClasses.length);
-                return overlap >= bestOverlap - 0.1;
-              });
-              const byNth = tiedCandidates.find((p: any) => computeASTNthOfType(p) === op.nthOfType);
-              if (byNth) node = byNth;
-              else node = bestMatch; // fallback to best overlap
-            } else {
-              node = bestMatch;
+            if (scored.length > 0 && scored[0].overlap >= 0.3) {
+              const second = scored[1]?.overlap ?? 0;
+              if (scored[0].overlap - second > 0.1) {
+                node = scored[0].c; // clear winner
+              } else if (op.nthOfType != null) {
+                const tied = scored.filter(s => s.overlap >= scored[0].overlap - 0.1).map(s => s.c);
+                const byNth = tied.find((p: any) => computeASTNthOfType(p) === op.nthOfType);
+                if (byNth) node = byNth;
+                else ambiguousCount = tied.length;
+              } else {
+                ambiguousCount = scored.filter(s => s.overlap >= scored[0].overlap - 0.1).length;
+              }
             }
           }
         }
@@ -466,6 +513,22 @@ function resolveNodes(
           if (byNth.length === 1) node = byNth[0];
         }
       }
+    }
+
+    // Genuine ambiguity — fail loudly so the user (or a future AI fallback) can
+    // resolve it, rather than mutating an arbitrary candidate. Text ops keep
+    // their null-without-error path so the string-literal/MDX fallback can run.
+    if (!node && ambiguousCount > 1 && op.op !== "updateText") {
+      resolved.push({
+        index,
+        op,
+        node: null,
+        priority: 0,
+        error: `AMBIGUOUS: ${ambiguousCount} elements match the captured identity (tag=${op.tagName}` +
+          (op.className ? `, className="${op.className.slice(0, 60)}"` : "") +
+          `) and no disambiguator (id, key, nthOfType) singles one out. Re-select the element.`,
+      });
+      continue;
     }
 
     if (!node && op.op === "updateText") {

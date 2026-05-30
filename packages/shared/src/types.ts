@@ -233,6 +233,8 @@ export type ClientMessage =
       nthOfType?: number;
       elementId?: string;
       jsxPath?: JSXStructuralPath;
+      fileMtime?: number;
+      fileSize?: number;
     }
   | {
       type: "updateProperties";
@@ -258,6 +260,8 @@ export type ClientMessage =
       nthOfType?: number;
       elementId?: string;
       jsxPath?: JSXStructuralPath;
+      fileMtime?: number;
+      fileSize?: number;
     }
   | {
       type: "updateText";
@@ -275,6 +279,8 @@ export type ClientMessage =
       nthOfType?: number;
       elementId?: string;
       jsxPath?: JSXStructuralPath;
+      fileMtime?: number;
+      fileSize?: number;
     }
   | { type: "revertChanges"; undoIds: string[] }
   | { type: "discoverFile"; componentName: string }
@@ -343,6 +349,11 @@ export interface ComponentInfo {
     height: number;
   };
   jsxPath?: JSXStructuralPath;
+  // Staleness baseline captured at selection time — file mtime (ms) and size.
+  // Sent with edits so the CLI can reject mutations against a file that changed
+  // since selection. Refreshed after our own successful writes.
+  fileMtime?: number;
+  fileSize?: number;
 }
 
 export interface UndoEntry {
@@ -440,7 +451,8 @@ export type TransformErrorCode =
   | "DYNAMIC_CLASSNAME"
   | "FILE_CHANGED"
   | "MAPPED_ELEMENT"
-  | "CONFLICTING_CLASS";
+  | "CONFLICTING_CLASS"
+  | "AMBIGUOUS";
 
 export interface ElementIdentity {
   componentName: string;

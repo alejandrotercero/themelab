@@ -30,7 +30,7 @@ import { getPageElementAtPoint, isPanningActive } from "./interaction.js";
 import { tryStartMove, updateMovePosition, endMove } from "./tools/move.js";
 import { getMoveContainingElement, hasMoveForElement, addClone, removeCloneEntry, addDelete } from "./canvas-state.js";
 import { getCachedFilePath, setCachedFilePath } from "./file-discovery-cache.js";
-import { requestFileDiscovery, send, onMessage } from "./bridge.js";
+import { requestFileDiscovery, requestFileStat, send, onMessage } from "./bridge.js";
 import { isTextEditing } from "./inline-text-edit.js";
 import { copyElement, hasClipboard, pasteElement, isInsideMapTemplate, resolveFromCloneAncestry, getCloneForElement } from "./clone-state.js";
 import { deleteElement } from "./delete-state.js";
@@ -935,6 +935,21 @@ export async function selectElement(el: HTMLElement, options?: { skipSidebar?: b
       },
       jsxPath: resolved.jsxPath,
     };
+
+    // Capture the staleness baseline (file mtime/size at selection time) so edits
+    // can be rejected if the file changed underneath. Best-effort + async; guarded
+    // against the selection moving on before the stat resolves.
+    if (resolved.filePath) {
+      const selRef = currentSelection;
+      requestFileStat(resolved.filePath)
+        .then(({ mtime, size }) => {
+          if (mtime > 0 && currentSelection === selRef) {
+            currentSelection.fileMtime = mtime;
+            currentSelection.fileSize = size;
+          }
+        })
+        .catch(() => {});
+    }
 
     if (selectionLabel) {
       const pathText = resolved.filePath ? `${resolved.filePath}:${resolved.lineNumber}` : "";

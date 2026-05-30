@@ -35,7 +35,13 @@ npx react-rewrite-cli@latest
 ## What it does
 
 - Select an element and inspect its component name, file path, and line number
-- Edit supported Tailwind-based layout, spacing, size, typography, and color properties
+- Edit Tailwind-based properties across Layout, Spacing, Size, Typography, Background, and Border groups
+  - Flex alignment (`justify-content` / `align-items`) uses DevTools-style icon pickers that re-orient with `flex-direction`
+  - Size renders as a compact W / H · Min · Max grid
+  - Border covers radius, width, color, and style
+- Pick colors from the full Tailwind v4 palette (searchable, grouped, list/grid) or bind a color to a theme variable
+- Edit your shadcn/Tailwind **theme tokens** (CSS variables in `:root` / `.dark`) with live preview and light/dark toggle
+- Navigate the element hierarchy (parent / child / siblings) from the keyboard or sidebar
 - Double-click text to edit it inline
 - Copy, paste, and duplicate elements
 - Delete elements

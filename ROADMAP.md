@@ -1,6 +1,6 @@
 # react-rewrite — Roadmap & Spec
 
-> Status: draft v1 · 2026-05-28
+> Status: draft v1 · 2026-05-28 (updated 2026-05-30 — M0–M2 + #5 shipped; remaining: #4 master-component routing, #8 fonts, M3 theme v2)
 > Scope: turn react-rewrite from a per-element class editor into a full **visual editor for shadcn/Tailwind apps** — both the *elements* and the *theme*.
 > Grounded in: the current codebase (`packages/{cli,overlay,shared}`), hands-on testing feedback, and the tweakcn theme-editor model (Apache-2.0, cloned at `/Users/alejandro/DEV/tweakcn`).
 
@@ -159,18 +159,18 @@ Each is mapped to root cause + fix + files + effort (S/M/L).
 
 **M0 — Unblock & validate (now)**
 - [x] Build local `main` (ahead of npm 0.1.1)
-- [ ] Diagnose & fix **#7 auto-refresh** (smallest flow-breaker, unblocks all testing)
+- [x] **#7 auto-refresh** — effectively resolved; HMR now reflects writes once resolution lands correctly (the earlier "had to refresh" was failing writes, since fixed)
 - **Not publishing** — this isn't our repo to release. Work stays local / goes back as a contribution if/when upstream wants it.
 
 **M1 — Own the page (flow-breakers)**
-- [ ] #1 explicit Inspect/Interact mode
-- [ ] #6 hierarchy navigation (keyboard + breadcrumb)
+- [x] #1 Interact mode — toggle with `` ` `` (select by default)
+- [x] #6 hierarchy navigation — keyboard (↑↓←→) + sidebar buttons (breadcrumb still TODO)
 
 **M2 — Theme mode v1 (the big bet)**
-- [ ] `shared` ThemeStyles model
-- [ ] CLI import (globals.css/@theme → ThemeStyles) + export (write `:root`/`.dark`)
-- [ ] Overlay Theme panel: colors (OKLCH) + radius, light/dark toggle, in-page live preview
-- [ ] #2 Delta-E closeness in the picker (port from recovered code)
+- [x] `shared` ThemeStyles model
+- [x] CLI import (`:root`/`.dark` CSS-var blocks → tokens) + export (write back, original format preserved)
+- [x] Overlay Theme panel: per-token color swatches (hsl-triple/oklch/hex), light/dark toggle, in-page live preview
+- [x] #2 color picking — shipped as a **Tailwind palette picker** (tweakcn-style) instead of Delta-E closeness, per product decision
 
 **M3 — Theme mode v2**
 - [ ] Fonts (#8) — pickers + font-loading snippet
@@ -178,8 +178,8 @@ Each is mapped to root cause + fix + files + effort (S/M/L).
 - [ ] Presets + import-from-pasted-CSS
 
 **M4 — Structural editing**
-- [ ] #5 drag-to-reorder siblings → source
-- [ ] #4 `.map()` → master-component routing
+- [x] #5 reorder siblings → source — via move up/down buttons + `[` / `]` (server-side AST swap; drag was dropped as unreliable)
+- [ ] #4 `.map()` / conditional → master-component routing
 
 **Don't regress** (validated wins): canvas zoom, flexbox property controls, inline text editing.
 

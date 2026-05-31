@@ -21,7 +21,7 @@ import { resolveProjectFilePath, isProjectFilePathSafe } from "./path-resolver.j
 import { logger } from "./logger.js";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
-const MAX_STEPS = 6;
+const MAX_STEPS = 8;
 const MAX_GREP_RESULTS = 40;
 const SOURCE_EXT = new Set([".tsx", ".jsx", ".ts", ".js", ".mdx"]);
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage"]);
@@ -47,6 +47,9 @@ export interface LocateInput {
   candidates: Array<{ line: number; col: number; snippet: string }>;
   /** The op's source file (project-relative path + content). */
   primaryFile: { path: string; content: string };
+  /** Pre-computed project grep for the element's text (front-loads the answer
+   *  so the model usually resolves in one step). */
+  textMatches?: Array<{ file: string; line: number; text: string }>;
   projectRoot: string;
 }
 
@@ -130,18 +133,21 @@ function listDirTool(input: { path?: string }, projectRoot: string): string {
   }
 }
 
-function grepTool(input: { query?: string }, projectRoot: string): string {
-  const query = input?.query;
-  if (!query) return "ERROR: missing query";
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Search project source files for a regex. Returns structured matches. */
+function grepProject(query: string, projectRoot: string, max = MAX_GREP_RESULTS): Array<{ file: string; line: number; text: string }> {
   let re: RegExp;
   try {
     re = new RegExp(query);
   } catch {
-    return "ERROR: invalid regex";
+    return [];
   }
-  const hits: string[] = [];
+  const hits: Array<{ file: string; line: number; text: string }> = [];
   const walk = (dir: string) => {
-    if (hits.length >= MAX_GREP_RESULTS) return;
+    if (hits.length >= max) return;
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -149,7 +155,7 @@ function grepTool(input: { query?: string }, projectRoot: string): string {
       return;
     }
     for (const e of entries) {
-      if (hits.length >= MAX_GREP_RESULTS) return;
+      if (hits.length >= max) return;
       if (e.isDirectory()) {
         if (!SKIP_DIRS.has(e.name)) walk(path.join(dir, e.name));
         continue;
@@ -165,14 +171,20 @@ function grepTool(input: { query?: string }, projectRoot: string): string {
       const lines = content.split("\n");
       for (let i = 0; i < lines.length; i++) {
         if (re.test(lines[i])) {
-          hits.push(`${path.relative(projectRoot, full)}:${i + 1}: ${lines[i].trim().slice(0, 120)}`);
-          if (hits.length >= MAX_GREP_RESULTS) break;
+          hits.push({ file: path.relative(projectRoot, full), line: i + 1, text: lines[i].trim().slice(0, 120) });
+          if (hits.length >= max) break;
         }
       }
     }
   };
   walk(projectRoot);
-  return hits.length > 0 ? hits.join("\n") : "(no matches)";
+  return hits;
+}
+
+function grepTool(input: { query?: string }, projectRoot: string): string {
+  if (!input?.query) return "ERROR: missing query";
+  const hits = grepProject(input.query, projectRoot);
+  return hits.length > 0 ? hits.map((h) => `${h.file}:${h.line}: ${h.text}`).join("\n") : "(no matches)";
 }
 
 const TOOLS = [
@@ -235,7 +247,7 @@ When sure, call resolve_location exactly once with the opening-tag position of t
 - 'conditional' — the correct branch of a conditional/ternary/state-driven render.
 - 'instance' — the relevant node inside a reused component (possibly another file).
 
-Prefer the deterministic candidates provided if one is clearly correct. The 'col' is the 0-based column of the opening '<'. 'reasoning' is ONE sentence on WHY this is the right node (which file/element and how you identified it) — do NOT restate or guess the styling change; that is applied deterministically.`;
+Be decisive: if a provided candidate or text-grep line clearly matches the element (its text and/or className line up), call resolve_location immediately — don't keep exploring. The 'col' is the 0-based column of the opening '<'. 'reasoning' is ONE sentence on WHY this is the right node (which file/element and how you identified it) — do NOT restate or guess the styling change; that is applied deterministically.`;
 
 function buildSeedMessage(input: LocateInput): string {
   const id = input.identity;
@@ -252,6 +264,10 @@ function buildSeedMessage(input: LocateInput): string {
     ? input.candidates.map((c, i) => `  ${i + 1}. line ${c.line}, col ${c.col}: ${c.snippet}`).join("\n")
     : "  (none — the element may be a map template, a conditional branch, or in another file)";
 
+  const textGrep = input.textMatches && input.textMatches.length
+    ? `\n## Project lines containing the element's text (strong hint — the target is very likely one of these)\n${input.textMatches.map((m) => `  ${m.file}:${m.line}: ${m.text}`).join("\n")}\n`
+    : "";
+
   return `## Change to locate
 ${input.intent}
 
@@ -260,7 +276,7 @@ ${idLines}
 
 ## Deterministic best-guess candidates (hints — the true target may be elsewhere)
 ${cands}
-
+${textGrep}
 ## Primary file: ${input.primaryFile.path}
 \`\`\`tsx
 ${numbered(input.primaryFile.content)}
@@ -443,6 +459,21 @@ export async function executeBatchWithAi(
       ai.onEscalate?.();
       logger.info(`[ai-locate] escalating ${op.op} @ ${op.file} (${(r.error ?? "").slice(0, 48)})`);
       answer = null;
+      // Front-load the answer: grep the project for the element's text so the
+      // model usually resolves in one step. Common words (e.g. "Version") match
+      // many lines, so rank element-like lines (containing the tag or a class
+      // token) first to surface the real node within the cap.
+      const id = identityOf(op);
+      let textMatches: Array<{ file: string; line: number; text: string }> | undefined;
+      if (id.text && id.text.length >= 3) {
+        const classTokens = (id.className ?? "").split(/\s+/).filter(Boolean);
+        const found = grepProject(escapeRegExp(id.text), projectRoot, 60);
+        const score = (m: { text: string }) =>
+          (id.tagName && m.text.includes(`<${id.tagName}`) ? 2 : 0) +
+          (classTokens.some((c) => m.text.includes(c)) ? 1 : 0);
+        found.sort((a, b) => score(b) - score(a));
+        textMatches = found.slice(0, 12);
+      }
       try {
         answer = await locate(
           {
@@ -450,6 +481,7 @@ export async function executeBatchWithAi(
             identity: identityOf(op),
             candidates: r.candidates ?? [],
             primaryFile: { path: op.file, content },
+            textMatches,
             projectRoot,
           },
           { apiKey: ai.apiKey, baseURL: ai.baseURL, model: ai.model },

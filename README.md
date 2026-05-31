@@ -38,6 +38,7 @@ npx react-rewrite-cli@latest
 - Edit Tailwind-based properties across Layout, Spacing, Size, Typography, Background, and Border groups
   - Flex alignment (`justify-content` / `align-items`) uses DevTools-style icon pickers that re-orient with `flex-direction`
   - Size renders as a compact W / H · Min · Max grid
+  - Typography includes a text-case toggle (normal / UPPER / lower / Title)
   - Border covers radius, width, color, and style
 - Pick colors from the full Tailwind v4 palette (searchable, grouped, list/grid) or bind a color to a theme variable
 - Edit your shadcn/Tailwind **theme tokens** (CSS variables in `:root` / `.dark`) with live preview and light/dark toggle
@@ -48,6 +49,15 @@ npx react-rewrite-cli@latest
 - Reorder sibling elements
 - Stage multiple changes and apply them with **Confirm**
 - Undo in-progress canvas changes and review applied changes in the changelog
+- Optionally enable an **AI locator** for elements the deterministic resolver can't pin (see below)
+
+## AI assist (optional)
+
+Most edits resolve deterministically. For the hard cases — an element rendered by a `.map()`, a reused component instance, conditional/state-dependent rendering, or a component that renders a different host tag (e.g. a `<Link>` that outputs an `<a>`) — you can enable an **AI locator**. It reads your source to find the exact node to edit; the change itself is still applied by the same deterministic AST transform (the AI only *locates*, it never writes code).
+
+- **Off by default.** It runs only when an `ANTHROPIC_API_KEY` is configured. With no key, behavior is unchanged.
+- **Configure it** from the gear (⚙) panel in the overlay: API key, an optional custom endpoint (base URL), and model. Settings are stored locally in `~/.config/react-rewrite/config.json` (the key is never sent back to the browser); environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) override the stored values.
+- **What it does on a match:** a "Locating with AI…" → "Found it" indicator shows while it works. A direct/conditional match applies automatically; an edit that would affect more than the selected element (a `.map()` template or a shared component) asks you to **confirm** first. Resolutions are cached per element, so repeated tweaks stay instant.
 
 ## Requirements
 

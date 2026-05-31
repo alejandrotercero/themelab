@@ -4,6 +4,9 @@
 
 ### Features
 
+- **AI locator (optional, off by default)** — when deterministic resolution can't pin the selected element — a `.map()` template, a reused component instance, conditional/state-dependent rendering, or a component that renders a different host tag (e.g. `<Link>` → `<a>`) — an opt-in AI reads the actual source to find the exact node. It only *locates*; the edit is still applied deterministically. Direct/conditional matches apply automatically; `map-template`/`instance` edits ask to confirm first. A "Locating with AI…" → "Found it" indicator shows while it works, and resolutions are cached per element. Requires `ANTHROPIC_API_KEY`; with no key, behavior is unchanged.
+- **AI settings** — a gear panel to store an API key, a custom endpoint (base URL), and a model. Persisted locally (`~/.config/react-rewrite/config.json`, key never sent back to the overlay); environment variables override the stored values.
+- **Text case control** — `text-transform` (Aa / AA / aa / Title) added to the Typography group, so all-caps can be toggled on a selected element.
 - **Theme editor** — edit shadcn/Tailwind CSS-variable tokens (`:root` / `.dark`) in a docked sidebar with live preview, light/dark toggle, and write-back in each token's original format (hsl-triple, oklch, hex)
 - **Bind colors to theme variables** — element colors can reference a token (e.g. `bg-primary`) instead of a baked value, so they track theme edits and dark mode
 - **Tailwind palette picker** — pick from the full Tailwind v4 palette (searchable, grouped by family, list/grid views) on any color control or theme token
@@ -16,6 +19,7 @@
 
 ### Fixes
 
+- **Element resolution hardened** — the resolver now verifies an element's identity before mutating it and **fails loudly** (prompting a re-select) on genuine ambiguity, or when the file changed since selection, instead of silently editing the wrong element. className matching uses subset semantics so runtime-injected classes (`cn()`, CSS-in-JS) don't mislead it, and an element's visible text disambiguates same-class siblings.
 - Text edits no longer misroute to unrelated Markdown files; class edits resolve past bundler chunk paths and host/component mismatches
 - Responsive (breakpoint-aware) property edits replace the variant that wins at the current viewport
 - Proxy hardened against an `ERR_HTTP_HEADERS_SENT` crash; overlay bundle is served with no-cache headers

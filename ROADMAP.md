@@ -1,6 +1,6 @@
 # react-rewrite — Roadmap & Spec
 
-> Status: draft v1 · 2026-05-28 (updated 2026-05-30 — M0–M2 + #5 shipped; remaining: #4 master-component routing, #8 fonts, M3 theme v2)
+> Status: draft v1 · 2026-05-28 (updated 2026-05-31 — M0–M2 + #4 + #5 shipped; resolver hardened + AI locator added; remaining: #8 fonts, M3 theme v2)
 > Scope: turn react-rewrite from a per-element class editor into a full **visual editor for shadcn/Tailwind apps** — both the *elements* and the *theme*.
 > Grounded in: the current codebase (`packages/{cli,overlay,shared}`), hands-on testing feedback, and the tweakcn theme-editor model (Apache-2.0, cloned at `/Users/alejandro/DEV/tweakcn`).
 
@@ -124,10 +124,10 @@ Each is mapped to root cause + fix + files + effort (S/M/L).
 - **Fix:** diagnose live with `--verbose` + browser console (is the HMR socket connecting to the proxy origin?). Likely fixes: ensure the HMR client connects through the proxy (rewrite the HMR endpoint), and/or after a successful write the CLI pushes a `reload`/`applied` message over the react-rewrite WS and the overlay either relies on HMR or does a soft refresh. With Theme mode (CSS-var preview), color/font edits won't need any reload at all.
 - **Files:** `inject.ts`, `server.ts`, overlay WS bridge (`bridge.ts`).
 
-### #4 — Lists / `.map()` → master component · **L**
+### #4 — Lists / `.map()` → master component · **L** · **done (AI locator)**
 - **Root cause:** clicking a mapped `<TweetCard>` builds a jsxPath with an **index discriminator** (4th instance), so `cli/jsx-path-resolver.ts` looks for a 4th element that doesn't exist in source — should target `TweetCard.tsx`.
-- **Fix:** detect "inside a `.map()` template" (fiber has list key + repeated sibling type) and **promote the edit to the component definition**: resolve the component's source file via owner stack, edit the master. For per-instance data (text from props) flag as "can't edit literal — bound to `{tweet.title}`." Distinguish *structural/style* edits (→ master) from *content* edits (→ data, not editable here).
-- **Files:** `utils/jsx-path.ts`, `cli/jsx-path-resolver.ts`, `selection.ts` (`resolveComponentFromElement`), `clone-state.ts` (`isInsideMapTemplate`).
+- **Shipped:** rather than encode every structural shape deterministically, the deterministic resolver now **fails loudly** (typed `AMBIGUOUS` / no-match) and an opt-in **AI locator** (`cli/ai-locate.ts`) reads the source to resolve the residual — `.map()` templates, reused component instances, conditional/state-dependent rendering, and DOM≠source tags (`<Link>`→`<a>`). It returns a *location only*; the deterministic transform still applies the edit. `direct`/`conditional` apply automatically; `map-template`/`instance` confirm first (they affect more than the selected element). Off by default (needs `ANTHROPIC_API_KEY`).
+- **Files:** `cli/ai-locate.ts`, `cli/batch-transform.ts` (`verifyIdentity`, candidate surfacing, `trustLocation`), `cli/config.ts`, `overlay/settings-panel.ts`.
 
 ### #5 — Reorder siblings in source via drag · **M**
 - **Root cause:** the move tool only applies a visual `transform: translate` and never emits a reorder op; source reorder exists only as a line-swap requiring direct AST siblings (`transform.ts mutateReorder`).
@@ -179,7 +179,7 @@ Each is mapped to root cause + fix + files + effort (S/M/L).
 
 **M4 — Structural editing**
 - [x] #5 reorder siblings → source — via move up/down buttons + `[` / `]` (server-side AST swap; drag was dropped as unreliable)
-- [ ] #4 `.map()` / conditional → master-component routing
+- [x] #4 `.map()` / conditional → master-component routing — via the opt-in **AI locator** (reads source to resolve maps/instances/conditionals/DOM≠source tags; deterministic apply; structural edits confirm). Builds on a hardened resolver that fails loudly instead of guessing.
 
 **Don't regress** (validated wins): canvas zoom, flexbox property controls, inline text editing.
 

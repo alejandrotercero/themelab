@@ -127,6 +127,16 @@ export const TYPOGRAPHY_DESCRIPTORS: PropertyDescriptor[] = [
       { value: "700", tailwindValue: "bold", label: "700" },
     ],
   },
+  {
+    key: "textTransform", label: "Case", group: "typography", controlType: "segmented", cssProperty: "text-transform", tailwindPrefix: "", tailwindScale: "textTransform", defaultValue: "none", standalone: true,
+    classPattern: "^(uppercase|lowercase|capitalize|normal-case)$",
+    enumValues: [
+      { value: "none", tailwindValue: "normal-case", label: "Aa" },
+      { value: "uppercase", tailwindValue: "uppercase", label: "AA" },
+      { value: "lowercase", tailwindValue: "lowercase", label: "aa" },
+      { value: "capitalize", tailwindValue: "capitalize", label: "Title" },
+    ],
+  },
   { key: "lineHeight", label: "Height", group: "typography", controlType: "number-scrub", cssProperty: "line-height", tailwindPrefix: "leading", tailwindScale: "lineHeight", defaultValue: "normal" },
   { key: "letterSpacing", label: "Spacing", group: "typography", controlType: "number-scrub", cssProperty: "letter-spacing", tailwindPrefix: "tracking", tailwindScale: "letterSpacing", defaultValue: "normal" },
   {

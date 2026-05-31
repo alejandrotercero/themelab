@@ -149,6 +149,37 @@ describe("ai-locate: executeBatchWithAi", () => {
     expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
   });
 
+  it("does not collide the cache for siblings sharing coords/class but differing in text", async () => {
+    // Four <h4 className="font-medium"> all mis-resolve to the same owner-stack
+    // coords; only their text differs. Editing a second one must resolve to ITS
+    // element, not reuse the first's cached location.
+    const src = `export default function Page() {
+  return (
+    <div>
+      <h4 className="font-medium">Application</h4>
+      <h4 className="font-medium">Version</h4>
+    </div>
+  );
+}`;
+    const { filePath } = setup("siblings.tsx", src);
+    const dir = path.dirname(filePath);
+    const lines = src.split("\n");
+    const lineOf = (t: string) => lines.findIndex((l) => l.includes(`>${t}<`)) + 1;
+    const locate: LocateFn = async (input) => {
+      const t = input.identity.text ?? "";
+      const line = lineOf(t);
+      return { filePath: input.primaryFile.path, line, col: lines[line - 1].indexOf("<h4"), kind: "direct", reasoning: t };
+    };
+    const ai = { apiKey: "k", enableAi: true, locate };
+    const resA = await executeBatchWithAi([classOp(filePath, { tagName: "h4", className: "font-medium", text: "Application" })], dir, ai);
+    const resB = await executeBatchWithAi([classOp(filePath, { tagName: "h4", className: "font-medium", text: "Version" })], dir, ai);
+    expect(resA.results[0].success).toBe(true);
+    expect(resB.results[0].success).toBe(true);
+    const out = fs.readFileSync(filePath, "utf-8");
+    expect(out).toContain('className="font-medium bg-red-500">Application'); // first element
+    expect(out).toContain('className="font-medium bg-red-500">Version'); // SECOND element, not a re-edit of the first
+  });
+
   it("keeps undo integrity across a mixed batch (resolvable + AI-resolved, same file)", async () => {
     // op A: the wrapper div, resolvable directly by id; op B: ambiguous card → AI.
     const src = `export default function App() {

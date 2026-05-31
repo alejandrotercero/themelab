@@ -386,7 +386,16 @@ const NEG_TTL_MS = 60_000;
 const locateCache = new Map<string, { result: LocateResult | null; at: number }>();
 
 function cacheKey(op: any): string {
-  return `${op.file}|${op.line}|${op.col}|${op.tagName ?? ""}|${op.className ?? ""}`;
+  // Include text + structural context, not just the (often mis-resolved,
+  // shared) owner-stack coords: sibling instances with identical
+  // file/line/col/tag/className (e.g. four <h4 className="font-medium">) would
+  // otherwise collide and all resolve to whichever was cached first.
+  return [
+    op.file, op.line, op.col,
+    op.tagName ?? "", op.className ?? "",
+    op.text ?? op.originalText ?? "",
+    op.nthOfType ?? "", op.parentClassName ?? "",
+  ].join("|");
 }
 
 // ── Orchestrator ───────────────────────────────────────────────────────────

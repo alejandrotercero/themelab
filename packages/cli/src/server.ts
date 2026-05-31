@@ -472,7 +472,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
           // (often wrong) file; the AI resolved against the target's fresh state.
           const { op, target } = proposal;
           const rerun = executeBatch(
-            [{ ...op, file: target.filePath, line: target.line, col: target.col, fileMtime: undefined, fileSize: undefined } as BatchOperation],
+            [{ ...op, file: target.filePath, line: target.line, col: target.col, fileMtime: undefined, fileSize: undefined, trustLocation: true } as BatchOperation],
             projectRoot,
           );
           const rr = rerun.results[0];

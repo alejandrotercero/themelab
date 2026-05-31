@@ -40,6 +40,26 @@ export function findJSXElementAt(j: any, root: any, line: number, col: number): 
 }
 
 /**
+ * Find the JSX element whose opening tag is on `line`, preferring an exact
+ * column but falling back to the nearest element on that line. Used for
+ * AI-resolved locations, where the column may drift a little and the tag may
+ * legitimately differ from the DOM (e.g. a <Link> that renders an <a>).
+ */
+export function findJSXElementAtLine(j: any, root: any, line: number, col: number): any | null {
+  let exact: any = null;
+  let best: any = null;
+  let bestDelta = Infinity;
+  root.find(j.JSXElement).forEach((p: any) => {
+    const loc = p.node.openingElement?.loc;
+    if (!loc || loc.start.line !== line) return;
+    if (loc.start.column === col) { exact = p; return; }
+    const d = Math.abs(loc.start.column - col);
+    if (d < bestDelta) { bestDelta = d; best = p; }
+  });
+  return exact ?? best;
+}
+
+/**
  * Reorder JSX siblings by swapping elements at the given lines.
  * Mutates the AST in place — no I/O.
  */

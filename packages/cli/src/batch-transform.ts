@@ -8,6 +8,7 @@ import type { BatchOperation } from "@react-rewrite/shared";
 import {
   parseSource,
   findJSXElementAt,
+  findJSXElementAtLine,
   mutateClassName,
   mutateTextContent,
   mutateReorder,
@@ -370,6 +371,21 @@ function resolveNodes(
         node: null, // not needed — mutateReorder resolves internally
         priority: 1, // structural
       });
+      continue;
+    }
+
+    // ── AI-resolved location: trust it ───────────────────────────────
+    // The locator already decided identity (the source tag may differ from the
+    // DOM tag, e.g. <Link> → <a>), so resolve purely by line/col and skip the
+    // identity + staleness gates that would otherwise reject it.
+    if ((op as { trustLocation?: boolean }).trustLocation) {
+      const tnode = findJSXElementAtLine(j, root, op.line, op.col);
+      const priority = op.op === "updateClass" || op.op === "updateText" || op.op === "moveSpacing" ? 0 : 1;
+      resolved.push(
+        tnode
+          ? { index, op, node: tnode, priority }
+          : { index, op, node: null, priority, error: `No JSX element found near ${op.line}:${op.col}` },
+      );
       continue;
     }
 

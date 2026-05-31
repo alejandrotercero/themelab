@@ -464,7 +464,7 @@ export async function executeBatchWithAi(
         // owner-stack pointer). Drop the staleness baseline — it was captured for
         // the original file/element; the locator just read the target fresh, so
         // a card.tsx baseline must not gate a dashboard.tsx write.
-        [{ ...op, file: answer.filePath, line: answer.line, col: answer.col, fileMtime: undefined, fileSize: undefined } as BatchOperation],
+        [{ ...op, file: answer.filePath, line: answer.line, col: answer.col, fileMtime: undefined, fileSize: undefined, trustLocation: true } as BatchOperation],
         projectRoot,
       );
       const rr = rerun.results[0];

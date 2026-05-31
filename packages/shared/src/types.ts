@@ -59,6 +59,10 @@ export type BatchOperation =
       /** Visible text of the selected element — disambiguation hint (resolver +
        *  AI locator), the same signal text edits already carry. */
       text?: string;
+      /** Internal (AI re-run): apply at line/col without identity/staleness
+       *  gates — the locator already decided identity (DOM tag may differ from
+       *  source, e.g. <Link>→<a>). Never set over the wire. */
+      trustLocation?: boolean;
       fileMtime?: number;
       fileSize?: number;
       jsxPath?: JSXStructuralPath;
@@ -91,6 +95,7 @@ export type BatchOperation =
       nthOfType?: number;
       id?: string;
       jsxKey?: string;
+      trustLocation?: boolean;
       fileMtime?: number;
       fileSize?: number;
       jsxPath?: JSXStructuralPath;

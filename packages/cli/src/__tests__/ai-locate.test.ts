@@ -205,6 +205,34 @@ describe("ai-locate: candidate surfacing (no AI)", () => {
   });
 });
 
+describe("ai-locate: trustLocation re-run", () => {
+  let cleanups: Array<() => void> = [];
+  afterEach(() => { for (const fn of cleanups) fn(); cleanups = []; });
+
+  it("applies at the AI location across a DOM≠source tag mismatch (<Link>→<a>)", () => {
+    // The nav link is a <Link> in source but an <a> in the DOM. A normal resolve
+    // finds 0 <a> candidates; once the AI points at the <Link>, the re-run must
+    // trust it and apply despite the tag mismatch — and tolerate a column that's
+    // slightly off (col 15 vs the real 14).
+    const src = `export function Sidebar() {
+  return <nav><Link href="/x" className="px-3 py-2">Home</Link></nav>;
+}`;
+    const f = writeFixture("link.tsx", src); cleanups.push(f.cleanup);
+    const res = executeBatch(
+      [{
+        op: "updateClass", file: f.filePath, line: 2, col: 15,
+        tagName: "a", className: "px-3 py-2", trustLocation: true,
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
+      }],
+      path.dirname(f.filePath),
+    );
+    expect(res.results[0].success).toBe(true);
+    const out = fs.readFileSync(f.filePath, "utf-8");
+    expect(out).toContain('className="px-3 py-2 bg-red-500"');
+    expect(out).toContain("</Link>"); // edited the Link, structure intact
+  });
+});
+
 describe("ai-locate: tool guardrails", () => {
   it("read_file rejects paths outside the project root", () => {
     const out = readFileTool({ path: "../../../../etc/passwd" }, fixturesDir);

@@ -117,27 +117,24 @@ const TOOLBAR_STYLES = `
   .generate-ai-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    justify-content: center;
     background: transparent;
-    border: 1px solid ${COLORS.accent};
+    border: 1px solid #ffffff;
     border-radius: ${RADII.sm};
-    color: ${COLORS.accent};
-    padding: 5px 10px;
-    font-size: 12px;
-    font-weight: 600;
-    font-family: ${FONT_FAMILY};
+    color: #ffffff;
+    padding: 6px;
     cursor: pointer;
     transition: background ${TRANSITIONS.fast};
   }
   .generate-ai-btn:hover:not(:disabled) {
-    background: rgba(236, 0, 63, 0.12);
+    background: rgba(255, 255, 255, 0.14);
   }
   .generate-ai-btn:disabled {
     border-color: ${COLORS.bgTertiary};
     color: ${COLORS.textTertiary};
     cursor: default;
   }
-  .generate-ai-btn svg { width: 14px; height: 14px; }
+  .generate-ai-btn svg { width: 16px; height: 16px; display: block; }
   .component-detail {
     display: flex;
     align-items: center;
@@ -230,11 +227,10 @@ export function mountToolbar(onClose: () => void): void {
       ${UNDO_SVG}
     </button>
     <span class="divider"></span>
-    <button class="generate-ai-btn" disabled title="Confirm with AI — resolve each change via the AI locator">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
-      AI
-    </button>
     <button class="generate-btn" disabled>Confirm</button>
+    <button class="generate-ai-btn" disabled title="Confirm with AI — resolve each change via the AI locator">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+    </button>
     <button class="icon-btn close-btn" title="Close ReactRewrite">
       ${CLOSE_SVG}
     </button>

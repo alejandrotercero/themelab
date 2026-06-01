@@ -190,6 +190,16 @@ export type BatchOperation =
       fileMtime?: number;
       fileSize?: number;
       jsxPath?: JSXStructuralPath;
+    }
+  | {
+      // Swap an array element (line/col point at the element) with its neighbor —
+      // reorders a .map()-rendered list by its source data. Internal: produced by
+      // the AI locator for a moveSibling on a mapped item.
+      op: "reorderArrayItem";
+      file: string;
+      line: number;
+      col: number;
+      direction: "up" | "down";
     };
 
 export type ClientMessage =
@@ -313,7 +323,7 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "reorderComplete"; success: boolean; error?: string }
-  | { type: "moveSiblingComplete"; success: boolean; error?: string }
+  | { type: "moveSiblingComplete"; success: boolean; error?: string; pending?: boolean }
   | {
       type: "siblingsList";
       siblings: Array<{ componentName: string; lineNumber: number }>;

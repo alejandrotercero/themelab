@@ -253,9 +253,13 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               undoStack.push({ id: undoId, filePath: entry.filePath, content: entry.content, afterContent: entry.afterContent, timestamp: Date.now() });
             }
             send(ws, { type: "moveSiblingComplete", success: true });
+          } else if (batchResult.proposals?.length) {
+            // AI found a list reorder (swap the source array) — confirm it.
+            emitProposals(ws, batchResult.proposals);
+            send(ws, { type: "moveSiblingComplete", success: false, pending: true });
           } else {
-            // A .map()-rendered item can't be reordered by swapping JSX — the
-            // order comes from the data array.
+            // A .map()-rendered item we couldn't map to an array can't be
+            // reordered by swapping JSX — the order comes from the data.
             const isList = opResult?.aiKind === "map-template";
             send(ws, {
               type: "moveSiblingComplete",

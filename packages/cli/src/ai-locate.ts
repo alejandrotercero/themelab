@@ -26,7 +26,7 @@ const MAX_GREP_RESULTS = 40;
 const SOURCE_EXT = new Set([".tsx", ".jsx", ".ts", ".js", ".mdx"]);
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage"]);
 
-export type LocateKind = "direct" | "map-template" | "conditional" | "instance";
+export type LocateKind = "direct" | "map-template" | "conditional" | "instance" | "array-item";
 
 export interface LocateIdentity {
   tagName?: string;
@@ -261,6 +261,7 @@ When sure, call resolve_location exactly once with the opening-tag position of t
 - 'map-template' — the single JSX template inside a .map() (editing it affects every rendered item).
 - 'conditional' — the correct branch of a conditional/ternary/state-driven render.
 - 'instance' — the relevant node inside a reused component (possibly another file).
+- 'array-item' — for REORDERING a .map()-rendered list item: return the position of the matching ELEMENT in the source data array (the object/value in the array literal that produces this item, identified by its text/label), NOT the JSX. The list is reordered by swapping array data.
 
 Be decisive: if a provided candidate or text-grep line clearly matches the element (its text and/or className line up), call resolve_location immediately — don't keep exploring. The 'col' is the 0-based column of the opening '<'. 'reasoning' is ONE sentence on WHY this is the right node (which file/element and how you identified it) — do NOT restate or guess the styling change; that is applied deterministically.`;
 
@@ -309,7 +310,7 @@ export function validateAnswer(ans: any, projectRoot: string): LocateResult | nu
   if (typeof filePath !== "string" || !isProjectFilePathSafe(filePath, projectRoot)) return null;
   if (typeof line !== "number" || line < 1) return null;
   if (typeof col !== "number" || col < 0) return null;
-  if (!["direct", "map-template", "conditional", "instance"].includes(kind)) return null;
+  if (!["direct", "map-template", "conditional", "instance", "array-item"].includes(kind)) return null;
   return { filePath, line, col, kind, reasoning: typeof reasoning === "string" ? reasoning : "" };
 }
 
@@ -407,7 +408,7 @@ function describeIntent(op: BatchOperation): string {
     case "moveSibling":
       return `The user wants to reorder the selected ${o.componentName ? `<${o.componentName}>` : `<${o.tagName ?? "element"}>`}${o.text ? ` (text: "${String(o.text).slice(0, 50)}")` : ""} ${o.direction} among its siblings. Find WHERE it is rendered:
 - If it is a LITERAL JSX element written out alongside sibling elements of the same kind (e.g. one of several <Card> spelled out in a grid), return THAT element as 'direct'.
-- If it is rendered by a .map() over an array (a list item — there is only ONE template in source), it CANNOT be reordered by moving JSX (the order comes from the data). Return kind 'map-template' at the template element.
+- If it is rendered by a .map() over an array (a list item), the order comes from the DATA. Find the matching element in the source array literal (the object whose label/text is "${String(o.text ?? "").slice(0, 40)}") and return ITS position with kind 'array-item' — we'll swap the array data. If you can't find the array, return 'map-template'.
 - NEVER climb up to a parent/ancestor component and return that instead — moving a parent (e.g. the whole <Sidebar/>) is never the intent.`;
     default:
       return `Edit the selected <${o.tagName ?? "element"}> (${op.op}).`;
@@ -507,6 +508,14 @@ function applyAnswer(
   answer: LocateResult,
   projectRoot: string,
 ): { result?: OperationResult; undoEntries?: AiBatchResult["undoEntries"]; proposal?: AiProposal } {
+  // Reordering a .map() list → swap the source array data. Editing data is a
+  // bit higher-stakes, so always confirm — surface it as a reorderArrayItem
+  // proposal at the array element's location.
+  if (answer.kind === "array-item" && op.op === "moveSibling") {
+    const arrayOp = { op: "reorderArrayItem", file: answer.filePath, line: answer.line, col: answer.col, direction: op.direction } as BatchOperation;
+    return { proposal: { index, op: arrayOp, target: answer, intent: `Reorder the list (swap the array item ${op.direction})` } };
+  }
+
   const autoApply = answer.kind === "direct" || answer.kind === "conditional";
   if (autoApply) {
     const rerun = executeBatch(

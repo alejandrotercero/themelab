@@ -421,6 +421,7 @@ function attachMoveResultListener(): void {
   moveResultListenerAttached = true;
   onMessage((msg) => {
     if (msg.type !== "moveSiblingComplete") return;
+    if (msg.pending) { lastMoveDir = null; return; } // a confirm proposal is coming
     if (msg.success) {
       showToast(lastMoveDir === "down" ? "Moved down" : "Moved up");
       // The source changed; HMR will re-render. Drop the now-stale selection

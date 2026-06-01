@@ -60,6 +60,37 @@ export function findJSXElementAtLine(j: any, root: any, line: number, col: numbe
 }
 
 /**
+ * Swap the array element at line/col with its neighbor (up = previous, down =
+ * next). Used to reorder a .map()-rendered list by its source data array.
+ * Mutates the AST in place. Throws if the element or a neighbor isn't found.
+ */
+export function swapArrayElementAt(j: any, root: any, line: number, col: number, direction: "up" | "down"): void {
+  let arr: any = null;
+  let idx = -1;
+  root.find(j.ArrayExpression).forEach((p: any) => {
+    const els = p.node.elements ?? [];
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i];
+      const loc = el?.loc;
+      if (loc && loc.start.line <= line && line <= loc.end.line) {
+        arr = p.node;
+        idx = i;
+      }
+    }
+  });
+  if (!arr || idx < 0) {
+    throw new Error("Could not find the array element to reorder.");
+  }
+  const swap = direction === "up" ? idx - 1 : idx + 1;
+  if (swap < 0 || swap >= arr.elements.length) {
+    throw new Error(direction === "up" ? "Already the first item in the list." : "Already the last item in the list.");
+  }
+  const tmp = arr.elements[idx];
+  arr.elements[idx] = arr.elements[swap];
+  arr.elements[swap] = tmp;
+}
+
+/**
  * Reorder JSX siblings by swapping elements at the given lines.
  * Mutates the AST in place — no I/O.
  */

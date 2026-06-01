@@ -13,6 +13,7 @@ import {
   mutateTextContent,
   mutateReorder,
   swapWithAdjacentSibling,
+  swapArrayElementAt,
   type ClassNameUpdate,
 } from "./transform.js";
 import { applyMdxTextEdit, isMdxTextFile } from "./mdx-text.js";
@@ -362,13 +363,12 @@ function resolveNodes(
   const resolved: ResolvedOp[] = [];
 
   for (const { index, op } of ops) {
-    if (op.op === "reorder") {
-      // Reorder uses line-based resolution (handled during mutation) and carries
-      // no staleness baseline — resolve it before the staleness gate below.
+    if (op.op === "reorder" || op.op === "reorderArrayItem") {
+      // Line-based resolution (handled during mutation), no staleness baseline.
       resolved.push({
         index,
         op,
-        node: null, // not needed — mutateReorder resolves internally
+        node: null, // not needed — the mutation resolves by line internally
         priority: 1, // structural
       });
       continue;
@@ -637,7 +637,7 @@ function coalesceOps(resolved: ResolvedOp[]): ResolvedOp[] {
       // Failed resolution — keep as-is
       continue;
     }
-    if (rop.op.op === "reorder" || rop.op.op === "deleteElement" || rop.op.op === "moveSibling") {
+    if (rop.op.op === "reorder" || rop.op.op === "deleteElement" || rop.op.op === "moveSibling" || rop.op.op === "reorderArrayItem") {
       // Structural ops can't be coalesced
       continue;
     }
@@ -713,6 +713,15 @@ function applyOp(j: any, root: any, rop: ResolvedOp, source: string): string | u
 
     case "reorder": {
       mutateReorder(j, root, op.fromLine, op.toLine);
+      return undefined;
+    }
+
+    case "reorderArrayItem": {
+      try {
+        swapArrayElementAt(j, root, op.line, op.col, op.direction);
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
       return undefined;
     }
 

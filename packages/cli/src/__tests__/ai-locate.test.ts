@@ -305,6 +305,50 @@ export default function Dash() {
     expect(fs.readFileSync(filePath, "utf-8")).toBe(before); // nothing moved
   });
 
+  it("reorderArrayItem swaps adjacent array elements", () => {
+    const src = `export const links = [
+  { href: "/", label: "Dashboard" },
+  { href: "/users", label: "Users" },
+  { href: "/parts", label: "Parts" },
+];`;
+    const f = writeFixture("arr.tsx", src); cleanups.push(f.cleanup);
+    const usersLine = src.split("\n").findIndex((l) => l.includes('"Users"')) + 1;
+    const res = executeBatch(
+      [{ op: "reorderArrayItem", file: f.filePath, line: usersLine, col: src.split("\n")[usersLine - 1].indexOf("{"), direction: "down" }],
+      path.dirname(f.filePath),
+    );
+    expect(res.results[0].success).toBe(true);
+    const out = fs.readFileSync(f.filePath, "utf-8");
+    expect(out.indexOf("Parts")).toBeLessThan(out.indexOf("Users")); // Users moved down past Parts
+  });
+
+  it("moveSibling on a mapped item proposes an array reorder, applied on confirm", async () => {
+    const src = `export function Nav() {
+  const links = [
+    { href: "/", label: "Dashboard" },
+    { href: "/users", label: "Users" },
+  ];
+  return <nav>{links.map((l) => <a key={l.href} className="link">{l.label}</a>)}</nav>;
+}`;
+    const f = setup("navarr.tsx", src);
+    const before = fs.readFileSync(f.filePath, "utf-8");
+    const lines = src.split("\n");
+    const arrLine = lines.findIndex((l) => l.includes('"Users"')) + 1;
+    const locate: LocateFn = async (input) => ({ filePath: input.primaryFile.path, line: arrLine, col: lines[arrLine - 1].indexOf("{"), kind: "array-item", reasoning: "the Users entry in the links array" });
+    const op = { op: "moveSibling", file: f.filePath, line: 999, col: 0, direction: "up", tagName: "a", className: "link", text: "Users" } as BatchOperation;
+    const res = await executeBatchWithAi([op], path.dirname(f.filePath), { apiKey: "k", enableAi: true, locate });
+    expect(res.results[0].success).toBe(false); // proposal, not auto-applied
+    expect(res.proposals?.[0].op.op).toBe("reorderArrayItem");
+    expect(fs.readFileSync(f.filePath, "utf-8")).toBe(before); // unchanged until confirm
+
+    // Simulate confirm: apply the proposal's op at the resolved location.
+    const p = res.proposals![0];
+    const applied = executeBatch([{ ...p.op, file: p.target.filePath, line: p.target.line, col: p.target.col } as BatchOperation], path.dirname(f.filePath));
+    expect(applied.results[0].success).toBe(true);
+    const out = fs.readFileSync(f.filePath, "utf-8");
+    expect(out.indexOf("Users")).toBeLessThan(out.indexOf("Dashboard")); // Users moved up
+  });
+
   it("keeps undo integrity across a mixed batch (resolvable + AI-resolved, same file)", async () => {
     // op A: the wrapper div, resolvable directly by id; op B: ambiguous card → AI.
     const src = `export default function App() {

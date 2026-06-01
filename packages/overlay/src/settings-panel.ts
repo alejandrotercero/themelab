@@ -316,6 +316,7 @@ function showProposal(msg: Extract<import("@react-rewrite/shared").ServerMessage
     "map-template": "Map template — affects all rendered items",
     conditional: "Conditional branch",
     instance: "Inside a reused component",
+    "array-item": "Reorders the source array (the list data)",
   };
   confirmEl.innerHTML =
     `<div class="rr-confirm-title">AI located this element</div>` +

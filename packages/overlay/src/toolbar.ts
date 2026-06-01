@@ -119,15 +119,15 @@ const TOOLBAR_STYLES = `
     align-items: center;
     justify-content: center;
     background: transparent;
-    border: 1px solid #ffffff;
+    border: 1px solid ${COLORS.accent};
     border-radius: ${RADII.sm};
-    color: #ffffff;
+    color: ${COLORS.accent};
     padding: 6px;
     cursor: pointer;
     transition: background ${TRANSITIONS.fast};
   }
   .generate-ai-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(236, 0, 63, 0.14);
   }
   .generate-ai-btn:disabled {
     border-color: ${COLORS.bgTertiary};
@@ -229,7 +229,7 @@ export function mountToolbar(onClose: () => void): void {
     <span class="divider"></span>
     <button class="generate-btn" disabled>Confirm</button>
     <button class="generate-ai-btn" disabled title="Confirm with AI — resolve each change via the AI locator">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
     </button>
     <button class="icon-btn close-btn" title="Close ReactRewrite">
       ${CLOSE_SVG}

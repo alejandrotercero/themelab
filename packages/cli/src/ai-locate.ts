@@ -405,7 +405,10 @@ function describeIntent(op: BatchOperation): string {
     case "moveSpacing":
       return `Adjust spacing (${o.axis}-axis) on the selected <${o.tagName ?? "element"}>.`;
     case "moveSibling":
-      return `Find the JSX USAGE of the selected ${o.componentName ? `<${o.componentName}>` : `<${o.tagName ?? "element"}>`}${o.text ? ` (text: "${String(o.text).slice(0, 50)}")` : ""} that sits among SIBLING elements (e.g. one <Card> of several in a grid) — it is about to be moved ${o.direction}. Return that usage as 'direct'; do NOT return the component's internal root (a primitive like card.tsx that has no siblings).`;
+      return `The user wants to reorder the selected ${o.componentName ? `<${o.componentName}>` : `<${o.tagName ?? "element"}>`}${o.text ? ` (text: "${String(o.text).slice(0, 50)}")` : ""} ${o.direction} among its siblings. Find WHERE it is rendered:
+- If it is a LITERAL JSX element written out alongside sibling elements of the same kind (e.g. one of several <Card> spelled out in a grid), return THAT element as 'direct'.
+- If it is rendered by a .map() over an array (a list item — there is only ONE template in source), it CANNOT be reordered by moving JSX (the order comes from the data). Return kind 'map-template' at the template element.
+- NEVER climb up to a parent/ancestor component and return that instead — moving a parent (e.g. the whole <Sidebar/>) is never the intent.`;
     default:
       return `Edit the selected <${o.tagName ?? "element"}> (${op.op}).`;
   }

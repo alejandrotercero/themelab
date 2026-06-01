@@ -284,6 +284,27 @@ export default function Dash() {
     expect(fs.readFileSync(card.filePath, "utf-8")).toBe(cardSrc); // primitive untouched
   });
 
+  it("moveSibling on a .map() item is reported (map-template), nothing moved", async () => {
+    const src = `export function Nav() {
+  return (
+    <nav>
+      {links.map((l) => <a key={l.href} className="link">{l.label}</a>)}
+      <div className="footer">Logout</div>
+    </nav>
+  );
+}`;
+    const { filePath } = setup("mapmove.tsx", src);
+    const before = fs.readFileSync(filePath, "utf-8");
+    const lines = src.split("\n");
+    const aLine = lines.findIndex((l) => l.includes("<a ")) + 1;
+    const locate: LocateFn = async (input) => ({ filePath: input.primaryFile.path, line: aLine, col: lines[aLine - 1].indexOf("<a"), kind: "map-template", reasoning: "the mapped <a> template — not JSX-reorderable" });
+    const op = { op: "moveSibling", file: filePath, line: 999, col: 0, direction: "down", tagName: "a", className: "link", text: "Users" } as BatchOperation;
+    const res = await executeBatchWithAi([op], path.dirname(filePath), { apiKey: "k", enableAi: true, locate });
+    expect(res.results[0].success).toBe(false);
+    expect(res.results[0].aiKind).toBe("map-template"); // surfaced as a list item
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(before); // nothing moved
+  });
+
   it("keeps undo integrity across a mixed batch (resolvable + AI-resolved, same file)", async () => {
     // op A: the wrapper div, resolvable directly by id; op B: ambiguous card → AI.
     const src = `export default function App() {

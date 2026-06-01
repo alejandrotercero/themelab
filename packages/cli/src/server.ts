@@ -254,7 +254,16 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             }
             send(ws, { type: "moveSiblingComplete", success: true });
           } else {
-            send(ws, { type: "moveSiblingComplete", success: false, error: opResult?.error || "Unknown error" });
+            // A .map()-rendered item can't be reordered by swapping JSX — the
+            // order comes from the data array.
+            const isList = opResult?.aiKind === "map-template";
+            send(ws, {
+              type: "moveSiblingComplete",
+              success: false,
+              error: isList
+                ? "This item is rendered from a list (.map) — reorder the array data to change its order, not the layout."
+                : opResult?.error || "Unknown error",
+            });
           }
           break;
         }

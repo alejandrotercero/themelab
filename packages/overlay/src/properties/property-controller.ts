@@ -489,6 +489,7 @@ function addPendingFromCurrentState(): void {
       nthOfType: computeNthOfType(el),
       id: el.id || undefined,
       text: getElementVisibleText(el).trim().slice(0, 80) || undefined,
+      contextText: captureContextText(el),
       jsxPath: state.componentInfo?.jsxPath,
       fileMtime: state.componentInfo?.fileMtime,
       fileSize: state.componentInfo?.fileSize,
@@ -680,6 +681,23 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
       lastCommitSnapshot = null;
     }
   });
+}
+
+/**
+ * Nearby static text to anchor the AI locator when the element's own text is a
+ * computed value (e.g. {count}). Walk up a few levels and take the richest
+ * ancestor text, so labels like a card's title ("Total Parts") are available.
+ */
+function captureContextText(el: HTMLElement): string | undefined {
+  const own = getElementVisibleText(el).trim();
+  let cur: HTMLElement | null = el.parentElement;
+  let best = "";
+  for (let i = 0; i < 4 && cur; i++, cur = cur.parentElement) {
+    const t = getElementVisibleText(cur).replace(/\s+/g, " ").trim();
+    if (t.length > best.length) best = t;
+    if (best.length > own.length + 12) break; // enough surrounding context
+  }
+  return best.length > own.length + 2 ? best.slice(0, 160) : undefined;
 }
 
 /**

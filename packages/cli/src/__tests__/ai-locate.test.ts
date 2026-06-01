@@ -309,6 +309,42 @@ describe("ai-locate: trustLocation re-run", () => {
   });
 });
 
+describe("ai-locate: read_file window + computed-value grep", () => {
+  let cleanups: Array<() => void> = [];
+  afterEach(() => { for (const fn of cleanups) fn(); cleanups = []; });
+
+  it("read_file honors offset/limit and keeps real line numbers", () => {
+    const f = writeFixture("big.tsx", Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join("\n"));
+    cleanups.push(f.cleanup);
+    const out = readFileTool({ path: path.basename(f.filePath), offset: 10, limit: 3 }, path.dirname(f.filePath));
+    expect(out).toContain("10: line 10");
+    expect(out).toContain("12: line 12");
+    expect(out).not.toContain("1: line 1\n"); // not dumped from the top
+    expect(out).toMatch(/more lines/); // tail hint for paging
+  });
+
+  it("seeds the locator via a surrounding label when the element text is computed", async () => {
+    const src = `export default function Dash() {
+  return (
+    <div>
+      <h3 className="text-sm font-medium">Total Parts XYZ</h3>
+      <div className="text-base">{count}</div>
+    </div>
+  );
+}`;
+    const f = writeFixture("computed.tsx", src); cleanups.push(f.cleanup);
+    let seen: Array<{ text: string }> | undefined;
+    const locate: LocateFn = async (input) => { seen = input.textMatches; return null; };
+    const op = {
+      op: "updateClass", file: f.filePath, line: 999, col: 0,
+      tagName: "div", className: "text-base", text: "20", contextText: "Total Parts XYZ 20",
+      updates: [{ tailwindPrefix: "text", tailwindToken: "2xl", value: "" }],
+    } as BatchOperation;
+    await executeBatchWithAi([op], path.dirname(f.filePath), { apiKey: "k", enableAi: true, forceAi: true, locate });
+    expect(seen?.some((m) => m.text.includes("Total Parts XYZ"))).toBe(true);
+  });
+});
+
 describe("ai-locate: tool guardrails", () => {
   it("read_file rejects paths outside the project root", () => {
     const out = readFileTool({ path: "../../../../etc/passwd" }, fixturesDir);

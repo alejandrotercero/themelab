@@ -36,6 +36,8 @@ export interface LocateIdentity {
   nthOfType?: number;
   componentName?: string;
   text?: string;
+  /** Nearby static text (ancestor labels) — anchors computed-value elements. */
+  contextText?: string;
 }
 
 export interface LocateInput {
@@ -108,14 +110,20 @@ function numbered(content: string): string {
     .join("\n");
 }
 
-export function readFileTool(input: { path?: string }, projectRoot: string): string {
+export function readFileTool(input: { path?: string; offset?: number; limit?: number }, projectRoot: string): string {
   const rel = input?.path;
   if (!rel || !isProjectFilePathSafe(rel, projectRoot)) return "ERROR: path outside project";
   const resolved = resolveProjectFilePath(rel, projectRoot);
   if (!resolved) return "ERROR: could not resolve path";
   try {
-    const content = fs.readFileSync(resolved, "utf-8");
-    return numbered(content.slice(0, 20000));
+    const all = fs.readFileSync(resolved, "utf-8").split("\n");
+    const start = input.offset && input.offset > 0 ? Math.floor(input.offset) : 1; // 1-based
+    const limit = input.limit && input.limit > 0 ? Math.floor(input.limit) : 500;
+    const end = Math.min(all.length, start - 1 + limit);
+    // Number with REAL line numbers so resolve_location lines stay correct.
+    const body = all.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join("\n");
+    const tail = end < all.length ? `\n…[${all.length - end} more lines — pass offset:${end + 1} to continue]` : "";
+    return body.slice(0, 20000) + tail;
   } catch {
     return "ERROR: could not read file";
   }
@@ -193,10 +201,14 @@ function grepTool(input: { query?: string }, projectRoot: string): string {
 const TOOLS = [
   {
     name: "read_file",
-    description: "Read a project source file (project-relative path). Returns numbered lines.",
+    description: "Read a project source file (project-relative path). Returns numbered lines. Use offset (1-based start line) + limit to read a window of a large file.",
     input_schema: {
       type: "object" as const,
-      properties: { path: { type: "string" } },
+      properties: {
+        path: { type: "string" },
+        offset: { type: "number", description: "1-based start line (default 1)" },
+        limit: { type: "number", description: "max lines to return (default 500)" },
+      },
       required: ["path"],
     },
   },
@@ -261,6 +273,7 @@ function buildSeedMessage(input: LocateInput): string {
     id.parentTagName ? `  parent: <${id.parentTagName}>${id.parentClassName ? ` class="${id.parentClassName}"` : ""}` : "",
     id.nthOfType != null ? `  nthOfType: ${id.nthOfType}` : "",
     id.text ? `  text: "${id.text.slice(0, 80)}"` : "",
+    id.contextText ? `  surrounding text: "${id.contextText.slice(0, 160)}"  (the element's own text may be a COMPUTED value like {count}; use these nearby static labels — e.g. a card title — to find the right one of several identical elements)` : "",
   ].filter(Boolean).join("\n");
 
   const cands = input.candidates.length
@@ -328,7 +341,7 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
     try {
       resp = await client.messages.create({
         model: model || HAIKU_MODEL,
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: SYSTEM_PROMPT,
         tools: TOOLS,
         messages,
@@ -406,6 +419,7 @@ function identityOf(op: BatchOperation): LocateIdentity {
     nthOfType: o.nthOfType,
     componentName: o.componentName,
     text: o.text ?? o.originalText,
+    contextText: o.contextText,
   };
 }
 
@@ -444,11 +458,24 @@ function cacheKey(op: any): string {
   ].join("|");
 }
 
-/** Grep the project for the element's text, ranking element-like lines first. */
+/** Pick the most useful grep query: the element's own text if it's a real label,
+ *  otherwise a distinctive static phrase from the surrounding text (when the own
+ *  text is a computed value like {count} or "20%"). */
+function pickGrepQuery(id: LocateIdentity): string | undefined {
+  const text = (id.text ?? "").trim();
+  if (text.length >= 3 && /[A-Za-z]/.test(text)) return text;
+  const phrases = (id.contextText ?? "").match(/[A-Za-z][A-Za-z ]{2,}[A-Za-z]/g);
+  if (phrases && phrases.length) return phrases.sort((a, b) => b.length - a.length)[0].trim();
+  return undefined;
+}
+
+/** Grep the project for the element's text (or a surrounding label), ranking
+ *  element-like lines first. */
 function computeTextMatches(id: LocateIdentity, projectRoot: string): Array<{ file: string; line: number; text: string }> | undefined {
-  if (!id.text || id.text.length < 3) return undefined;
+  const query = pickGrepQuery(id);
+  if (!query || query.length < 3) return undefined;
   const classTokens = (id.className ?? "").split(/\s+/).filter(Boolean);
-  const found = grepProject(escapeRegExp(id.text), projectRoot, 60);
+  const found = grepProject(escapeRegExp(query), projectRoot, 60);
   const score = (m: { text: string }) =>
     (id.tagName && m.text.includes(`<${id.tagName}`) ? 2 : 0) +
     (classTokens.some((c) => m.text.includes(c)) ? 1 : 0);

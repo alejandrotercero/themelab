@@ -404,6 +404,8 @@ function describeIntent(op: BatchOperation): string {
       return `Change text "${(o.originalText ?? "").slice(0, 60)}" → "${(o.newText ?? "").slice(0, 60)}".`;
     case "moveSpacing":
       return `Adjust spacing (${o.axis}-axis) on the selected <${o.tagName ?? "element"}>.`;
+    case "moveSibling":
+      return `Locate the selected <${o.tagName ?? "element"}>${o.text ? ` (text: "${String(o.text).slice(0, 40)}")` : ""} — it is about to be moved ${o.direction} among its siblings.`;
     default:
       return `Edit the selected <${o.tagName ?? "element"}> (${op.op}).`;
   }

@@ -184,6 +184,9 @@ export type BatchOperation =
       nthOfType?: number;
       id?: string;
       jsxKey?: string;
+      text?: string;
+      contextText?: string;
+      trustLocation?: boolean;
       fileMtime?: number;
       fileSize?: number;
       jsxPath?: JSXStructuralPath;
@@ -213,6 +216,8 @@ export type ClientMessage =
       nthOfType?: number;
       elementId?: string;
       jsxKey?: string;
+      text?: string;
+      contextText?: string;
       jsxPath?: JSXStructuralPath;
     }
   | { type: "undo" }

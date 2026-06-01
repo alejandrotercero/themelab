@@ -219,7 +219,11 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
           // chain (jsxPath → line:col → fuzzy className/nth), the same way class
           // edits land on the right node. A raw line match was too brittle.
           logger.debug(`[moveSibling] ${msg.filePath}:${msg.lineNumber} dir=${msg.direction} tag=${msg.tagName} class="${(msg.className || "").slice(0, 40)}"`);
-          const batchResult = executeBatch(
+          // Route through the AI orchestrator so a mis-resolved move (e.g. owner
+          // stack points at card.tsx) can be located by the AI fallback. A direct
+          // resolution applies; a map-template/instance resolution can't be
+          // reordered (data-driven), so it just reports failure (no proposal).
+          const batchResult = await executeBatchWithAi(
             [{
               op: "moveSibling" as const,
               file: msg.filePath,
@@ -234,9 +238,12 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               nthOfType: msg.nthOfType,
               id: msg.elementId,
               jsxKey: msg.jsxKey,
+              text: msg.text,
+              contextText: msg.contextText,
               jsxPath: msg.jsxPath,
             }],
             projectRoot,
+            aiOptionsFor(ws),
           );
 
           const opResult = batchResult.results[0];

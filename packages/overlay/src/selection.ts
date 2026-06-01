@@ -395,8 +395,24 @@ export function moveSelectedSibling(dir: MoveDirection): void {
     nthOfType,
     elementId: el.id || undefined,
     jsxKey,
+    text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80) || undefined,
+    contextText: moveContextText(el),
     jsxPath: currentSelection.jsxPath,
   });
+}
+
+/** Nearby static text (ancestor labels) to anchor the AI locator if the moved
+ *  element's own text is computed/empty — mirrors the property panel. */
+function moveContextText(el: HTMLElement): string | undefined {
+  const own = (el.textContent || "").trim();
+  let cur: HTMLElement | null = el.parentElement;
+  let best = "";
+  for (let i = 0; i < 4 && cur; i++, cur = cur.parentElement) {
+    const t = (cur.textContent || "").replace(/\s+/g, " ").trim();
+    if (t.length > best.length) best = t;
+    if (best.length > own.length + 12) break;
+  }
+  return best.length > own.length + 2 ? best.slice(0, 160) : undefined;
 }
 
 let moveResultListenerAttached = false;

@@ -225,6 +225,32 @@ describe("ai-locate: executeBatchWithAi", () => {
     expect(out).toContain('className="font-medium bg-red-500">Version'); // SECOND element, not a re-edit of the first
   });
 
+  it("moveSibling escalates to the AI (cross-file) and applies the swap", async () => {
+    const pageSrc = `export default function Page() { return <div><Items/></div>; }`;
+    const realSrc = `export function Items() {
+  return (
+    <ul>
+      <li className="row">Alpha</li>
+      <li className="row">Beta</li>
+    </ul>
+  );
+}`;
+    const page = setup("mvpage.tsx", pageSrc);
+    const real = setup("mvitems.tsx", realSrc);
+    const dir = path.dirname(page.filePath);
+    const rLines = realSrc.split("\n");
+    const betaLine = rLines.findIndex((l) => l.includes("Beta")) + 1;
+    const realRel = path.basename(real.filePath);
+    const locate: LocateFn = async () => ({ filePath: realRel, line: betaLine, col: rLines[betaLine - 1].indexOf("<li"), kind: "direct", reasoning: "Beta li" });
+    // owner stack pointed at page.tsx (no <li>) → 0 candidates → escalate
+    const op = { op: "moveSibling", file: page.filePath, line: 999, col: 0, direction: "up", tagName: "li", className: "row", text: "Beta" } as BatchOperation;
+    const res = await executeBatchWithAi([op], dir, { apiKey: "k", enableAi: true, locate });
+    expect(res.results[0].success).toBe(true);
+    const out = fs.readFileSync(real.filePath, "utf-8");
+    expect(out.indexOf("Beta")).toBeLessThan(out.indexOf("Alpha")); // Beta moved up
+    expect(fs.readFileSync(page.filePath, "utf-8")).toBe(pageSrc); // page untouched
+  });
+
   it("keeps undo integrity across a mixed batch (resolvable + AI-resolved, same file)", async () => {
     // op A: the wrapper div, resolvable directly by id; op B: ambiguous card → AI.
     const src = `export default function App() {

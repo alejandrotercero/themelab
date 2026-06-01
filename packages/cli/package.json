@@ -36,7 +36,7 @@
     "bin"
   ],
   "scripts": {
-    "build": "tsc && cp ../overlay/dist/overlay.js dist/overlay.js && mkdir -p dist/fonts && cp src/fonts/*.woff2 dist/fonts/",
+    "build": "node ../../scripts/embed-overlay.mjs && tsc && cp ../overlay/dist/overlay.js dist/overlay.js",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",

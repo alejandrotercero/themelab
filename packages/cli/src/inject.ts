@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import httpProxy from "http-proxy";
 import { WebSocket } from "ws";
+import { OVERLAY_JS } from "./generated/overlay-bundle.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,14 +29,18 @@ export function createProxyServer(
     selfHandleResponse: true,
   });
 
-  const bundledOverlayPath = path.join(__dirname, "overlay.js");
+  // Locate the overlay bundle. Prefer the on-disk copy (workspace build → hot
+  // reload in dev; the published package ships it next to this file), and fall
+  // back to the constant embedded at build time when no file exists — the case
+  // for a standalone compiled binary, where there is no overlay.js on disk.
   const workspaceOverlayPath = path.resolve(__dirname, "../../overlay/dist/overlay.js");
+  const bundledOverlayPath = path.join(__dirname, "overlay.js");
   const overlayPath = fs.existsSync(workspaceOverlayPath)
     ? workspaceOverlayPath
-    : bundledOverlayPath;
+    : fs.existsSync(bundledOverlayPath)
+      ? bundledOverlayPath
+      : null;
   let upstreamDown = false;
-
-  const fontsDir = path.join(__dirname, "fonts");
 
   const server = http.createServer((req, res) => {
     // Normalize URL to prevent path traversal
@@ -51,25 +56,12 @@ export function createProxyServer(
         "Pragma": "no-cache",
         "Expires": "0",
       });
-      fs.createReadStream(overlayPath).pipe(res);
-      return;
-    }
-
-    // Serve font files
-    if (normalizedUrl === "/__react-rewrite/inter-regular.woff2") {
-      res.writeHead(200, {
-        "Content-Type": "font/woff2",
-        "Cache-Control": "public, max-age=31536000, immutable",
-      });
-      fs.createReadStream(path.join(fontsDir, "inter-regular.woff2")).pipe(res);
-      return;
-    }
-    if (normalizedUrl === "/__react-rewrite/inter-semibold.woff2") {
-      res.writeHead(200, {
-        "Content-Type": "font/woff2",
-        "Cache-Control": "public, max-age=31536000, immutable",
-      });
-      fs.createReadStream(path.join(fontsDir, "inter-semibold.woff2")).pipe(res);
+      // Disk copy when present (fresh on every reload in dev), else the embedded bundle.
+      if (overlayPath) {
+        fs.createReadStream(overlayPath).pipe(res);
+      } else {
+        res.end(OVERLAY_JS);
+      }
       return;
     }
 
@@ -114,10 +106,15 @@ export function createProxyServer(
       }
 
 
-      // Update content-length and remove content-encoding
+      // We've buffered the whole body and are re-sending it with an explicit
+      // length, so strip the streaming/encoding headers from upstream. Leaving
+      // `transfer-encoding: chunked` alongside our `content-length` is a malformed
+      // (conflicting) response: Node tolerated it, but Bun emits an empty body —
+      // a blank page. Drop it (and content-encoding, since the body is now plain).
       const headers = { ...proxyRes.headers };
       delete headers["content-encoding"];
       delete headers["content-length"];
+      delete headers["transfer-encoding"];
       headers["content-length"] = String(Buffer.byteLength(body));
 
       outRes.writeHead(proxyRes.statusCode || 200, headers);

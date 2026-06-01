@@ -88,23 +88,6 @@ export function ensurePanelFont(): void {
   }
 }
 
-export const FONT_FACE_CSS = `
-  @font-face {
-    font-family: 'Inter';
-    font-style: normal;
-    font-weight: 400;
-    font-display: swap;
-    src: url('/__react-rewrite/inter-regular.woff2') format('woff2');
-  }
-  @font-face {
-    font-family: 'Inter';
-    font-style: normal;
-    font-weight: 600;
-    font-display: swap;
-    src: url('/__react-rewrite/inter-semibold.woff2') format('woff2');
-  }
-`;
-
 // --- Cursor SVG Generators ---
 
 /** Color tool cursor: eyedropper */

@@ -1,6 +1,7 @@
 // packages/overlay/src/toolbar.ts
 import { send, onMessage, setOnMaxRetries, setOnTabTakenOver, setOnReconnected, manualReconnect } from "./bridge.js";
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY, FONT_FACE_CSS } from "./design-tokens.js";
+import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
+import { isTextInput, isEditableFocused } from "./utils/active-element.js";
 let shadowRoot: ShadowRoot | null = null;
 let undoBtn: HTMLButtonElement | null = null;
 let undoCount = 0;
@@ -12,6 +13,8 @@ let onGenerate: (() => void) | null = null;
 let generateAiBtn: HTMLButtonElement | null = null;
 let onGenerateAi: (() => void) | null = null;
 let onCanvasUndo: (() => boolean) | null = null;
+let host: HTMLDivElement | null = null;
+let reattachObserver: MutationObserver | null = null;
 
 const UNDO_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.18,4,8.6,5.44,6.06,8h9.71a6,6,0,0,1,0,12h-2V18h2a4,4,0,0,0,0-8H6.06L8.6,12.51,7.18,13.92,2.23,9Z"></path></svg>`;
 const CLOSE_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.9997 10.5865L16.9495 5.63672L18.3637 7.05093L13.4139 12.0007L18.3637 16.9504L16.9495 18.3646L11.9997 13.4149L7.04996 18.3646L5.63574 16.9504L10.5855 12.0007L5.63574 7.05093L7.04996 5.63672L11.9997 10.5865Z"></path></svg>`;
@@ -21,7 +24,6 @@ const TOOLBAR_STYLES = `
   :host {
     all: initial;
   }
-  ${FONT_FACE_CSS}
   .toolbar {
     position: fixed;
     bottom: 16px;
@@ -199,18 +201,52 @@ const TOOLBAR_STYLES = `
   }
 `;
 
+// Select the whole value when a text field in the overlay is first focused, so a
+// single click is enough to replace it. The mouseup that follows the focusing
+// click would normally collapse the selection to a caret — we suppress it once.
+function wireInputSelectAll(root: ShadowRoot): void {
+  let armed = false;
+  root.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (isTextInput(t as Element)) {
+      armed = true;
+      (t as HTMLInputElement).select();
+    }
+  });
+  root.addEventListener("mouseup", (e) => {
+    if (armed && isTextInput(e.target as Element)) {
+      e.preventDefault(); // keep the focus-time selection instead of collapsing to a caret
+    }
+    armed = false;
+  });
+}
+
 export function mountToolbar(onClose: () => void): void {
-  const host = document.createElement("div");
-  host.id = "react-rewrite-root";
+  const hostEl = document.createElement("div");
+  hostEl.id = "react-rewrite-root";
+  host = hostEl;
   // Mount on <html>, not <body>. Frameworks that own <body> via React (Next.js
   // App Router) reconcile its children and can pull the overlay into the
   // infinite-canvas transform wrapper — which reparents our fixed UI under a
   // transformed ancestor, shifting/clipping the whole toolbar. <html> is outside
   // React's body subtree and outside the canvas wrapper, so fixed positioning
   // stays viewport-relative no matter what the app does to <body>.
-  document.documentElement.appendChild(host);
+  document.documentElement.appendChild(hostEl);
 
-  shadowRoot = host.attachShadow({ mode: "open" });
+  // Survive React hydration regeneration. In Next.js App Router (full-document
+  // hydration) — and especially when the app has a hydration mismatch, which makes
+  // React discard the server DOM and re-render the whole tree on the client —
+  // React rebuilds <html>'s children from its vdom and removes any node it didn't
+  // create, including this host. The overlay would mount, then vanish the instant
+  // the app finishes loading. Re-attach the host whenever it's detached; the node
+  // (and its shadow DOM) is reused, so all overlay state and listeners persist.
+  reattachObserver = new MutationObserver(() => {
+    if (host && !host.isConnected) document.documentElement.appendChild(host);
+  });
+  reattachObserver.observe(document.documentElement, { childList: true });
+
+  shadowRoot = hostEl.attachShadow({ mode: "open" });
+  wireInputSelectAll(shadowRoot);
 
   const style = document.createElement("style");
   style.textContent = TOOLBAR_STYLES;
@@ -343,8 +379,11 @@ export function mountToolbar(onClose: () => void): void {
 
 
 export function destroyToolbar(): void {
-  const host = document.getElementById("react-rewrite-root");
-  if (host) host.remove();
+  // Stop the re-attach guard before removing, or it would immediately re-add the host.
+  reattachObserver?.disconnect();
+  reattachObserver = null;
+  (host ?? document.getElementById("react-rewrite-root"))?.remove();
+  host = null;
   shadowRoot = null;
   undoBtn = null;
 }
@@ -406,6 +445,6 @@ export function showToast(
 }
 
 function isTextInputFocused(): boolean {
-  const active = document.activeElement;
-  return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+  // Resolve through the overlay's shadow DOM, not just document.activeElement.
+  return isEditableFocused();
 }

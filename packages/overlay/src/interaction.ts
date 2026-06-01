@@ -4,6 +4,7 @@ import { getCachedElement, setCachedElement, clearElementCache } from "./utils/e
 import { isFullPageElement } from "./utils/component-filter.js";
 import { handleWheelZoom, panCanvas } from "./canvas-transform.js";
 import { isTextEditing } from "./inline-text-edit.js";
+import { isEditableFocused } from "./utils/active-element.js";
 import { getActiveTool } from "./canvas-state.js";
 
 export type ToolEventHandler = {
@@ -90,10 +91,9 @@ function onWheel(e: WheelEvent): void {
 function onSpaceDown(e: KeyboardEvent): void {
   if (e.key !== " ") return;
   // Don't intercept spacebar during text editing or when typing in inputs
+  // (resolves focus through the overlay's shadow DOM).
   if (isTextEditing()) return;
-  const active = document.activeElement;
-  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
-  if ((active as HTMLElement)?.isContentEditable) return;
+  if (isEditableFocused()) return;
 
   e.preventDefault();
   if (!isPanning && interactionEl) {

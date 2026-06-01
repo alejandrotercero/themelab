@@ -6,6 +6,7 @@ import { createSettingsButton } from "./settings-panel.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { toggleCanvasTransform, isCanvasActive, onCanvasWrapperChange } from "./canvas-transform.js";
 import { isTextEditing } from "./inline-text-edit.js";
+import { isEditableFocused } from "./utils/active-element.js";
 import { getActiveCount, isChangelogOpen, onChangelogChange, setChangelogOpen } from "./changelog.js";
 import { toggleThemePanel, isThemePanelOpen, onThemePanelToggle } from "./theme-panel.js";
 import { hasTheme, onThemeChange } from "./theme-state.js";
@@ -481,9 +482,8 @@ export function initToolsPanel(): void {
 }
 
 function handleToolShortcut(e: KeyboardEvent): void {
-  // Suppress shortcuts when text input is focused
-  const active = document.activeElement;
-  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+  // Suppress shortcuts when a text field is focused (resolves through shadow DOM).
+  if (isEditableFocused()) return;
   if (isTextEditing()) return;
 
   // Modifier keys → ignore (let browser handle Cmd+T, Ctrl+V, etc.)

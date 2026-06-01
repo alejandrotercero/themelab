@@ -32,6 +32,7 @@ import { getMoveContainingElement, hasMoveForElement, addClone, removeCloneEntry
 import { getCachedFilePath, setCachedFilePath } from "./file-discovery-cache.js";
 import { requestFileDiscovery, requestFileStat, send, onMessage } from "./bridge.js";
 import { isTextEditing } from "./inline-text-edit.js";
+import { isEditableFocused } from "./utils/active-element.js";
 import { copyElement, hasClipboard, pasteElement, isInsideMapTemplate, resolveFromCloneAncestry, getCloneForElement } from "./clone-state.js";
 import { deleteElement } from "./delete-state.js";
 import { addChangeEntry } from "./changelog.js";
@@ -1169,10 +1170,9 @@ function handleClick(e: MouseEvent): void {
 function handleKeyDown(e: KeyboardEvent): void {
   if (!isActive) return;
 
-  const isEditing = isTextEditing() ||
-    document.activeElement instanceof HTMLInputElement ||
-    document.activeElement instanceof HTMLTextAreaElement ||
-    (document.activeElement as HTMLElement)?.isContentEditable === true;
+  // Resolve focus through the overlay's shadow DOM — document.activeElement only
+  // reports the shadow host, so an overlay input wouldn't otherwise count as editing.
+  const isEditing = isTextEditing() || isEditableFocused();
 
   // Backtick (`) = toggle interact mode. Skip while typing so the key still works
   // in fields. A toast + the hover outline (gone in interact mode) show the state.

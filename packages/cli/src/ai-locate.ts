@@ -18,7 +18,7 @@ import {
   type OperationResult,
 } from "./batch-transform.js";
 import { resolveProjectFilePath, isProjectFilePathSafe } from "./path-resolver.js";
-import { logger } from "./logger.js";
+import { logger, getLogLevel } from "./logger.js";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const MAX_STEPS = 8;
@@ -313,6 +313,16 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
   const client = new Anthropic(baseURL ? { apiKey, baseURL } : { apiKey });
   const messages: any[] = [{ role: "user", content: buildSeedMessage(input) }];
 
+  // --verbose: dump exactly what we send and what the model sends back.
+  const verbose = getLogLevel() === "debug";
+  const vtrunc = (s: string, n = 4000) => (s.length > n ? s.slice(0, n) + `\n…[+${s.length - n} chars truncated]` : s);
+  if (verbose) {
+    logger.debug(`\n════════ [ai-locate] REQUEST → ${model || HAIKU_MODEL} ════════`);
+    logger.debug(`──── system prompt ────\n${SYSTEM_PROMPT}`);
+    logger.debug(`──── user seed ────\n${messages[0].content}`);
+    logger.debug(`──── tools ────\n${TOOLS.map((t) => t.name).join(", ")}`);
+  }
+
   for (let step = 0; step < MAX_STEPS; step++) {
     let resp: any;
     try {
@@ -328,6 +338,15 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
       return null;
     }
 
+    if (verbose) {
+      const u = resp.usage ? ` · tokens in=${resp.usage.input_tokens} out=${resp.usage.output_tokens}` : "";
+      logger.debug(`\n──── [ai-locate] step ${step + 1} ← ${resp.stop_reason ?? "?"}${u} ────`);
+      for (const b of resp.content ?? []) {
+        if (b.type === "text") logger.debug(`  [text] ${b.text}`);
+        else if (b.type === "tool_use") logger.debug(`  [tool_use] ${b.name}(${JSON.stringify(b.input)})`);
+      }
+    }
+
     const toolUses = (resp.content ?? []).filter((b: any) => b.type === "tool_use");
     if (toolUses.length === 0) return null; // no tool call — give up (fail safe)
 
@@ -337,6 +356,7 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
     for (const tu of toolUses) {
       if (tu.name === "resolve_location") {
         const answer = validateAnswer(tu.input, input.projectRoot);
+        if (verbose) logger.debug(`  [resolve_location] input=${JSON.stringify(tu.input)} → ${answer ? "accepted" : "REJECTED (out-of-project / bad shape)"}`);
         logger.debug(`[ai-locate] resolve_location → ${answer ? `${answer.filePath}:${answer.line}:${answer.col} (${answer.kind})` : "invalid"}`);
         return answer;
       }
@@ -344,6 +364,7 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
       if (tu.name === "read_file") out = readFileTool(tu.input, input.projectRoot);
       else if (tu.name === "grep") out = grepTool(tu.input, input.projectRoot);
       else if (tu.name === "list_dir") out = listDirTool(tu.input, input.projectRoot);
+      if (verbose) logger.debug(`  [tool_result] ${tu.name}(${JSON.stringify(tu.input)}) →\n${vtrunc(out)}`);
       toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: out });
     }
     messages.push({ role: "user", content: toolResults });

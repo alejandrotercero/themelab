@@ -64,10 +64,27 @@ export interface LocateResult {
   reasoning: string;
 }
 
+/** The AI ran but deliberately gave up, with a user-facing reason. */
+export interface LocateFailure {
+  cannotLocate: string;
+}
+
+export type LocateOutcome = LocateResult | LocateFailure | null;
+
+function isLocateResult(o: LocateOutcome): o is LocateResult {
+  return !!o && "filePath" in o;
+}
+
+/** User-facing message when the AI itself couldn't resolve the element. */
+function aiFailureMessage(answer: LocateOutcome): string {
+  if (answer && "cannotLocate" in answer) return `AI couldn't locate this element — ${answer.cannotLocate}`;
+  return "The AI couldn't pinpoint this element in the source.";
+}
+
 export type LocateFn = (
   input: LocateInput,
   opts: { apiKey: string; baseURL?: string; model?: string },
-) => Promise<LocateResult | null>;
+) => Promise<LocateOutcome>;
 
 export interface AiProposal {
   /** Index into the original operations array. */
@@ -231,6 +248,16 @@ const TOOLS = [
     },
   },
   {
+    name: "cannot_locate",
+    description:
+      "Call this if you genuinely cannot identify the exact element to edit — e.g. it's generated dynamically, the relevant data/component isn't in the codebase, or there isn't enough information to be sure. Give a clear one-sentence reason for the user. Prefer this over guessing or returning a wrong location.",
+    input_schema: {
+      type: "object" as const,
+      properties: { reason: { type: "string" } },
+      required: ["reason"],
+    },
+  },
+  {
     name: "resolve_location",
     description:
       "FINAL ANSWER. The single exact source location to edit for THIS change. " +
@@ -262,6 +289,8 @@ When sure, call resolve_location exactly once with the opening-tag position of t
 - 'conditional' — the correct branch of a conditional/ternary/state-driven render.
 - 'instance' — the relevant node inside a reused component (possibly another file).
 - 'array-item' — for REORDERING a .map()-rendered list item: return the position of the matching ELEMENT in the source data array (the object/value in the array literal that produces this item, identified by its text/label), NOT the JSX. The list is reordered by swapping array data.
+
+If, after investigating, you genuinely cannot pinpoint the element, call cannot_locate with a clear one-sentence reason — do NOT guess or return a wrong/parent node.
 
 Be decisive: if a provided candidate or text-grep line clearly matches the element (its text and/or className line up), call resolve_location immediately — don't keep exploring. The 'col' is the 0-based column of the opening '<'. 'reasoning' is ONE sentence on WHY this is the right node (which file/element and how you identified it) — do NOT restate or guess the styling change; that is applied deterministically.`;
 
@@ -368,6 +397,14 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
 
     const toolResults: any[] = [];
     for (const tu of toolUses) {
+      if (tu.name === "cannot_locate") {
+        const reason = typeof tu.input?.reason === "string" && tu.input.reason.trim()
+          ? tu.input.reason.trim()
+          : "couldn't determine the source location.";
+        if (verbose) logger.debug(`  [cannot_locate] ${reason}`);
+        logger.info(`[ai-locate] cannot_locate: ${reason}`);
+        return { cannotLocate: reason };
+      }
       if (tu.name === "resolve_location") {
         const answer = validateAnswer(tu.input, input.projectRoot);
         if (verbose) logger.debug(`  [resolve_location] input=${JSON.stringify(tu.input)} → ${answer ? "accepted" : "REJECTED (out-of-project / bad shape)"}`);
@@ -449,7 +486,7 @@ function isEscalatable(r: OperationResult, op?: BatchOperation): boolean {
 // same element, so cache WHERE (not the edit value). Positive results live for
 // the process; negatives expire so a fix (e.g. enabling AI) can retry.
 const NEG_TTL_MS = 60_000;
-const locateCache = new Map<string, { result: LocateResult | null; at: number }>();
+const locateCache = new Map<string, { result: LocateOutcome; at: number }>();
 
 /** Drop a cached resolution so a retry re-resolves from scratch — called
  *  whenever an AI-resolved change fails to apply for any reason. */
@@ -545,12 +582,13 @@ async function locateOp(
   locate: LocateFn,
   projectRoot: string,
   useCache: boolean,
-): Promise<LocateResult | null> {
+): Promise<LocateOutcome> {
   const key = cacheKey(op);
   if (useCache) {
     const cached = locateCache.get(key);
-    if (cached && (cached.result !== null || Date.now() - cached.at < NEG_TTL_MS)) {
-      logger.debug(`[ai-locate] cache hit ${key} → ${cached.result ? cached.result.kind : "null"}`);
+    // Positive resolutions cache for the process; failures (null / cannot_locate)
+    // expire so a retry re-attempts.
+    if (cached && (isLocateResult(cached.result) || Date.now() - cached.at < NEG_TTL_MS)) {
       return cached.result;
     }
   }
@@ -560,7 +598,7 @@ async function locateOp(
 
   ai.onEscalate?.();
   const id = identityOf(op);
-  let answer: LocateResult | null = null;
+  let answer: LocateOutcome = null;
   try {
     answer = await locate(
       { intent: describeIntent(op), identity: id, candidates, primaryFile: { path: op.file, content }, textMatches: computeTextMatches(id, projectRoot), projectRoot },
@@ -570,7 +608,7 @@ async function locateOp(
     logger.warn("[ai-locate] locator threw:", err instanceof Error ? err.message : String(err));
   }
   locateCache.set(key, { result: answer, at: Date.now() });
-  logger.info(`[ai-locate] → ${answer ? `${answer.filePath}:${answer.line} (${answer.kind})` : "no resolution"}`);
+  logger.info(`[ai-locate] → ${isLocateResult(answer) ? `${answer.filePath}:${answer.line} (${answer.kind})` : answer ? `cannot_locate: ${answer.cannotLocate}` : "no resolution"}`);
   return answer;
 }
 
@@ -599,12 +637,18 @@ export async function executeBatchWithAi(
 
     logger.info(`[ai-locate] escalating ${op.op} @ ${op.file} (${(r.error ?? "").slice(0, 48)})`);
     const answer = await locateOp(op, r.candidates ?? [], ai, locate, projectRoot, true);
-    if (!answer) continue;
+
+    // The AI ran and explained why it couldn't (or gave nothing) — surface its
+    // message, since the AI is the one that failed here (not the deterministic pass).
+    if (!isLocateResult(answer)) {
+      base.results[i] = { ...r, error: aiFailureMessage(answer), aiReasoning: answer?.cannotLocate };
+      continue;
+    }
 
     const { result, undoEntries, proposal } = applyAnswer(op, i, answer, projectRoot);
     if (result) { base.results[i] = result; if (undoEntries) base.undoEntries.push(...undoEntries); }
     else if (proposal) { proposals.push(proposal); base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning }; }
-    else { invalidateLocateCache(op); base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning }; } // apply failed — drop cache so retry re-resolves
+    else { invalidateLocateCache(op); base.results[i] = { ...r, error: aiFailureMessage(null), aiKind: answer.kind, aiReasoning: answer.reasoning }; } // apply failed — drop cache so retry re-resolves
   }
 
   return proposals.length > 0 ? { ...base, proposals } : base;
@@ -634,6 +678,12 @@ async function forcedAiBatch(
     logger.info(`[ai-locate] forced resolve ${op.op} @ ${op.file}`);
     const answer = await locateOp(op, [], ai, locate, projectRoot, false);
 
+    // The AI explicitly gave up — surface its reason (forced mode means the AI
+    // is the resolver, so its failure is the failure).
+    if (answer && !isLocateResult(answer)) {
+      results[i] = { op: op.op, file: op.file, line: (op as { line?: number }).line ?? 0, success: false, error: aiFailureMessage(answer), aiReasoning: answer.cannotLocate };
+      continue;
+    }
     if (answer) {
       const { result, undoEntries: ue, proposal } = applyAnswer(op, i, answer, projectRoot);
       if (result) { results[i] = result; if (ue) undoEntries.push(...ue); continue; }

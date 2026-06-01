@@ -107,14 +107,22 @@ describe("ai-locate: executeBatchWithAi", () => {
     expect(fs.readFileSync(filePath, "utf-8")).toBe(before); // file untouched
   });
 
-  it("stays AMBIGUOUS when the locator returns null", async () => {
+  it("surfaces an AI failure message when the locator returns null", async () => {
     const { filePath } = setup("null.tsx", TWO_CARDS);
     const before = fs.readFileSync(filePath, "utf-8");
     const locate: LocateFn = async () => null;
     const res = await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), { apiKey: "k", enableAi: true, locate });
     expect(res.results[0].success).toBe(false);
-    expect(res.results[0].error).toMatch(/AMBIGUOUS/);
+    expect(res.results[0].error).toMatch(/AI couldn't pinpoint/i); // AI ran and failed → AI message
     expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
+  });
+
+  it("surfaces the AI's reason when it calls cannot_locate", async () => {
+    const { filePath } = setup("cant.tsx", TWO_CARDS);
+    const locate: LocateFn = async () => ({ cannotLocate: "the value is generated from server data not in the codebase" });
+    const res = await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), { apiKey: "k", enableAi: true, locate });
+    expect(res.results[0].success).toBe(false);
+    expect(res.results[0].error).toMatch(/AI couldn't locate this element — the value is generated/i);
   });
 
   it("does not invoke the locator when AI is disabled", async () => {

@@ -405,7 +405,7 @@ function describeIntent(op: BatchOperation): string {
     case "moveSpacing":
       return `Adjust spacing (${o.axis}-axis) on the selected <${o.tagName ?? "element"}>.`;
     case "moveSibling":
-      return `Locate the selected <${o.tagName ?? "element"}>${o.text ? ` (text: "${String(o.text).slice(0, 40)}")` : ""} — it is about to be moved ${o.direction} among its siblings.`;
+      return `Find the JSX USAGE of the selected ${o.componentName ? `<${o.componentName}>` : `<${o.tagName ?? "element"}>`}${o.text ? ` (text: "${String(o.text).slice(0, 50)}")` : ""} that sits among SIBLING elements (e.g. one <Card> of several in a grid) — it is about to be moved ${o.direction}. Return that usage as 'direct'; do NOT return the component's internal root (a primitive like card.tsx that has no siblings).`;
     default:
       return `Edit the selected <${o.tagName ?? "element"}> (${op.op}).`;
   }
@@ -425,14 +425,20 @@ function identityOf(op: BatchOperation): LocateIdentity {
   };
 }
 
-function isEscalatable(r: OperationResult): boolean {
+function isEscalatable(r: OperationResult, op?: BatchOperation): boolean {
   if (r.success) return false;
   const e = r.error ?? "";
   if (e.startsWith("FILE_CHANGED:")) return false; // stale → re-select, never escalate
   // Escalate on ambiguity OR no-match — the no-match-with-zero-candidates case
   // (element rendered by a reused component / not in this file) is exactly what
   // the locator's code-reading is for. Candidates may be empty.
-  return e.startsWith("AMBIGUOUS:") || e.startsWith("No JSX element found");
+  if (e.startsWith("AMBIGUOUS:") || e.startsWith("No JSX element found")) return true;
+  // A moveSibling that resolved to an element with NO siblings is almost always
+  // the wrong node (owner stack pointed at a component's internal root, e.g.
+  // <Card>'s root <div>). Escalate to find the real usage that has siblings.
+  // Do NOT escalate a genuine first/last-sibling boundary.
+  if (op?.op === "moveSibling" && /no sibling container|could not locate this element among/i.test(e)) return true;
+  return false;
 }
 
 // Per-element resolution cache: property scrubbing fires many commits for the
@@ -463,12 +469,18 @@ function cacheKey(op: any): string {
 /** Pick the most useful grep query: the element's own text if it's a real label,
  *  otherwise a distinctive static phrase from the surrounding text (when the own
  *  text is a computed value like {count} or "20%"). */
+function longestAlphaPhrase(s?: string): string | undefined {
+  // Longest run of letters/spaces — skips embedded computed values ("Users 6
+  // registered users" → "registered users"), digits, %, etc.
+  const phrases = (s ?? "").match(/[A-Za-z][A-Za-z ]{2,}[A-Za-z]/g);
+  return phrases?.sort((a, b) => b.length - a.length)[0]?.trim();
+}
+
 function pickGrepQuery(id: LocateIdentity): string | undefined {
-  const text = (id.text ?? "").trim();
-  if (text.length >= 3 && /[A-Za-z]/.test(text)) return text;
-  const phrases = (id.contextText ?? "").match(/[A-Za-z][A-Za-z ]{2,}[A-Za-z]/g);
-  if (phrases && phrases.length) return phrases.sort((a, b) => b.length - a.length)[0].trim();
-  return undefined;
+  const fromText = longestAlphaPhrase(id.text);
+  if (fromText && fromText.length >= 4) return fromText;
+  const fromCtx = longestAlphaPhrase(id.contextText);
+  return fromCtx && fromCtx.length >= 4 ? fromCtx : undefined;
 }
 
 /** Grep the project for the element's text (or a surrounding label), ranking
@@ -568,9 +580,9 @@ export async function executeBatchWithAi(
 
   for (let i = 0; i < base.results.length; i++) {
     const r = base.results[i];
-    if (!isEscalatable(r)) continue;
     const op = operations[i];
     if (op.op === "reorder") continue;
+    if (!isEscalatable(r, op)) continue;
     if (!resolveProjectFilePath(op.file, projectRoot)) continue;
 
     logger.info(`[ai-locate] escalating ${op.op} @ ${op.file} (${(r.error ?? "").slice(0, 48)})`);

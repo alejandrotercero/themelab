@@ -251,6 +251,39 @@ describe("ai-locate: executeBatchWithAi", () => {
     expect(fs.readFileSync(page.filePath, "utf-8")).toBe(pageSrc); // page untouched
   });
 
+  it("moveSibling escalates when it resolves a no-sibling component root", async () => {
+    // Selecting a <Card> resolves to the Card primitive's root <div> (no
+    // siblings) → swap throws "no sibling container" → escalate → AI finds the
+    // <Card> USAGE in the grid (which has siblings).
+    const cardSrc = `export function Card(props) {
+  return <div className="bg-card">{props.children}</div>;
+}`;
+    const dashSrc = `import { Card } from "./card";
+export default function Dash() {
+  return (
+    <div className="grid">
+      <Card>Total Parts</Card>
+      <Card>Users</Card>
+    </div>
+  );
+}`;
+    const card = setup("card.tsx", cardSrc);
+    const dash = setup("dash.tsx", dashSrc);
+    const dir = path.dirname(card.filePath);
+    const cLines = cardSrc.split("\n");
+    const dLines = dashSrc.split("\n");
+    const divLine = cLines.findIndex((l) => l.includes("bg-card")) + 1;
+    const tpLine = dLines.findIndex((l) => l.includes("Total Parts")) + 1;
+    const dashRel = path.basename(dash.filePath);
+    const locate: LocateFn = async () => ({ filePath: dashRel, line: tpLine, col: dLines[tpLine - 1].indexOf("<Card"), kind: "direct", reasoning: "the <Card> usage in the grid" });
+    const op = { op: "moveSibling", file: card.filePath, line: divLine, col: cLines[divLine - 1].indexOf("<div"), direction: "down", tagName: "div", className: "bg-card", componentName: "Card", text: "Total Parts" } as BatchOperation;
+    const res = await executeBatchWithAi([op], dir, { apiKey: "k", enableAi: true, locate });
+    expect(res.results[0].success).toBe(true);
+    const out = fs.readFileSync(dash.filePath, "utf-8");
+    expect(out.indexOf("Users")).toBeLessThan(out.indexOf("Total Parts")); // Total Parts moved down past Users
+    expect(fs.readFileSync(card.filePath, "utf-8")).toBe(cardSrc); // primitive untouched
+  });
+
   it("keeps undo integrity across a mixed batch (resolvable + AI-resolved, same file)", async () => {
     // op A: the wrapper div, resolvable directly by id; op B: ambiguous card → AI.
     const src = `export default function App() {

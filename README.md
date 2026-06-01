@@ -57,7 +57,9 @@ Most edits resolve deterministically. For the hard cases — an element rendered
 
 - **Off by default.** It runs only when an `ANTHROPIC_API_KEY` is configured. With no key, behavior is unchanged.
 - **Configure it** from the gear (⚙) panel in the overlay: API key, an optional custom endpoint (base URL), and model. Settings are stored locally in `~/.config/react-rewrite/config.json` (the key is never sent back to the browser); environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) override the stored values.
-- **What it does on a match:** a "Locating with AI…" → "Found it" indicator shows while it works. A direct/conditional match applies automatically; an edit that would affect more than the selected element (a `.map()` template or a shared component) asks you to **confirm** first. Resolutions are cached per element, so repeated tweaks stay instant.
+- **What it does on a match:** a "Locating with AI…" → "Found it" indicator shows while it works. A direct/conditional match applies automatically; an edit that would affect more than the selected element (a `.map()` template or a shared component) asks you to **confirm** first. Resolutions are cached per element, so repeated tweaks stay instant. If it genuinely can't find the element, it tells you **why** rather than guessing.
+- **Confirm with AI (⚡):** the lightning button beside **Confirm** resolves every staged change via the AI locator up front, instead of trying deterministic resolution first — handy when deterministic resolution keeps landing on the wrong element.
+- **Reordering:** move up/down also gets the AI fallback. Reordering an item rendered by a `.map()` swaps the matching entry in the **source data array** (it'll ask to confirm), rather than trying to move JSX that isn't there.
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 # react-rewrite — Roadmap & Spec
 
-> Status: draft v1 · 2026-05-28 (updated 2026-05-31 — M0–M2 + #4 + #5 shipped; resolver hardened + AI locator added; remaining: #8 fonts, M3 theme v2)
+> Status: draft v1 · 2026-05-28 (updated 2026-05-31 — M0–M2 + #4 + #5 shipped; resolver hardened + AI locator across edits, move up/down, and .map() list reordering; remaining: #8 fonts, M3 theme v2)
 > Scope: turn react-rewrite from a per-element class editor into a full **visual editor for shadcn/Tailwind apps** — both the *elements* and the *theme*.
 > Grounded in: the current codebase (`packages/{cli,overlay,shared}`), hands-on testing feedback, and the tweakcn theme-editor model (Apache-2.0, cloned at `/Users/alejandro/DEV/tweakcn`).
 

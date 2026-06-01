@@ -121,7 +121,7 @@ const TOOLBAR_STYLES = `
     background: transparent;
     border: 1px solid ${COLORS.accent};
     border-radius: ${RADII.sm};
-    color: ${COLORS.accent};
+    color: ${COLORS.textPrimary};
     padding: 6px;
     cursor: pointer;
     transition: background ${TRANSITIONS.fast};

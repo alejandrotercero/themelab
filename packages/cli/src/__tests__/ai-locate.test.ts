@@ -127,6 +127,51 @@ describe("ai-locate: executeBatchWithAi", () => {
     expect(res.results[0].error).toMatch(/AMBIGUOUS/);
   });
 
+  it("forceAi resolves via the locator even when deterministic would succeed", async () => {
+    const src = `export default function App() {
+  return (
+    <div>
+      <button className="btn">One</button>
+      <button className="btn2">Two</button>
+    </div>
+  );
+}`;
+    const { filePath } = setup("force.tsx", src);
+    const lines = src.split("\n");
+    const line = lines.findIndex((l) => l.includes("btn2")) + 1;
+    let called = false;
+    const locate: LocateFn = async (input) => {
+      called = true; // forced — picks the SECOND button regardless of the op's coords
+      return { filePath: input.primaryFile.path, line, col: lines[line - 1].indexOf("<button"), kind: "direct", reasoning: "forced" };
+    };
+    const op = classOp(filePath, { tagName: "button", className: "btn", text: "One", line: 4, col: 6 });
+    const res = await executeBatchWithAi([op], path.dirname(filePath), { apiKey: "k", enableAi: true, forceAi: true, locate });
+    expect(called).toBe(true);
+    expect(res.results[0].success).toBe(true);
+    expect(res.results[0].resolvedBy).toBe("ai");
+    const out = fs.readFileSync(filePath, "utf-8");
+    expect(out).toContain('className="btn2 bg-red-500"'); // the AI's pick
+    expect(out).not.toContain('className="btn bg-red-500"'); // not the deterministic one
+  });
+
+  it("invalidates the cache when an AI-resolved apply fails (so a retry re-resolves)", async () => {
+    const src = `export default function App() {
+  return <div className="x">hi</div>;
+}`;
+    const { filePath } = setup("invalidate.tsx", src);
+    let calls = 0;
+    const locate: LocateFn = async (input) => {
+      calls++;
+      return { filePath: input.primaryFile.path, line: 1, col: 0, kind: "direct", reasoning: "bad line (no JSX)" };
+    };
+    const mk = () => classOp(filePath, { tagName: "span", className: "", text: "hi" }); // no <span> → escalates
+    const res1 = await executeBatchWithAi([mk()], path.dirname(filePath), { apiKey: "k", enableAi: true, locate });
+    expect(res1.results[0].success).toBe(false); // line 1 has no JSX → apply fails
+    const res2 = await executeBatchWithAi([mk()], path.dirname(filePath), { apiKey: "k", enableAi: true, locate });
+    expect(calls).toBe(2); // cache was invalidated → re-resolved instead of a cache hit
+    expect(res2.results[0].success).toBe(false);
+  });
+
   it("escalates a no-match with ZERO candidates (component-instance case)", async () => {
     // No <p> exists in this file — the element is rendered by a reused component.
     // This is the case the deterministic resolver can't help with, and the one

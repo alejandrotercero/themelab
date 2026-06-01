@@ -20,7 +20,7 @@ import { writeThemeVars } from "./theme-writer.js";
 import { isProjectFilePathSafe, resolveProjectFilePath } from "./path-resolver.js";
 import { discoverFile } from "./file-discovery.js";
 import { executeBatch } from "./batch-transform.js";
-import { executeBatchWithAi, type AiOptions, type AiProposal } from "./ai-locate.js";
+import { executeBatchWithAi, invalidateLocateCache, type AiOptions, type AiProposal } from "./ai-locate.js";
 import { resolveAiConfig, updateAiConfig } from "./config.js";
 
 interface SketchServerOptions {
@@ -397,7 +397,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         case "commitBatch": {
           logger.info(`[commitBatch] Received ${msg.operations.length} operations:`, msg.operations.map((o: BatchOperation) => `${o.op}@${o.file}:${o.op === "reorder" ? o.fromLine : o.line}`));
           try {
-            const batchResult = await executeBatchWithAi(msg.operations, projectRoot, aiOptionsFor(ws));
+            const batchResult = await executeBatchWithAi(msg.operations, projectRoot, { ...aiOptionsFor(ws), forceAi: msg.forceAi });
             const failedOps = batchResult.results.filter(r => !r.success);
             if (failedOps.length > 0) {
               logger.error(`[commitBatch] ${failedOps.length}/${batchResult.results.length} operations failed:`);
@@ -483,6 +483,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             }
             send(ws, { type: "aiProposalComplete", id: msg.id, success: true, undoId, kind: target.kind, filePath: target.filePath });
           } else {
+            invalidateLocateCache(op); // apply failed — drop cache so a retry re-resolves
             send(ws, { type: "aiProposalComplete", id: msg.id, success: false, error: rr?.error || "Could not apply at resolved location" });
           }
           break;

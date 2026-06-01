@@ -1,6 +1,6 @@
 // packages/overlay/src/index.ts
 import { connect, disconnect, send, onMessage } from "./bridge.js";
-import { mountToolbar, destroyToolbar, setOnGenerate, setOnCanvasUndo, updateGenerateButton, showToast, getShadowRoot } from "./toolbar.js";
+import { mountToolbar, destroyToolbar, setOnGenerate, setOnGenerateAi, setOnCanvasUndo, updateGenerateButton, showToast, getShadowRoot } from "./toolbar.js";
 import { initSelection, deactivateSelection, clearSelection, setEnabled } from "./selection.js";
 import { initHighlightCanvas, destroyHighlightCanvas } from "./highlight-canvas.js";
 import { initDrag, deactivateDrag } from "./drag.js";
@@ -303,9 +303,10 @@ function init(): void {
     if (description) showToast(`Undo: ${description}`);
   });
 
-  // Confirm button — deterministic batch for moves/colors/text edits
+  // Confirm button — deterministic batch for moves/colors/text edits.
+  // "Confirm with AI" (forceAi) resolves every op via the AI locator up front.
   let generating = false;
-  setOnGenerate(() => {
+  const doCommit = (forceAi: boolean) => {
     if (generating) {
       showToast("Operation in progress");
       return;
@@ -319,12 +320,15 @@ function init(): void {
     if (batchOps.length > 0) {
       generating = true;
       updateGenerateButton(false);
-      showToast(`Applying ${batchOps.length} change${batchOps.length !== 1 ? "s" : ""}...`);
-      send({ type: "commitBatch", operations: batchOps });
+      const n = batchOps.length;
+      showToast(`Applying ${n} change${n !== 1 ? "s" : ""}${forceAi ? " with AI…" : "..."}`);
+      send({ type: "commitBatch", operations: batchOps, forceAi: forceAi || undefined });
     } else {
       showToast("Could not resolve source files for these changes — try re-selecting");
     }
-  });
+  };
+  setOnGenerate(() => doCommit(false));
+  setOnGenerateAi(() => doCommit(true));
 
   // Handle commitBatch completion from CLI
   onMessage((msg) => {

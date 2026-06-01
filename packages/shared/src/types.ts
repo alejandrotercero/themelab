@@ -295,6 +295,8 @@ export type ClientMessage =
   | {
       type: "commitBatch";
       operations: BatchOperation[];
+      /** "Confirm with AI" — resolve every op via the AI locator up front. */
+      forceAi?: boolean;
     }
   | { type: "fileStat"; filePath: string }
   | { type: "getSettings" }

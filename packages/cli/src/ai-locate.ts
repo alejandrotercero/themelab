@@ -84,6 +84,9 @@ export interface AiOptions {
   model?: string;
   /** Defaults to !!apiKey. Set false to force-disable (tests / embedding). */
   enableAi?: boolean;
+  /** Resolve every op via the locator up front (the "Confirm with AI" path),
+   *  instead of trying deterministic first and only escalating failures. */
+  forceAi?: boolean;
   /** Injectable locator (default = SDK tool-use loop). Tests pass a stub. */
   locate?: LocateFn;
   /** Called when the AI loop actually starts (not on cache hits) — for a UI
@@ -401,6 +404,12 @@ function isEscalatable(r: OperationResult): boolean {
 const NEG_TTL_MS = 60_000;
 const locateCache = new Map<string, { result: LocateResult | null; at: number }>();
 
+/** Drop a cached resolution so a retry re-resolves from scratch — called
+ *  whenever an AI-resolved change fails to apply for any reason. */
+export function invalidateLocateCache(op: BatchOperation): void {
+  locateCache.delete(cacheKey(op));
+}
+
 function cacheKey(op: any): string {
   // Include text + structural context, not just the (often mis-resolved,
   // shared) owner-stack coords: sibling instances with identical
@@ -414,6 +423,40 @@ function cacheKey(op: any): string {
   ].join("|");
 }
 
+/** Grep the project for the element's text, ranking element-like lines first. */
+function computeTextMatches(id: LocateIdentity, projectRoot: string): Array<{ file: string; line: number; text: string }> | undefined {
+  if (!id.text || id.text.length < 3) return undefined;
+  const classTokens = (id.className ?? "").split(/\s+/).filter(Boolean);
+  const found = grepProject(escapeRegExp(id.text), projectRoot, 60);
+  const score = (m: { text: string }) =>
+    (id.tagName && m.text.includes(`<${id.tagName}`) ? 2 : 0) +
+    (classTokens.some((c) => m.text.includes(c)) ? 1 : 0);
+  found.sort((a, b) => score(b) - score(a));
+  return found.slice(0, 12);
+}
+
+/** Apply an AI answer: auto-apply 'direct'/'conditional', else return a proposal. */
+function applyAnswer(
+  op: BatchOperation,
+  index: number,
+  answer: LocateResult,
+  projectRoot: string,
+): { result?: OperationResult; undoEntries?: AiBatchResult["undoEntries"]; proposal?: AiProposal } {
+  const autoApply = answer.kind === "direct" || answer.kind === "conditional";
+  if (autoApply) {
+    const rerun = executeBatch(
+      [{ ...op, file: answer.filePath, line: answer.line, col: answer.col, fileMtime: undefined, fileSize: undefined, trustLocation: true } as BatchOperation],
+      projectRoot,
+    );
+    const rr = rerun.results[0];
+    if (rr?.success) {
+      return { result: { ...rr, file: answer.filePath, resolvedBy: "ai", aiKind: answer.kind, aiReasoning: answer.reasoning }, undoEntries: rerun.undoEntries };
+    }
+    return {}; // didn't apply cleanly
+  }
+  return { proposal: { index, op, target: answer, intent: describeIntent(op) } };
+}
+
 // ── Orchestrator ───────────────────────────────────────────────────────────
 
 /**
@@ -421,17 +464,56 @@ function cacheKey(op: any): string {
  * AI locator. 'direct' same-file resolutions apply immediately; structural /
  * cross-file resolutions are returned as proposals for user confirmation.
  */
+async function locateOp(
+  op: BatchOperation,
+  candidates: Array<{ line: number; col: number; snippet: string }>,
+  ai: AiOptions,
+  locate: LocateFn,
+  projectRoot: string,
+  useCache: boolean,
+): Promise<LocateResult | null> {
+  const key = cacheKey(op);
+  if (useCache) {
+    const cached = locateCache.get(key);
+    if (cached && (cached.result !== null || Date.now() - cached.at < NEG_TTL_MS)) {
+      logger.debug(`[ai-locate] cache hit ${key} → ${cached.result ? cached.result.kind : "null"}`);
+      return cached.result;
+    }
+  }
+  const resolved = resolveProjectFilePath(op.file, projectRoot);
+  let content = "";
+  if (resolved) { try { content = fs.readFileSync(resolved, "utf-8"); } catch { /* unreadable */ } }
+
+  ai.onEscalate?.();
+  const id = identityOf(op);
+  let answer: LocateResult | null = null;
+  try {
+    answer = await locate(
+      { intent: describeIntent(op), identity: id, candidates, primaryFile: { path: op.file, content }, textMatches: computeTextMatches(id, projectRoot), projectRoot },
+      { apiKey: ai.apiKey!, baseURL: ai.baseURL, model: ai.model },
+    );
+  } catch (err) {
+    logger.warn("[ai-locate] locator threw:", err instanceof Error ? err.message : String(err));
+  }
+  locateCache.set(key, { result: answer, at: Date.now() });
+  logger.info(`[ai-locate] → ${answer ? `${answer.filePath}:${answer.line} (${answer.kind})` : "no resolution"}`);
+  return answer;
+}
+
 export async function executeBatchWithAi(
   operations: BatchOperation[],
   projectRoot: string,
   ai: AiOptions = {},
 ): Promise<AiBatchResult> {
-  const base = executeBatch(operations, projectRoot);
-
   const enabled = ai.enableAi ?? !!ai.apiKey;
-  if (!enabled || !ai.apiKey) return base;
+  if (!enabled || !ai.apiKey) return executeBatch(operations, projectRoot);
   const locate = ai.locate ?? defaultLocate;
 
+  // Forced mode ("Confirm with AI"): resolve every op via the locator up front
+  // instead of trying deterministic first and only escalating failures.
+  if (ai.forceAi) return forcedAiBatch(operations, projectRoot, ai, locate);
+
+  const base = executeBatch(operations, projectRoot);
   const proposals: AiProposal[] = [];
 
   for (let i = 0; i < base.results.length; i++) {
@@ -439,89 +521,62 @@ export async function executeBatchWithAi(
     if (!isEscalatable(r)) continue;
     const op = operations[i];
     if (op.op === "reorder") continue;
+    if (!resolveProjectFilePath(op.file, projectRoot)) continue;
 
-    const resolved = resolveProjectFilePath(op.file, projectRoot);
-    if (!resolved) continue;
-    let content: string;
-    try {
-      content = fs.readFileSync(resolved, "utf-8");
-    } catch {
-      continue;
-    }
-
-    let answer: LocateResult | null;
-    const key = cacheKey(op);
-    const cached = locateCache.get(key);
-    if (cached && (cached.result !== null || Date.now() - cached.at < NEG_TTL_MS)) {
-      answer = cached.result;
-      logger.debug(`[ai-locate] cache hit ${key} → ${answer ? answer.kind : "null"}`);
-    } else {
-      ai.onEscalate?.();
-      logger.info(`[ai-locate] escalating ${op.op} @ ${op.file} (${(r.error ?? "").slice(0, 48)})`);
-      answer = null;
-      // Front-load the answer: grep the project for the element's text so the
-      // model usually resolves in one step. Common words (e.g. "Version") match
-      // many lines, so rank element-like lines (containing the tag or a class
-      // token) first to surface the real node within the cap.
-      const id = identityOf(op);
-      let textMatches: Array<{ file: string; line: number; text: string }> | undefined;
-      if (id.text && id.text.length >= 3) {
-        const classTokens = (id.className ?? "").split(/\s+/).filter(Boolean);
-        const found = grepProject(escapeRegExp(id.text), projectRoot, 60);
-        const score = (m: { text: string }) =>
-          (id.tagName && m.text.includes(`<${id.tagName}`) ? 2 : 0) +
-          (classTokens.some((c) => m.text.includes(c)) ? 1 : 0);
-        found.sort((a, b) => score(b) - score(a));
-        textMatches = found.slice(0, 12);
-      }
-      try {
-        answer = await locate(
-          {
-            intent: describeIntent(op),
-            identity: identityOf(op),
-            candidates: r.candidates ?? [],
-            primaryFile: { path: op.file, content },
-            textMatches,
-            projectRoot,
-          },
-          { apiKey: ai.apiKey, baseURL: ai.baseURL, model: ai.model },
-        );
-      } catch (err) {
-        logger.warn("[ai-locate] locator threw:", err instanceof Error ? err.message : String(err));
-      }
-      locateCache.set(key, { result: answer, at: Date.now() });
-      logger.info(`[ai-locate] → ${answer ? `${answer.filePath}:${answer.line} (${answer.kind})` : "no resolution"}`);
-    }
+    logger.info(`[ai-locate] escalating ${op.op} @ ${op.file} (${(r.error ?? "").slice(0, 48)})`);
+    const answer = await locateOp(op, r.candidates ?? [], ai, locate, projectRoot, true);
     if (!answer) continue;
 
-    // 'direct'/'conditional' = the specific element the user selected (even if
-    // the owner stack pointed at the wrong file) → apply now. 'map-template' and
-    // 'instance' affect MORE than the selection (all items / a shared component)
-    // → confirm first.
-    const autoApply = answer.kind === "direct" || answer.kind === "conditional";
-    if (autoApply) {
-      const rerun = executeBatch(
-        // Apply at the resolved location (possibly a different file than the bad
-        // owner-stack pointer). Drop the staleness baseline — it was captured for
-        // the original file/element; the locator just read the target fresh, so
-        // a card.tsx baseline must not gate a dashboard.tsx write.
-        [{ ...op, file: answer.filePath, line: answer.line, col: answer.col, fileMtime: undefined, fileSize: undefined, trustLocation: true } as BatchOperation],
-        projectRoot,
-      );
-      const rr = rerun.results[0];
-      if (rr?.success) {
-        base.results[i] = { ...rr, file: answer.filePath, resolvedBy: "ai", aiKind: answer.kind, aiReasoning: answer.reasoning };
-        base.undoEntries.push(...rerun.undoEntries);
-      } else {
-        // Resolved location didn't apply cleanly — keep the original failure.
-        base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning };
-      }
-    } else {
-      // map-template / instance — surface for confirmation, don't write.
-      proposals.push({ index: i, op, target: answer, intent: describeIntent(op) });
-      base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning };
-    }
+    const { result, undoEntries, proposal } = applyAnswer(op, i, answer, projectRoot);
+    if (result) { base.results[i] = result; if (undoEntries) base.undoEntries.push(...undoEntries); }
+    else if (proposal) { proposals.push(proposal); base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning }; }
+    else { invalidateLocateCache(op); base.results[i] = { ...r, aiKind: answer.kind, aiReasoning: answer.reasoning }; } // apply failed — drop cache so retry re-resolves
   }
 
   return proposals.length > 0 ? { ...base, proposals } : base;
+}
+
+/** Force the locator for every op (no deterministic-first apply). Falls back to
+ *  a deterministic apply for any op the locator can't resolve. */
+async function forcedAiBatch(
+  operations: BatchOperation[],
+  projectRoot: string,
+  ai: AiOptions,
+  locate: LocateFn,
+): Promise<AiBatchResult> {
+  const results: OperationResult[] = new Array(operations.length);
+  const undoEntries: AiBatchResult["undoEntries"] = [];
+  const proposals: AiProposal[] = [];
+
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    if (op.op === "reorder" || !resolveProjectFilePath(op.file, projectRoot)) {
+      const det = executeBatch([op], projectRoot);
+      results[i] = det.results[0];
+      undoEntries.push(...det.undoEntries);
+      continue;
+    }
+
+    logger.info(`[ai-locate] forced resolve ${op.op} @ ${op.file}`);
+    const answer = await locateOp(op, [], ai, locate, projectRoot, false);
+
+    if (answer) {
+      const { result, undoEntries: ue, proposal } = applyAnswer(op, i, answer, projectRoot);
+      if (result) { results[i] = result; if (ue) undoEntries.push(...ue); continue; }
+      if (proposal) {
+        proposals.push(proposal);
+        results[i] = { op: op.op, file: op.file, line: (op as { line?: number }).line ?? 0, success: false, error: "Pending AI confirmation", aiKind: answer.kind, aiReasoning: answer.reasoning };
+        continue;
+      }
+      // AI location didn't apply — drop cache so a retry re-resolves.
+      invalidateLocateCache(op);
+    }
+
+    // Locator failed / didn't apply → deterministic apply as a fallback.
+    const det = executeBatch([op], projectRoot);
+    results[i] = det.results[0];
+    undoEntries.push(...det.undoEntries);
+  }
+
+  return proposals.length > 0 ? { results, undoEntries, proposals } : { results, undoEntries };
 }

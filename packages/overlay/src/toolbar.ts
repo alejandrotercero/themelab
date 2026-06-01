@@ -9,6 +9,8 @@ let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 let componentDetailEl: HTMLDivElement | null = null;
 let generateBtn: HTMLButtonElement | null = null;
 let onGenerate: (() => void) | null = null;
+let generateAiBtn: HTMLButtonElement | null = null;
+let onGenerateAi: (() => void) | null = null;
 let onCanvasUndo: (() => boolean) | null = null;
 
 const UNDO_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.18,4,8.6,5.44,6.06,8h9.71a6,6,0,0,1,0,12h-2V18h2a4,4,0,0,0,0-8H6.06L8.6,12.51,7.18,13.92,2.23,9Z"></path></svg>`;
@@ -112,6 +114,30 @@ const TOOLBAR_STYLES = `
     color: ${COLORS.textTertiary};
     cursor: default;
   }
+  .generate-ai-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid ${COLORS.accent};
+    border-radius: ${RADII.sm};
+    color: ${COLORS.accent};
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: ${FONT_FAMILY};
+    cursor: pointer;
+    transition: background ${TRANSITIONS.fast};
+  }
+  .generate-ai-btn:hover:not(:disabled) {
+    background: rgba(236, 0, 63, 0.12);
+  }
+  .generate-ai-btn:disabled {
+    border-color: ${COLORS.bgTertiary};
+    color: ${COLORS.textTertiary};
+    cursor: default;
+  }
+  .generate-ai-btn svg { width: 14px; height: 14px; }
   .component-detail {
     display: flex;
     align-items: center;
@@ -204,6 +230,10 @@ export function mountToolbar(onClose: () => void): void {
       ${UNDO_SVG}
     </button>
     <span class="divider"></span>
+    <button class="generate-ai-btn" disabled title="Confirm with AI — resolve each change via the AI locator">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+      AI
+    </button>
     <button class="generate-btn" disabled>Confirm</button>
     <button class="icon-btn close-btn" title="Close ReactRewrite">
       ${CLOSE_SVG}
@@ -215,6 +245,7 @@ export function mountToolbar(onClose: () => void): void {
 
   undoBtn = toolbar.querySelector(".undo-btn");
   generateBtn = toolbar.querySelector(".generate-btn");
+  generateAiBtn = toolbar.querySelector(".generate-ai-btn");
   const closeBtn = toolbar.querySelector(".close-btn");
 
   componentDetailEl = toolbar.querySelector(".component-detail");
@@ -237,6 +268,9 @@ export function mountToolbar(onClose: () => void): void {
   // Generate button (Path A only)
   generateBtn!.addEventListener("click", () => {
     if (onGenerate) onGenerate();
+  });
+  generateAiBtn!.addEventListener("click", () => {
+    if (onGenerateAi) onGenerateAi();
   });
 
   // Keyboard shortcut: Ctrl/Cmd+Z for canvas undo
@@ -330,10 +364,12 @@ export function getToolbarToolsSlot(): HTMLElement | null {
 }
 
 export function setOnGenerate(fn: () => void): void { onGenerate = fn; }
+export function setOnGenerateAi(fn: () => void): void { onGenerateAi = fn; }
 export function setOnCanvasUndo(fn: () => boolean): void { onCanvasUndo = fn; }
 
 export function updateGenerateButton(enabled: boolean): void {
   if (generateBtn) generateBtn.disabled = !enabled;
+  if (generateAiBtn) generateAiBtn.disabled = !enabled;
 }
 
 

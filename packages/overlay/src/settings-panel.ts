@@ -6,9 +6,11 @@ import { COLORS, RADII, SHADOWS, TRANSITIONS, FONT_FAMILY } from "./design-token
 import { send, onMessage } from "./bridge.js";
 import { showToast } from "./toolbar.js";
 import { addChangeEntry } from "./changelog.js";
-import type { AiSettingsView } from "@react-rewrite/shared";
+import { brandMark } from "./brand.js";
+import type { AiSettingsView } from "@themelab/shared";
 
 let panelEl: HTMLDivElement | null = null;
+let overlayEl: HTMLDivElement | null = null;
 let open = false;
 let view: AiSettingsView | null = null;
 let inputs: {
@@ -19,21 +21,30 @@ let inputs: {
 } | null = null;
 
 const STYLES = `
+.rr-settings-overlay {
+  position: fixed; inset: 0; z-index: 2147483646;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.4);
+}
+.rr-settings-overlay.visible { display: flex; animation: rrSettingsFade ${TRANSITIONS.medium}; }
 .rr-settings {
-  position: fixed; top: 16px; right: 16px; width: 320px;
+  width: 320px; max-width: calc(100vw - 32px);
   background: ${COLORS.bgPrimary}; border: 1px solid ${COLORS.border};
   border-radius: ${RADII.lg}; box-shadow: ${SHADOWS.lg};
-  z-index: 2147483646; display: none; flex-direction: column;
+  display: flex; flex-direction: column;
   font-family: ${FONT_FAMILY}; color: ${COLORS.textPrimary};
-  opacity: 0; transform: translateY(-8px);
-  transition: opacity ${TRANSITIONS.medium}, transform ${TRANSITIONS.medium};
+  animation: rrSettingsSlide ${TRANSITIONS.settle};
 }
-.rr-settings.visible { display: flex; opacity: 1; transform: translateY(0); }
+@keyframes rrSettingsFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rrSettingsSlide {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
 .rr-settings-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 14px; border-bottom: 1px solid ${COLORS.border};
 }
-.rr-settings-head h3 { margin: 0; font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
+.rr-settings-head h3 { margin: 0; font-size: 10px; font-weight: 500; letter-spacing: 0.04em; color: ${COLORS.textSecondary}; text-transform: uppercase; }
 .rr-settings-x { background: none; border: none; color: ${COLORS.textSecondary}; cursor: pointer; font-size: 16px; line-height: 1; }
 .rr-settings-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
 .rr-field { display: flex; flex-direction: column; gap: 4px; }
@@ -115,7 +126,11 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
 
   const head = document.createElement("div");
   head.className = "rr-settings-head";
-  head.innerHTML = `<h3>AI locator settings</h3>`;
+  const heading = document.createElement("div");
+  heading.style.cssText = "display: flex; flex-direction: column; gap: 5px;";
+  heading.appendChild(brandMark(15));
+  heading.insertAdjacentHTML("beforeend", `<h3>AI locator settings</h3>`);
+  head.appendChild(heading);
   const x = document.createElement("button");
   x.className = "rr-settings-x";
   x.textContent = "✕";
@@ -175,8 +190,29 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
   foot.append(clearBtn, saveBtn);
 
   panelEl.append(head, body, foot);
-  shadowRoot.appendChild(panelEl);
+
+  // Centered modal: a full-screen backdrop holds the panel in the middle,
+  // matching the keyboard-shortcuts overlay. Clicking the backdrop closes it.
+  overlayEl = document.createElement("div");
+  overlayEl.className = "rr-settings-overlay";
+  overlayEl.appendChild(panelEl);
+  overlayEl.addEventListener("click", (e) => {
+    if (e.target === overlayEl) toggleSettingsPanel();
+  });
+  shadowRoot.appendChild(overlayEl);
   inputs = { apiKey, baseURL, model, enabled };
+
+  // Esc closes the modal (capture + stopPropagation so it doesn't also deselect).
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && open) {
+        e.stopPropagation();
+        toggleSettingsPanel();
+      }
+    },
+    true,
+  );
 
   buildIndicator(shadowRoot);
 
@@ -214,13 +250,13 @@ export function isSettingsPanelOpen(): boolean {
 }
 
 export function toggleSettingsPanel(): void {
-  if (!panelEl) return;
+  if (!overlayEl) return;
   open = !open;
   if (open) {
     send({ type: "getSettings" });
-    panelEl.classList.add("visible");
+    overlayEl.classList.add("visible");
   } else {
-    panelEl.classList.remove("visible");
+    overlayEl.classList.remove("visible");
   }
 }
 
@@ -306,7 +342,7 @@ function indHide(): void {
 
 let confirmEl: HTMLDivElement | null = null;
 
-function showProposal(msg: Extract<import("@react-rewrite/shared").ServerMessage, { type: "aiProposal" }>): void {
+function showProposal(msg: Extract<import("@themelab/shared").ServerMessage, { type: "aiProposal" }>): void {
   if (!panelEl?.parentNode) return;
   confirmEl?.remove();
   const root = panelEl.parentNode;
@@ -346,7 +382,7 @@ function hideConfirm(): void {
   setTimeout(() => el?.remove(), 200);
 }
 
-function onProposalComplete(msg: Extract<import("@react-rewrite/shared").ServerMessage, { type: "aiProposalComplete" }>): void {
+function onProposalComplete(msg: Extract<import("@themelab/shared").ServerMessage, { type: "aiProposalComplete" }>): void {
   if (msg.success) {
     showToast("Applied AI-resolved edit", "success");
     addChangeEntry({

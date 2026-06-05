@@ -1,4 +1,4 @@
-import type { ChangeEntry } from "@react-rewrite/shared";
+import type { ChangeEntry } from "@themelab/shared";
 import { send, onMessage } from "./bridge.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { showToast } from "./toolbar.js";

@@ -18,7 +18,7 @@
 import { getFiberFromHostInstance, getDisplayName, isCompositeFiber, isInstrumentationActive, instrument } from "bippy";
 import { getOwnerStack } from "bippy/source";
 import { resolveFrameFilePath } from "./utils/source-resolve.js";
-import type { ComponentInfo, JSXStructuralPath } from "@react-rewrite/shared";
+import type { ComponentInfo, JSXStructuralPath } from "@themelab/shared";
 import { getShadowRoot, updateComponentDetail, showToast } from "./toolbar.js";
 import { isInternalName, isMdxFilePath, isFullPageElement, isValidElement } from "./utils/component-filter.js";
 import { buildJSXPath } from "./utils/jsx-path.js";
@@ -118,7 +118,7 @@ async function resolveComponentFromElement(el: HTMLElement): Promise<ResolvedCom
       }
     }
   } catch (err) {
-    console.warn("[ReactRewrite] getOwnerStack failed, falling back to fiber walk:", err);
+    console.warn("[ThemeLab] getOwnerStack failed, falling back to fiber walk:", err);
   }
 
   // Fallback: synchronous fiber walk (works when owner stacks aren't available)
@@ -228,7 +228,7 @@ function getCanonicalSelectableElement(clientX: number, clientY: number): HTMLEl
 function isNavigable(el: Element | null): el is HTMLElement {
   return (
     el instanceof HTMLElement &&
-    !el.closest("#react-rewrite-root") &&
+    !el.closest("#themelab-root") &&
     isValidElement(el)
   );
 }
@@ -249,7 +249,7 @@ function findValidAncestor(el: HTMLElement): HTMLElement | null {
  *  then descends through wrapper nodes that aren't selectable themselves. */
 function findValidDescendant(el: HTMLElement): HTMLElement | null {
   const children = Array.from(el.children).filter(
-    (c): c is HTMLElement => c instanceof HTMLElement && !c.closest("#react-rewrite-root")
+    (c): c is HTMLElement => c instanceof HTMLElement && !c.closest("#themelab-root")
   );
   for (const child of children) {
     if (isValidElement(child)) return child;
@@ -271,7 +271,7 @@ function findValidSibling(el: HTMLElement, dir: 1 | -1): HTMLElement | null {
     while (cur) {
       if (isNavigable(cur)) return cur;
       // Wrapper sibling — look inside it for a selectable node.
-      if (cur instanceof HTMLElement && !cur.closest("#react-rewrite-root")) {
+      if (cur instanceof HTMLElement && !cur.closest("#themelab-root")) {
         const inner = findValidDescendant(cur);
         if (inner) return inner;
       }
@@ -604,7 +604,7 @@ function handleMouseDown(e: MouseEvent): void {
   // Ignore clicks on the overlay's own UI (sidebar, toolbar, etc.)
   // composedPath() pierces Shadow DOM boundaries
   const path = e.composedPath();
-  if (path.some((el) => el instanceof HTMLElement && el.id === "react-rewrite-root")) return;
+  if (path.some((el) => el instanceof HTMLElement && el.id === "themelab-root")) return;
 
   const el = getCanonicalSelectableElement(e.clientX, e.clientY);
 
@@ -936,7 +936,7 @@ export async function selectElement(el: HTMLElement, options?: { skipSidebar?: b
       }
     }
 
-    console.log("[ReactRewrite] selectElement:", el.tagName, "→", resolved.componentName, resolved.filePath, "stack:", resolved.stack?.map(s => s.componentName));
+    console.log("[ThemeLab] selectElement:", el.tagName, "→", resolved.componentName, resolved.filePath, "stack:", resolved.stack?.map(s => s.componentName));
 
     currentSelection = {
       tagName: resolved.tagName,
@@ -987,7 +987,7 @@ export async function selectElement(el: HTMLElement, options?: { skipSidebar?: b
       lineNumber: resolved.lineNumber,
     });
   } catch (err) {
-    console.error("[ReactRewrite] selectElement error:", err);
+    console.error("[ThemeLab] selectElement error:", err);
   }
 }
 

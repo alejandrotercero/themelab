@@ -71,7 +71,7 @@ export function initHighlightCanvas(): void {
   if (!shadowRoot) return;
 
   canvas = document.createElement("canvas");
-  canvas.setAttribute("data-react-rewrite-overlay", "true");
+  canvas.setAttribute("data-themelab-overlay", "true");
   canvas.style.cssText = `
     position: fixed;
     top: 0;

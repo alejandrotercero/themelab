@@ -1,4 +1,4 @@
-import type { ComponentInfo, ElementIdentity, PropertyGroup } from "@react-rewrite/shared";
+import type { ComponentInfo, ElementIdentity, PropertyGroup } from "@themelab/shared";
 import { ALL_DESCRIPTORS } from "./property-descriptors.js";
 const DESCRIPTOR_MAP = new Map(ALL_DESCRIPTORS.map(d => [d.key, d]));
 import { renderSections, isGroupCollapsed, onSectionExpand } from "./section-renderer.js";

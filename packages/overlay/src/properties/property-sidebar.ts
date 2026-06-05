@@ -7,7 +7,7 @@ import { COLORS, SHADOWS, RADII, TRANSITIONS, PANEL, FONT_MONO, ensurePanelFont 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 380;
 const DEFAULT_WIDTH = MAX_WIDTH; // open at full width by default
-const STORAGE_KEY = "react-rewrite-sidebar-width";
+const STORAGE_KEY = "themelab-sidebar-width";
 const RESIZE_HANDLE_WIDTH = 4;
 
 // ---------------------------------------------------------------------------

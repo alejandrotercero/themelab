@@ -49,7 +49,7 @@ export function createProxyServer(
     // Serve overlay bundle — never cache it, so a plain reload always gets the
     // freshly built code (otherwise the browser caches it and stale overlay UI
     // persists across rebuilds even after a refresh).
-    if (normalizedUrl === "/__react-rewrite/overlay.js") {
+    if (normalizedUrl === "/__themelab/overlay.js") {
       res.writeHead(200, {
         "Content-Type": "application/javascript",
         "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -96,8 +96,8 @@ export function createProxyServer(
       let body = Buffer.concat(chunks).toString("utf-8");
 
       const injectedScript = `
-<script src="/__react-rewrite/overlay.js"></script>
-<script>window.__REACT_REWRITE_WS_PORT__ = ${wsPort};</script>`;
+<script src="/__themelab/overlay.js"></script>
+<script>window.__THEMELAB_WS_PORT__ = ${wsPort};</script>`;
 
       if (body.includes("</body>")) {
         body = body.replace("</body>", `${injectedScript}\n</body>`);

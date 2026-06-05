@@ -1,5 +1,5 @@
 // packages/overlay/src/tools/resolve-helper.ts
-import type { ComponentRef } from "@react-rewrite/shared";
+import type { ComponentRef } from "@themelab/shared";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
 import { getOwnerStack } from "bippy/source";
 

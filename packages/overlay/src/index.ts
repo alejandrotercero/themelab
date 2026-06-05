@@ -36,7 +36,7 @@ import { initSettingsPanel } from "./settings-panel.js";
 
 declare global {
   interface Window {
-    __REACT_REWRITE_WS_PORT__?: number;
+    __THEMELAB_WS_PORT__?: number;
   }
 }
 
@@ -50,7 +50,7 @@ let errorToastTimeout: ReturnType<typeof setTimeout> | null = null;
 /** Check if an error likely originated from overlay code */
 function isOverlayError(error: unknown): boolean {
   const stack = (error instanceof Error && error.stack) ? error.stack : String(error);
-  return /react-rewrite|overlay/i.test(stack);
+  return /themelab|overlay/i.test(stack);
 }
 
 /** Show a minimal error toast inside the Shadow DOM */
@@ -129,8 +129,8 @@ function showErrorToast(message: string): void {
 
 /** Handle an overlay error: log it and show toast */
 function handleOverlayError(error: unknown): void {
-  console.error("[ReactRewrite]", error);
-  showErrorToast("ReactRewrite encountered an error. Your app is unaffected.");
+  console.error("[ThemeLab]", error);
+  showErrorToast("ThemeLab encountered an error. Your app is unaffected.");
 }
 
 /** Install global error handlers that catch overlay-originating errors */
@@ -183,13 +183,13 @@ function init(): void {
   // Only run in the top-level frame — skip iframes to avoid duplicate WS connections
   if (window !== window.top) return;
 
-  const wsPort = window.__REACT_REWRITE_WS_PORT__;
+  const wsPort = window.__THEMELAB_WS_PORT__;
   if (!wsPort) {
-    console.warn("[ReactRewrite] No WebSocket port found.");
+    console.warn("[ThemeLab] No WebSocket port found.");
     return;
   }
 
-  if (document.getElementById("react-rewrite-root")) return; // Already initialized
+  if (document.getElementById("themelab-root")) return; // Already initialized
 
   ensurePanelFont(); // Load Google Sans Code before any UI paints
   connect(wsPort);
@@ -378,7 +378,7 @@ function init(): void {
       } else {
         const failedDetails = msg.results?.filter((r: any) => !r.success).map((r: any) => r.error).filter(Boolean).join("; ");
         showToast(`Error: ${failedDetails || msg.error || "Batch apply failed"}`);
-        console.error("[ReactRewrite] Batch apply failed:", msg.results);
+        console.error("[ThemeLab] Batch apply failed:", msg.results);
         generating = false;
         updateGenerateButton(hasChanges());
       }
@@ -421,7 +421,7 @@ function init(): void {
   if (document.readyState === "complete") deferredRestore();
   else window.addEventListener("load", deferredRestore, { once: true });
 
-  console.log("[ReactRewrite] Overlay initialized with Phase 2A canvas tools");
+  console.log("[ThemeLab] Overlay initialized with Phase 2A canvas tools");
 }
 
 function close(): void {

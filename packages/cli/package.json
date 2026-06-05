@@ -1,5 +1,5 @@
 {
-  "name": "react-rewrite-cli",
+  "name": "themelab-cli",
   "version": "0.1.1",
   "description": "Visual overlay for React dev servers — select components, drag to reorder, and draw on a Figma-style canvas",
   "keywords": [
@@ -14,10 +14,10 @@
     "ast",
     "cli"
   ],
-  "homepage": "https://github.com/donghaxkim/react-rewrite",
+  "homepage": "https://github.com/donghaxkim/themelab",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/donghaxkim/react-rewrite.git",
+    "url": "git+https://github.com/donghaxkim/themelab.git",
     "directory": "packages/cli"
   },
   "engines": {
@@ -26,7 +26,7 @@
   "license": "MIT",
   "author": "Dongha Kim",
   "bin": {
-    "react-rewrite": "bin/react-rewrite.js"
+    "themelab": "bin/themelab.js"
   },
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +58,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@react-rewrite/shared": "workspace:*",
+    "@themelab/shared": "workspace:*",
     "@types/http-proxy": "^1.17.15",
     "@types/jscodeshift": "^17.3.0",
     "@types/ws": "^8.5.13",

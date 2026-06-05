@@ -1,4 +1,4 @@
-import type { TailwindTokenMap } from "@react-rewrite/shared";
+import type { TailwindTokenMap } from "@themelab/shared";
 
 // ---------------------------------------------------------------------------
 // Types

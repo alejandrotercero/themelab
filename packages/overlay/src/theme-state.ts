@@ -5,7 +5,7 @@
 // (e.g. --primary) updates every component and both light/dark at once — the
 // root fix for "color edits break when toggling dark mode".
 
-import type { ThemeStyles, ThemeSource } from "@react-rewrite/shared";
+import type { ThemeStyles, ThemeSource } from "@themelab/shared";
 import { send } from "./bridge.js";
 import { isColor } from "./utils/color-format.js";
 

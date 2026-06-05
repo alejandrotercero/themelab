@@ -1,4 +1,4 @@
-import type { PropertyDescriptor } from "@react-rewrite/shared";
+import type { PropertyDescriptor } from "@themelab/shared";
 
 // --- Layout ---
 export const LAYOUT_DESCRIPTORS: PropertyDescriptor[] = [

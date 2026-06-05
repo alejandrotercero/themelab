@@ -8,8 +8,38 @@ import { createSketchServer } from "./server.js";
 import { getAvailablePort } from "./utils.js";
 import { logger, setLogLevel } from "./logger.js";
 
+// Brand accent (matches the overlay's COLORS.accent).
+const BRAND = "#ec003f";
+
+// The "TL" (ThemeLab) mark, printed at startup.
+const LOGO_LINES = [
+  "████████╗██╗     ",
+  "╚══██╔══╝██║     ",
+  "   ██║   ██║     ",
+  "   ██║   ██║     ",
+  "   ██║   ███████╗",
+  "   ╚═╝   ╚══════╝",
+];
+
+function printBanner(): void {
+  const mark = chalk.hex(BRAND);
+  const side = [
+    "",
+    chalk.bold.white("ThemeLab"),
+    chalk.dim("Visual overlay for React dev servers"),
+    "",
+    chalk.hex(BRAND)("themelab.dev"),
+    "",
+  ];
+  let out = "\n";
+  for (let i = 0; i < LOGO_LINES.length; i++) {
+    out += "  " + mark(LOGO_LINES[i]) + "   " + (side[i] ?? "") + "\n";
+  }
+  logger.info(out);
+}
+
 program
-  .name("react-rewrite")
+  .name("themelab")
   .description("Visual overlay for React dev servers")
   .argument("[port]", "Dev server port override")
   .option("--no-open", "Don't open browser automatically")
@@ -23,7 +53,7 @@ program
       }
       const host = opts.host || "localhost";
 
-      logger.info(chalk.cyan("\n  ReactRewrite") + chalk.dim(" — React visual overlay\n"));
+      printBanner();
 
       // Detect framework
       const detection = await detect();

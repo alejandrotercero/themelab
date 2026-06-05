@@ -9,7 +9,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ThemeStyles, ThemeSource } from "@react-rewrite/shared";
+import type { ThemeStyles, ThemeSource } from "@themelab/shared";
 import { findCssFiles } from "./tailwind-resolver.js";
 
 export interface ResolvedTheme {

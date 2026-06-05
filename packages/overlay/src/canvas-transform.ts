@@ -62,7 +62,7 @@ export function initCanvasTransform(): void {
 
   // Create the wrapper that will hold page content
   wrapper = document.createElement("div");
-  wrapper.setAttribute("data-react-rewrite-canvas-wrapper", "true");
+  wrapper.setAttribute("data-themelab-canvas-wrapper", "true");
   wrapper.style.cssText = `
     transform-origin: 0 0;
     min-width: 100vw;
@@ -73,7 +73,7 @@ export function initCanvasTransform(): void {
 
   // Create dotted background (sits behind wrapper, covers viewport)
   dotBg = document.createElement("div");
-  dotBg.setAttribute("data-react-rewrite-dot-bg", "true");
+  dotBg.setAttribute("data-themelab-dot-bg", "true");
   dotBg.style.cssText = `
     position: fixed;
     top: 0;
@@ -85,18 +85,18 @@ export function initCanvasTransform(): void {
     background-color: ${COLORS.bgSecondary};
   `.trim().replace(/\n\s*/g, " ");
 
-  // Move all non-ReactRewrite body children into the wrapper
+  // Move all non-ThemeLab body children into the wrapper
   const bodyChildren = Array.from(document.body.childNodes);
   for (const child of bodyChildren) {
     if (child instanceof HTMLElement) {
-      // Skip ReactRewrite elements
+      // Skip ThemeLab elements
       if (
-        child.id === "react-rewrite-root" ||
-        child.hasAttribute("data-react-rewrite-interaction") ||
-        child.hasAttribute("data-react-rewrite-placeholder") ||
-        child.hasAttribute("data-react-rewrite-annotation") ||
-        child.hasAttribute("data-react-rewrite-dot-bg") ||
-        child.hasAttribute("data-react-rewrite-canvas-wrapper")
+        child.id === "themelab-root" ||
+        child.hasAttribute("data-themelab-interaction") ||
+        child.hasAttribute("data-themelab-placeholder") ||
+        child.hasAttribute("data-themelab-annotation") ||
+        child.hasAttribute("data-themelab-dot-bg") ||
+        child.hasAttribute("data-themelab-canvas-wrapper")
       ) {
         continue;
       }
@@ -109,7 +109,7 @@ export function initCanvasTransform(): void {
   wrapper.style.position = "relative";
   wrapper.style.zIndex = "1";
 
-  // Insert bg and wrapper into body (before ReactRewrite elements)
+  // Insert bg and wrapper into body (before ThemeLab elements)
   document.body.insertBefore(dotBg, document.body.firstChild);
   document.body.insertBefore(wrapper, dotBg.nextSibling);
 
@@ -198,7 +198,7 @@ export function isCanvasActive(): boolean {
 // write, which tears down the in-memory canvas. We snapshot the view to
 // sessionStorage on unload and restore it on init so the canvas doesn't "close"
 // every time you confirm an edit. sessionStorage = per-tab, clears on tab close.
-const PERSIST_KEY = "__react_rewrite_canvas_view__";
+const PERSIST_KEY = "__themelab_canvas_view__";
 
 export function saveCanvasState(): void {
   try {

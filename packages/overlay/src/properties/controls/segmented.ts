@@ -1,4 +1,4 @@
-import type { PropertyDescriptor } from "@react-rewrite/shared";
+import type { PropertyDescriptor } from "@themelab/shared";
 import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
 import { PANEL, FONT_MONO, RADII } from "../../design-tokens.js";
 

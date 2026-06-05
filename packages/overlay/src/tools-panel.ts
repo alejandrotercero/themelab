@@ -1,5 +1,5 @@
 // packages/overlay/src/tools-panel.ts
-import type { ToolType } from "@react-rewrite/shared";
+import type { ToolType } from "@themelab/shared";
 import { getActiveTool, setActiveTool } from "./canvas-state.js";
 import { getShadowRoot, getToolbarToolsSlot } from "./toolbar.js";
 import { createSettingsButton } from "./settings-panel.js";
@@ -10,6 +10,7 @@ import { isEditableFocused } from "./utils/active-element.js";
 import { getActiveCount, isChangelogOpen, onChangelogChange, setChangelogOpen } from "./changelog.js";
 import { toggleThemePanel, isThemePanelOpen, onThemePanelToggle } from "./theme-panel.js";
 import { hasTheme, onThemeChange } from "./theme-state.js";
+import { brandMark } from "./brand.js";
 
 const ICONS = {
   pointer: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13.9093 12.3603L17.0007 20.8537L14.1816 21.8798L11.0902 13.3864L6.91797 16.5422L8.4087 1.63318L19.134 12.0959L13.9093 12.3603Z"></path></svg>`,
@@ -529,6 +530,10 @@ function openShortcutsOverlay(): void {
 
   const card = document.createElement("div");
   card.className = "shortcuts-card";
+
+  const brand = brandMark(20);
+  brand.style.marginBottom = "10px";
+  card.appendChild(brand);
 
   const title = document.createElement("div");
   title.className = "shortcuts-title";

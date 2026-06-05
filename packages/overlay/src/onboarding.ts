@@ -1,7 +1,7 @@
 import { COLORS, FONT_FAMILY, TRANSITIONS } from "./design-tokens.js";
 import { getShadowRoot } from "./toolbar.js";
 
-const STORAGE_KEY = "react-rewrite-onboarding-dismissed";
+const STORAGE_KEY = "themelab-onboarding-dismissed";
 
 let barEl: HTMLDivElement | null = null;
 

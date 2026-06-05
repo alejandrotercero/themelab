@@ -1,4 +1,4 @@
-import type { ComponentRef, ElementIdentity } from "@react-rewrite/shared";
+import type { ComponentRef, ElementIdentity } from "@themelab/shared";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
 import { getOwnerStack, normalizeFileName, isSourceFile } from "bippy/source";
 import { SHADOWS } from "./design-tokens.js";
@@ -64,7 +64,7 @@ const PLACEHOLDER_PROPS = [
 
 export function createPlaceholder(element: HTMLElement): HTMLElement {
   const ph = document.createElement("div");
-  ph.setAttribute("data-react-rewrite-placeholder", "true");
+  ph.setAttribute("data-themelab-placeholder", "true");
   const computed = getComputedStyle(element);
   for (const prop of PLACEHOLDER_PROPS) {
     setStyle(ph, prop, computed[prop as keyof CSSStyleDeclaration] as string);

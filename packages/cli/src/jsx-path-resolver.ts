@@ -1,7 +1,7 @@
 // packages/cli/src/jsx-path-resolver.ts
 // Resolves a JSX structural path to an AST node (jscodeshift path object).
 
-import type { JSXStructuralPath, JSXPathSegment } from "@react-rewrite/shared";
+import type { JSXStructuralPath, JSXPathSegment } from "@themelab/shared";
 
 /**
  * Get the tag name from a JSXElement node.

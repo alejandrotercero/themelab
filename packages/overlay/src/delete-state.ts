@@ -3,7 +3,7 @@
 // Manages deleted DOM elements (instant removal, source commit on Confirm).
 // Tracks parent + nextSibling for precise re-insertion on undo.
 
-import type { ComponentInfo, JSXStructuralPath } from "@react-rewrite/shared";
+import type { ComponentInfo, JSXStructuralPath } from "@themelab/shared";
 import { send } from "./bridge.js";
 
 // ── Types ────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { updateTextContent } from "../transform.js";
-import type { TextEditAnchor } from "@react-rewrite/shared";
+import type { TextEditAnchor } from "@themelab/shared";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";

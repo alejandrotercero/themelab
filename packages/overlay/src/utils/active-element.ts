@@ -1,7 +1,7 @@
 // packages/overlay/src/utils/active-element.ts
 //
 // Focus detection that works through Shadow DOM. The overlay UI lives inside a
-// shadow root (`#react-rewrite-root`), so `document.activeElement` reports the
+// shadow root (`#themelab-root`), so `document.activeElement` reports the
 // shadow *host*, not the input the user is actually typing in. Without this,
 // every global shortcut (Delete, arrows, spacebar-pan) fires while the user is
 // editing an overlay field.

@@ -3,7 +3,7 @@ import type {
   ToolType, Annotation, TextAnnotation, ColorOverride,
   ComponentRef, CanvasUndoAction,
   TextEditAnnotation, ElementIdentity, BatchOperation,
-} from "@react-rewrite/shared";
+} from "@themelab/shared";
 import type { MoveEntry, ParentLayout } from "./move-state.js";
 import type { CloneEntry } from "./clone-state.js";
 import type { DeleteEntry } from "./delete-state.js";
@@ -160,7 +160,7 @@ interface TextEditDomHints {
   nthOfType?: number;
   elementId?: string;
   jsxKey?: string;
-  jsxPath?: import("@react-rewrite/shared").JSXStructuralPath;
+  jsxPath?: import("@themelab/shared").JSXStructuralPath;
   fileMtime?: number;
   fileSize?: number;
 }
@@ -626,7 +626,7 @@ export function buildBatchOperations(): BatchOperation[] {
     // Text edits → updateText
     if (ann.type === "textEdit") {
       const textAnn = ann as TextEditAnnotation;
-      console.log("[ReactRewrite:buildBatch] textEdit annotation:", { filePath: textAnn.filePath, line: textAnn.lineNumber, col: textAnn.columnNumber, originalText: textAnn.originalText?.slice(0, 40), newText: textAnn.newText?.slice(0, 40) });
+      console.log("[ThemeLab:buildBatch] textEdit annotation:", { filePath: textAnn.filePath, line: textAnn.lineNumber, col: textAnn.columnNumber, originalText: textAnn.originalText?.slice(0, 40), newText: textAnn.newText?.slice(0, 40) });
       if (textAnn.filePath) {
         const hints = textEditDomHints.get(textAnn.id);
         ops.push({

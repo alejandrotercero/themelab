@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { TailwindTokenMap } from "@react-rewrite/shared";
+import type { TailwindTokenMap } from "@themelab/shared";
 
 // ---------------------------------------------------------------------------
 // parseThemeBlock

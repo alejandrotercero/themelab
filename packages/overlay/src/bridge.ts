@@ -1,5 +1,5 @@
 // packages/overlay/src/bridge.ts
-import type { ClientMessage, ServerMessage } from "@react-rewrite/shared";
+import type { ClientMessage, ServerMessage } from "@themelab/shared";
 import { setCliTokens } from "./properties/tailwind-resolver.js";
 import { setTheme, onCommitSuccess as onThemeCommitSuccess } from "./theme-state.js";
 type MessageHandler = (msg: ServerMessage) => void;

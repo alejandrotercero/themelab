@@ -1,11 +1,11 @@
-# react-rewrite
+# themelab
 
-`react-rewrite` lets you edit a React app visually while it is running locally, then automatically writes those changes back to the source files in your project.
+`themelab` lets you edit a React app visually while it is running locally, then automatically writes those changes back to the source files in your project.
 
 It is built for local development and works by opening a proxy in front of your dev server and injecting an overlay into the page.
 
 ## Demo
-![React Rewrite GIF Converter](https://github.com/user-attachments/assets/098e564b-d9a9-411d-8ba0-5cf6109bc2e4)
+![ThemeLab GIF Converter](https://github.com/user-attachments/assets/098e564b-d9a9-411d-8ba0-5cf6109bc2e4)
 
 full demo:
 https://x.com/imdonghakim/status/2038230475894899119
@@ -17,19 +17,19 @@ You do not need to download or clone this repo.
 From the root of your React app:
 
 ```bash
-npm install -D react-rewrite-cli
+npm install -D themelab-cli
 ```
 
 Start your dev server, then in a second terminal run:
 
 ```bash
-npx react-rewrite
+npx themelab
 ```
 
 If you want to try it without installing first:
 
 ```bash
-npx react-rewrite-cli@latest
+npx themelab-cli@latest
 ```
 
 ## What it does
@@ -56,7 +56,7 @@ npx react-rewrite-cli@latest
 Most edits resolve deterministically. For the hard cases — an element rendered by a `.map()`, a reused component instance, conditional/state-dependent rendering, or a component that renders a different host tag (e.g. a `<Link>` that outputs an `<a>`) — you can enable an **AI locator**. It reads your source to find the exact node to edit; the change itself is still applied by the same deterministic AST transform (the AI only *locates*, it never writes code).
 
 - **Off by default.** It runs only when an `ANTHROPIC_API_KEY` is configured. With no key, behavior is unchanged.
-- **Configure it** from the gear (⚙) panel in the overlay: API key, an optional custom endpoint (base URL), and model. Settings are stored locally in `~/.config/react-rewrite/config.json` (the key is never sent back to the browser); environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) override the stored values.
+- **Configure it** from the gear (⚙) panel in the overlay: API key, an optional custom endpoint (base URL), and model. Settings are stored locally in `~/.config/themelab/config.json` (the key is never sent back to the browser); environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) override the stored values.
 - **What it does on a match:** a "Locating with AI…" → "Found it" indicator shows while it works. A direct/conditional match applies automatically; an edit that would affect more than the selected element (a `.map()` template or a shared component) asks you to **confirm** first. Resolutions are cached per element, so repeated tweaks stay instant. If it genuinely can't find the element, it tells you **why** rather than guessing.
 - **Confirm with AI (⚡):** the lightning button beside **Confirm** resolves every staged change via the AI locator up front, instead of trying deterministic resolution first — handy when deterministic resolution keeps landing on the wrong element.
 - **Reordering:** move up/down also gets the AI fallback. Reordering an item rendered by a `.map()` swaps the matching entry in the **source data array** (it'll ask to confirm), rather than trying to move JSX that isn't there.
@@ -75,10 +75,10 @@ Tailwind CSS is recommended if you want to use the property editor. Text editing
 Run this in the root of the React app you want to edit:
 
 ```bash
-npm install -D react-rewrite-cli
+npm install -D themelab-cli
 ```
 
-If you don't want to install it first, you can also run it directly with `npx react-rewrite-cli@latest`.
+If you don't want to install it first, you can also run it directly with `npx themelab-cli@latest`.
 
 ## Quick start
 
@@ -86,13 +86,13 @@ If you don't want to install it first, you can also run it directly with `npx re
 2. In a second terminal, from the same project root, run:
 
 ```bash
-npx react-rewrite
+npx themelab
 ```
 
 If auto-detection does not pick the right port, pass it explicitly:
 
 ```bash
-npx react-rewrite 3000
+npx themelab 3000
 ```
 
 The tool opens a local proxy in your browser, shows the editing overlay, and writes confirmed changes back into files inside your project.
@@ -107,7 +107,7 @@ The tool opens a local proxy in your browser, shows the editing overlay, and wri
 ## CLI options
 
 ```text
-react-rewrite [options] [port]
+themelab [options] [port]
 
 Arguments:
   port           Dev server port override
@@ -137,7 +137,7 @@ Options:
 
 ## Notes
 
-- Run `react-rewrite` from your app's root directory so it can detect the framework and safely resolve file paths.
+- Run `themelab` from your app's root directory so it can detect the framework and safely resolve file paths.
 - It only works against development builds, not production builds.
 - Only files inside the current project are eligible for writes.
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { executeBatch } from "../batch-transform.js";
-import type { BatchOperation, TextEditAnchor } from "@react-rewrite/shared";
+import type { BatchOperation, TextEditAnchor } from "@themelab/shared";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -376,14 +376,14 @@ describe("executeBatch", () => {
   });
 
   it("updates mapped object-property text by rewriting the backing string literal", () => {
-    const source = `const Projects = () => {\n  const projects = [\n    { name: "react-rewrite", description: "Figma for your localhost." },\n    { name: "UW GitRank", description: "Waterloo student GitHub rankings." },\n  ];\n\n  return (\n    <div>\n      {projects.map((project) => (\n        <section key={project.name}>\n          <h2>{project.name}</h2>\n          <p>{project.description}</p>\n        </section>\n      ))}\n    </div>\n  );\n};\n`;
+    const source = `const Projects = () => {\n  const projects = [\n    { name: "themelab", description: "Figma for your localhost." },\n    { name: "UW GitRank", description: "Waterloo student GitHub rankings." },\n  ];\n\n  return (\n    <div>\n      {projects.map((project) => (\n        <section key={project.name}>\n          <h2>{project.name}</h2>\n          <p>{project.description}</p>\n        </section>\n      ))}\n    </div>\n  );\n};\n`;
     const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mapped-literals.jsx`);
     fs.writeFileSync(filePath, source, "utf-8");
     fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
 
     const result = executeBatch(
       [
-        { op: "updateText", file: filePath, line: 3, col: 12, originalText: "react-rewrite", newText: "React Rewrite" },
+        { op: "updateText", file: filePath, line: 3, col: 12, originalText: "themelab", newText: "ThemeLab" },
         { op: "updateText", file: filePath, line: 4, col: 12, originalText: "UW GitRank", newText: "UW Git Rank" },
       ],
       path.dirname(filePath),
@@ -392,7 +392,7 @@ describe("executeBatch", () => {
     expect(result.results.every(r => r.success)).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
-    expect(updated).toContain('name: "React Rewrite"');
+    expect(updated).toContain('name: "ThemeLab"');
     expect(updated).toContain('name: "UW Git Rank"');
     expect(updated).toContain('<h2>{project.name}</h2>');
   });

@@ -1,4 +1,4 @@
-import type { PropertyDescriptor, PropertyGroup } from "@react-rewrite/shared";
+import type { PropertyDescriptor, PropertyGroup } from "@themelab/shared";
 import type { PropertyControl, OnPreview, OnCommit, ControlContext } from "./controls/types.js";
 import { createNumberScrub } from "./controls/number-scrub.js";
 import { createSegmented } from "./controls/segmented.js";

@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: { overlay: "src/index.ts" },
   format: ["iife"],
-  globalName: "ReactRewrite",
+  globalName: "ThemeLab",
   minify: true,
   outDir: "dist",
   platform: "browser",

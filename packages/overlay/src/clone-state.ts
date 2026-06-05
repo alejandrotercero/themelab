@@ -4,7 +4,7 @@
 // Structurally parallel to move-state.ts — clones are instant DOM nodes
 // that become real React elements after Confirm writes to source.
 
-import type { ComponentInfo, JSXStructuralPath } from "@react-rewrite/shared";
+import type { ComponentInfo, JSXStructuralPath } from "@themelab/shared";
 import { send } from "./bridge.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ export function pasteElement(): CloneEntry | null {
 
   const cloneId = crypto.randomUUID();
   const clone = originalElement.cloneNode(true) as HTMLElement;
-  clone.setAttribute("data-react-rewrite-clone", cloneId);
+  clone.setAttribute("data-themelab-clone", cloneId);
 
   const sourceKey = `${sourceLocation.filePath}:${sourceLocation.lineNumber}:${sourceLocation.columnNumber}`;
   const insertAfter = lastPastedBySource.get(sourceKey) ?? originalElement;
@@ -170,7 +170,7 @@ export function getCloneForElement(el: HTMLElement): CloneEntry | undefined {
   }
   let current: HTMLElement | null = el;
   while (current) {
-    const cloneId = current.getAttribute("data-react-rewrite-clone");
+    const cloneId = current.getAttribute("data-themelab-clone");
     if (cloneId) return clones.get(cloneId);
     current = current.parentElement;
   }

@@ -1,5 +1,5 @@
 import { getFiberFromHostInstance, getDisplayName, isCompositeFiber } from "bippy";
-import type { JSXStructuralPath, JSXPathSegment } from "@react-rewrite/shared";
+import type { JSXStructuralPath, JSXPathSegment } from "@themelab/shared";
 
 // HTML tag names for filtering out React internals
 const HTML_TAGS = new Set([

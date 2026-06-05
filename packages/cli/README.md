@@ -1,6 +1,6 @@
-# react-rewrite
+# themelab
 
-`react-rewrite` lets you edit a React app visually while it is running locally, then write those changes back to the source files in your project.
+`themelab` lets you edit a React app visually while it is running locally, then write those changes back to the source files in your project.
 
 It works by opening a proxy in front of your dev server and injecting an overlay into the page.
 
@@ -11,19 +11,19 @@ You do not need to download or clone this repo.
 From the root of your React app:
 
 ```bash
-npm install -D react-rewrite-cli
+npm install -D themelab-cli
 ```
 
 Start your dev server, then in a second terminal run:
 
 ```bash
-npx react-rewrite
+npx themelab
 ```
 
 If you want to try it without installing first:
 
 ```bash
-npx react-rewrite-cli@latest
+npx themelab-cli@latest
 ```
 
 ## Requirements
@@ -38,13 +38,13 @@ npx react-rewrite-cli@latest
 From the root of the React app you want to edit:
 
 ```bash
-npm install -D react-rewrite-cli
+npm install -D themelab-cli
 ```
 
 Or run it without installing first:
 
 ```bash
-npx react-rewrite-cli@latest
+npx themelab-cli@latest
 ```
 
 ## Run
@@ -52,19 +52,19 @@ npx react-rewrite-cli@latest
 After installing locally:
 
 ```bash
-npx react-rewrite
+npx themelab
 ```
 
 If auto-detection does not pick the right port:
 
 ```bash
-npx react-rewrite 3000
+npx themelab 3000
 ```
 
 ## CLI options
 
 ```text
-react-rewrite [options] [port]
+themelab [options] [port]
 
 Arguments:
   port           Dev server port override

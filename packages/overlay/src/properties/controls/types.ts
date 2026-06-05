@@ -1,4 +1,4 @@
-import type { PropertyDescriptor } from "@react-rewrite/shared";
+import type { PropertyDescriptor } from "@themelab/shared";
 
 export interface PropertyControl {
   /** The DOM element to mount in the sidebar */

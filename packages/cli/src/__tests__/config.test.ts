@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { loadConfig, saveConfig, updateAiConfig, resolveAiConfig, configPath } from "../config.js";
 
-const ENV_KEYS = ["XDG_CONFIG_HOME", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "REACT_REWRITE_AI_MODEL"] as const;
+const ENV_KEYS = ["XDG_CONFIG_HOME", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "THEMELAB_AI_MODEL"] as const;
 
 describe("config: AI settings storage + resolution", () => {
   let saved: Record<string, string | undefined>;
@@ -52,7 +52,7 @@ describe("config: AI settings storage + resolution", () => {
     saveConfig({ ai: { apiKey: "sk-file", baseURL: "https://file", model: "file-model" } });
     process.env.ANTHROPIC_API_KEY = "sk-env";
     process.env.ANTHROPIC_BASE_URL = "https://env";
-    process.env.REACT_REWRITE_AI_MODEL = "env-model";
+    process.env.THEMELAB_AI_MODEL = "env-model";
     const r = resolveAiConfig();
     expect(r.apiKey).toBe("sk-env");
     expect(r.baseURL).toBe("https://env");

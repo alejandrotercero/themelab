@@ -1,4 +1,4 @@
-import type { ServerMessage, ComponentInfo, ElementIdentity, TextEditAnchor, TextEditAnnotation } from "@react-rewrite/shared";
+import type { ServerMessage, ComponentInfo, ElementIdentity, TextEditAnchor, TextEditAnnotation } from "@themelab/shared";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
 import { getOwnerStack } from "bippy/source";
 import { resolveFrameFilePath } from "./utils/source-resolve.js";
@@ -296,7 +296,7 @@ function hasVisibleBlockChild(el: HTMLElement): boolean {
 function isEditableTextContainer(el: HTMLElement): boolean {
   if (BLOCKED_TAGS.has(el.tagName)) return false;
   if (!getElementVisibleText(el).trim()) return false;
-  if (el.hasAttribute("data-react-rewrite-interaction") || el.closest("#react-rewrite-root")) return false;
+  if (el.hasAttribute("data-themelab-interaction") || el.closest("#themelab-root")) return false;
 
   const tagPrefersTextEditing = TEXT_CONTAINER_TAGS.has(el.tagName);
   return (tagPrefersTextEditing || hasDirectVisibleText(el)) && !hasVisibleBlockChild(el);
@@ -320,7 +320,7 @@ function resolveEditableTextTarget(e: MouseEvent): HTMLElement | null {
   let best: HTMLElement | null = null;
   for (let current: HTMLElement | null = start; current; current = current.parentElement) {
     if (current === document.body || current === document.documentElement) break;
-    if (current.closest("#react-rewrite-root")) break;
+    if (current.closest("#themelab-root")) break;
     if (isEditableTextContainer(current)) {
       best = current;
     }
@@ -362,14 +362,14 @@ function enterEditMode(element: HTMLElement): void {
   const selectedElement = getSelectedElement();
   if (selectionInfo && selectionInfo.filePath && selectedElement === element) {
     componentInfo = selectionInfo;
-    console.log("[ReactRewrite:textEdit] Using selection info:", { componentName: selectionInfo.componentName, filePath: selectionInfo.filePath, line: selectionInfo.lineNumber });
+    console.log("[ThemeLab:textEdit] Using selection info:", { componentName: selectionInfo.componentName, filePath: selectionInfo.filePath, line: selectionInfo.lineNumber });
   } else {
     componentInfo = null;
-    console.log("[ReactRewrite:textEdit] No selection match, resolving async...", { hasSelection: !!selectionInfo, selectionFilePath: selectionInfo?.filePath, selectedElement: selectedElement?.tagName, editElement: element.tagName });
+    console.log("[ThemeLab:textEdit] No selection match, resolving async...", { hasSelection: !!selectionInfo, selectionFilePath: selectionInfo?.filePath, selectedElement: selectedElement?.tagName, editElement: element.tagName });
     resolveComponent(element).then((info) => {
       if (editingElement === element) {
         componentInfo = info;
-        console.log("[ReactRewrite:textEdit] Async resolve result:", { componentName: info?.componentName, filePath: info?.filePath, line: info?.lineNumber });
+        console.log("[ThemeLab:textEdit] Async resolve result:", { componentName: info?.componentName, filePath: info?.filePath, line: info?.lineNumber });
       }
     });
   }
@@ -419,7 +419,7 @@ function handleOutsidePointerDown(e: MouseEvent): void {
   }
 
   const targetElement = eventTarget instanceof HTMLElement ? eventTarget : null;
-  if (targetElement?.closest("#react-rewrite-root")) {
+  if (targetElement?.closest("#themelab-root")) {
     commitAndExit();
     return;
   }
@@ -459,8 +459,8 @@ function resolveClickTarget(e: MouseEvent): HTMLElement | null {
     eventTarget instanceof HTMLElement &&
     eventTarget !== document.documentElement &&
     eventTarget !== document.body &&
-    !eventTarget.hasAttribute("data-react-rewrite-interaction") &&
-    !eventTarget.closest("#react-rewrite-root")
+    !eventTarget.hasAttribute("data-themelab-interaction") &&
+    !eventTarget.closest("#themelab-root")
   ) {
     return eventTarget;
   }
@@ -493,7 +493,7 @@ function commitAndExit(options?: {
   const changed = newText !== originalTextContent;
   const textAnchor = changed ? buildTextEditAnchor(originalTextContent, newText) : undefined;
 
-  console.log("[ReactRewrite:textEdit] commitAndExit changed:", changed, "componentInfo:", componentInfo?.componentName, "filePath:", componentInfo?.filePath);
+  console.log("[ThemeLab:textEdit] commitAndExit changed:", changed, "componentInfo:", componentInfo?.componentName, "filePath:", componentInfo?.filePath);
 
   if (changed && componentInfo) {
     // If filePath is empty, try file discovery (grep-based lookup by component name)

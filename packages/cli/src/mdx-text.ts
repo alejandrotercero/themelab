@@ -1,4 +1,4 @@
-import type { TextEditAnchor } from "@react-rewrite/shared";
+import type { TextEditAnchor } from "@themelab/shared";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkMdx from "remark-mdx";

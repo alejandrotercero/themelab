@@ -10,10 +10,11 @@ import type {
   UndoEntry,
   TransformErrorCode,
   TailwindTokenMap,
-} from "@react-rewrite/shared";
+} from "@themelab/shared";
 import { reorderComponent, getSiblings } from "./transform.js";
 import { updateClassName, updateTextContent } from "./transform.js";
 import { logger } from "./logger.js";
+import { logBatchStart, logBatchResult, logBatchException } from "./log-format.js";
 import { resolveTailwindConfig } from "./tailwind-resolver.js";
 import { resolveTheme } from "./theme-resolver.js";
 import { writeThemeVars } from "./theme-writer.js";
@@ -82,7 +83,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
   });
   // Pending AI proposals (structural / cross-file) awaiting user confirmation.
   const pendingProposals = new Map<string, AiProposal>();
-  if (aiOptions.enableAi) logger.info("[ReactRewrite] AI locator enabled");
+  if (aiOptions.enableAi) logger.info("[ThemeLab] AI locator enabled");
   const undoStack: UndoEntry[] = [];
   let activeClient: WebSocket | null = null;
   let processing = false;
@@ -148,7 +149,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
       switch (msg.type) {
         case "updateTheme": {
           if (!isProjectFilePathSafe(msg.filePath, projectRoot)) {
-            logger.warn(`[ReactRewrite] Rejected theme write path: ${msg.filePath}`);
+            logger.warn(`[ThemeLab] Rejected theme write path: ${msg.filePath}`);
             send(ws, { type: "updateThemeComplete", success: false, error: "Theme file path is outside the project root" });
             break;
           }
@@ -172,7 +173,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             const error = msg.filePath.trim()
               ? "File path is outside the project root"
               : "File path could not be resolved for this element";
-            logger.warn(`[ReactRewrite] Rejected reorder path: ${msg.filePath}`);
+            logger.warn(`[ThemeLab] Rejected reorder path: ${msg.filePath}`);
             send(ws, { type: "reorderComplete", success: false, error });
             break;
           }
@@ -210,7 +211,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             const error = msg.filePath.trim()
               ? "File path is outside the project root"
               : "File path could not be resolved for this element";
-            logger.warn(`[ReactRewrite] Rejected moveSibling path: ${msg.filePath}`);
+            logger.warn(`[ThemeLab] Rejected moveSibling path: ${msg.filePath}`);
             send(ws, { type: "moveSiblingComplete", success: false, error });
             break;
           }
@@ -293,7 +294,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             const error = msg.filePath.trim()
               ? "File path is outside the project root"
               : "File path could not be resolved for this element";
-            logger.warn(`[ReactRewrite] Rejected property update path: ${msg.filePath}`);
+            logger.warn(`[ThemeLab] Rejected property update path: ${msg.filePath}`);
             send(ws, { type: "updatePropertyComplete", success: false, error });
             break;
           }
@@ -366,7 +367,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             const error = msg.filePath.trim()
               ? "File path is outside the project root"
               : "File path could not be resolved for this element";
-            logger.warn(`[ReactRewrite] Rejected text update path: ${msg.filePath}`);
+            logger.warn(`[ThemeLab] Rejected text update path: ${msg.filePath}`);
             send(ws, { type: "updateTextComplete", success: false, error });
             break;
           }
@@ -415,18 +416,10 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         }
 
         case "commitBatch": {
-          logger.info(`[commitBatch] Received ${msg.operations.length} operations:`, msg.operations.map((o: BatchOperation) => `${o.op}@${o.file}:${o.op === "reorder" ? o.fromLine : o.line}`));
+          logBatchStart(msg.operations);
           try {
             const batchResult = await executeBatchWithAi(msg.operations, projectRoot, { ...aiOptionsFor(ws), forceAi: msg.forceAi });
-            const failedOps = batchResult.results.filter(r => !r.success);
-            if (failedOps.length > 0) {
-              logger.error(`[commitBatch] ${failedOps.length}/${batchResult.results.length} operations failed:`);
-              for (const r of failedOps) {
-                logger.error(`  ${r.op}@${r.file}:${r.line} — ${r.error}`);
-              }
-            } else {
-              logger.info(`[commitBatch] All ${batchResult.results.length} operations succeeded`);
-            }
+            logBatchResult(batchResult.results);
 
             // Create undo entries for each file that was modified
             const batchUndoIds: string[] = [];
@@ -459,7 +452,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
             });
             emitProposals(ws, batchResult.proposals);
           } catch (err) {
-            logger.error(`[commitBatch] Exception:`, err instanceof Error ? err.message : String(err));
+            logBatchException(err);
             send(ws, {
               type: "commitBatchComplete",
               success: false,
@@ -512,7 +505,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         case "saveSettings": {
           updateAiConfig(msg.ai);
           aiOptions = buildAiOptions();
-          logger.info(`[ReactRewrite] AI settings updated (enabled=${aiOptions.enableAi})`);
+          logger.info(`[ThemeLab] AI settings updated (enabled=${aiOptions.enableAi})`);
           const cfg = resolveAiConfig();
           send(ws, {
             type: "settings",
@@ -587,7 +580,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         default:
           // A type is in WRITE_MESSAGE_TYPES but has no handler here — loud, not
           // silent, so this drift is caught immediately instead of vanishing.
-          logger.error(`[ReactRewrite] Queued write message has no handler: ${(msg as { type?: string }).type}`);
+          logger.error(`[ThemeLab] Queued write message has no handler: ${(msg as { type?: string }).type}`);
       }
     } catch (err) {
       // Catch-all for unexpected errors
@@ -612,7 +605,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
       resolvedTokens = config.tokens;
       send(ws, { type: "tailwindTokens", tokens: config.tokens });
     } catch (err) {
-      logger.warn("[ReactRewrite] Could not resolve Tailwind config:", err);
+      logger.warn("[ThemeLab] Could not resolve Tailwind config:", err);
     }
 
     // Resolve and send the project's design-token theme (for Theme mode)
@@ -627,7 +620,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         );
       }
     } catch (err) {
-      logger.warn("[ReactRewrite] Could not resolve theme:", err);
+      logger.warn("[ThemeLab] Could not resolve theme:", err);
     }
 
     ws.on("message", (data) => {
@@ -668,7 +661,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         case "getSiblings":
           // Can run concurrently (read-only)
           if (!isProjectFilePathSafe(msg.filePath, projectRoot)) {
-            logger.warn(`[ReactRewrite] Rejected siblings path: ${msg.filePath}`);
+            logger.warn(`[ThemeLab] Rejected siblings path: ${msg.filePath}`);
             send(ws, { type: "siblingsList", siblings: [] });
             break;
           }
@@ -714,7 +707,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
 
         default:
           // Write types are intercepted above; anything here is unrecognized.
-          logger.debug(`[ReactRewrite] Ignoring unrecognized message type: ${(msg as { type?: string }).type}`);
+          logger.debug(`[ThemeLab] Ignoring unrecognized message type: ${(msg as { type?: string }).type}`);
       }
     });
 

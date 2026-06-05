@@ -1,7 +1,7 @@
-# react-rewrite — Roadmap & Spec
+# themelab — Roadmap & Spec
 
 > Status: draft v1 · 2026-05-28 (updated 2026-05-31 — M0–M2 + #4 + #5 shipped; resolver hardened + AI locator across edits, move up/down, and .map() list reordering; remaining: #8 fonts, M3 theme v2)
-> Scope: turn react-rewrite from a per-element class editor into a full **visual editor for shadcn/Tailwind apps** — both the *elements* and the *theme*.
+> Scope: turn themelab from a per-element class editor into a full **visual editor for shadcn/Tailwind apps** — both the *elements* and the *theme*.
 > Grounded in: the current codebase (`packages/{cli,overlay,shared}`), hands-on testing feedback, and the tweakcn theme-editor model (Apache-2.0, cloned at `/Users/alejandro/DEV/tweakcn`).
 
 ---
@@ -77,7 +77,7 @@ Port the removed **Lab/Delta-E nearest-color** logic from `recovered/cli/resolve
 
 ### 1.5 Live preview (fixes #3, partially #7)
 
-react-rewrite's advantage over tweakcn: **the overlay is on the same page as the app** (Shadow DOM), not a separate gallery. So preview = override CSS vars on the live `:root`:
+themelab's advantage over tweakcn: **the overlay is on the same page as the app** (Shadow DOM), not a separate gallery. So preview = override CSS vars on the live `:root`:
 - Apply edits by setting `document.documentElement.style.setProperty('--primary', value)` (and a `.dark` scope variant). Instant, no rebuild, no refresh. Reference: `tweakcn/utils/apply-theme.ts` (adapt — we don't need the iframe injector since we're in-page).
 - Dark mode: detect the app's dark strategy (`.dark` class on `<html>`/`<body>` or `data-theme`), preview both, and **write both** on confirm.
 
@@ -121,7 +121,7 @@ Each is mapped to root cause + fix + files + effort (S/M/L).
 
 ### #7 — No auto-refresh after write · **S–M** · flow-breaker
 - **Root cause:** the proxy *does* forward HMR websockets (`inject.ts:121 proxy.ws`) and self-handles HTML to inject the overlay, yet edits need a manual refresh — so HMR-over-proxy isn't applying, or there's no post-write signal.
-- **Fix:** diagnose live with `--verbose` + browser console (is the HMR socket connecting to the proxy origin?). Likely fixes: ensure the HMR client connects through the proxy (rewrite the HMR endpoint), and/or after a successful write the CLI pushes a `reload`/`applied` message over the react-rewrite WS and the overlay either relies on HMR or does a soft refresh. With Theme mode (CSS-var preview), color/font edits won't need any reload at all.
+- **Fix:** diagnose live with `--verbose` + browser console (is the HMR socket connecting to the proxy origin?). Likely fixes: ensure the HMR client connects through the proxy (rewrite the HMR endpoint), and/or after a successful write the CLI pushes a `reload`/`applied` message over the themelab WS and the overlay either relies on HMR or does a soft refresh. With Theme mode (CSS-var preview), color/font edits won't need any reload at all.
 - **Files:** `inject.ts`, `server.ts`, overlay WS bridge (`bridge.ts`).
 
 ### #4 — Lists / `.map()` → master component · **L** · **done (AI locator)**

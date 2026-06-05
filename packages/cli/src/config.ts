@@ -37,7 +37,7 @@ export interface ResolvedAiConfig {
 
 function configDir(): string {
   const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
-  return path.join(base, "react-rewrite");
+  return path.join(base, "themelab");
 }
 
 export function configPath(): string {
@@ -75,7 +75,7 @@ export function resolveAiConfig(): ResolvedAiConfig {
   const file = loadConfig().ai ?? {};
   const envKey = process.env.ANTHROPIC_API_KEY;
   const envBase = process.env.ANTHROPIC_BASE_URL;
-  const envModel = process.env.REACT_REWRITE_AI_MODEL;
+  const envModel = process.env.THEMELAB_AI_MODEL;
 
   const apiKey = envKey || file.apiKey;
   const baseURL = envBase || file.baseURL;

@@ -53,4 +53,4 @@ jobs:
         run: pnpm test
 
       - name: Test (Overlay)
-        run: pnpm --filter @react-rewrite/overlay exec vitest run
+        run: pnpm --filter @themelab/overlay exec vitest run

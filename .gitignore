@@ -8,5 +8,5 @@ dist/
 package-lock.json
 .playwright-mcp/
 docs/superpowers/
-CLAUDE.md
 recovered/
+.claude/settings.local.json

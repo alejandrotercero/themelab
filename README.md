@@ -159,9 +159,36 @@ pnpm dev
 
 You will still need a separate supported React app running locally to test the tool end to end.
 
+## Web theme studio (`apps/web`)
+
+Alongside the CLI/overlay, the repo hosts a Next.js app — a standalone theme studio for
+generating and translating **shadcn / Tailwind v4** themes. Two tools:
+
+- **`/100r` — Hundred Rabbits → shadcn.** Drop a 9-color [Hundred Rabbits](https://github.com/hundredrabbits/Themes)
+  SVG theme (or pick a preset) and transpile it into a full 31-token shadcn theme (light + dark) via
+  OKLCH interpolation, with a luminance "benchmark" grader, an editable token sidebar, a live preview,
+  and CSS / JSON export.
+- **`/create` — palette → theme + scales.** Generate a theme from a palette using one of two algorithms,
+  toggleable:
+  - **ThemeLab** — our OKLCH synthesis from a primary + neutral.
+  - **Radix** — the real `generateRadixColors` (accent, neutral, and a background tweakable per mode),
+    producing APCA-tuned 12-step scales mapped onto the tokens.
+  Both fill the theme *and* the Tailwind/Radix scales consistently, with a live preview and CSS / JSON /
+  scale export.
+
+The studio's chrome mirrors the overlay's look (dark navy, Google Sans Code), uses a Kibo-style color
+picker, and previews real shadcn components in Inter.
+
+```bash
+pnpm dev:web     # run the studio
+pnpm build:web   # production build
+```
+
 ## Project structure
 
 ```text
+apps/
+  web/      Next.js theme studio (/100r and /create)
 packages/
   cli/      CLI, proxy server, and source transforms
   overlay/  Injected browser overlay

@@ -1,0 +1,625 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@plugin '@tailwindcss/typography';
+
+/* Class-based dark mode for Tailwind v4 (toggle `.dark` on <html>). */
+@custom-variant dark (&:is(.dark *));
+
+/* Replicates Relume's v3 container: center:true + screens {sm:100%, md:100%,
+   lg:992px, xl:1280px}. i.e. full-width and centered, capped at 992px from lg
+   and 1280px from xl up. */
+@utility container {
+  width: 100%;
+  margin-inline: auto;
+  @media (width >= 992px) {
+    max-width: 992px;
+  }
+  @media (width >= 1280px) {
+    max-width: 1280px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   SHADCN THEME TOKENS  (tweakcn-compatible)
+   Paste any tweakcn theme over the :root / .dark blocks below — every utility
+   reads these via var(), so a swap re-themes the whole site. Default = shadcn
+   "neutral" base in oklch.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   TOKEN → UTILITY MAPPING (inline = utilities read the var(), so they flip with
+   .dark). Both the standard shadcn tokens AND the Relume semantic tokens are
+   mapped here, so the 3,800+ existing `bg-background-primary` / `text-text-*` /
+   `border-border-*` usages across all blocks follow the theme + dark mode too.
+   ───────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  /* — typography — both map to Google Sans Code (set by next/font in layout.tsx)
+     so the app matches the ThemeLab overlay's all-mono code-tool aesthetic — */
+  --font-sans: var(--font-google-sans-code), ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+  --font-mono: var(--font-google-sans-code), ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+
+  /* — radius scale (shadcn) — */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* — shadow scale → tweakcn raw vars (flips with .dark) — */
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+
+  /* — shadcn semantic colors — */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* — Relume semantic bridge → shadcn tokens —
+     The "primary" pole maps to background/foreground; the "alternative"
+     (inverted) pole maps to the OPPOSITE (foreground/background) so dark
+     sections stay opposite the page in both light and dark mode.
+     Knobs: want themed (brand-colored) links/borders instead of high-contrast?
+       --color-link-primary  → var(--primary)
+       --color-border-primary → var(--foreground)   (keeps bold Relume borders) */
+  --color-background-primary: var(--background);
+  --color-background-secondary: var(--muted);
+  --color-background-tertiary: var(--muted-foreground);
+  --color-background-alternative: var(--foreground);
+
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-text-alternative: var(--background);
+
+  --color-border-primary: var(--border);
+  --color-border-secondary: var(--input);
+  --color-border-tertiary: var(--muted-foreground);
+  --color-border-alternative: var(--background);
+
+  --color-link-primary: var(--foreground);
+  --color-link-secondary: var(--muted-foreground);
+  --color-link-alternative: var(--background);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   STATIC SCALE TOKENS (do not change with theme / dark mode)
+   ───────────────────────────────────────────────────────────────────────── */
+@theme {
+  --breakpoint-*: initial;
+  --breakpoint-sm: 480px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 992px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-xxl: 1440px;
+
+  --container-*: initial;
+  --container-xxs: 20rem;
+  --container-xs: 25rem;
+  --container-sm: 30rem;
+  --container-md: 35rem;
+  --container-lg: 48rem;
+  --container-xl: 64rem;
+  --container-xxl: 80rem;
+  --container-full: 100%;
+  --shadow-xxsmall: 0px 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-xsmall:
+    0px 1px 3px rgba(0, 0, 0, 0.1), 0px 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-small:
+    0px 4px 8px -2px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.06);
+  --shadow-medium:
+    0px 12px 16px -4px rgba(0, 0, 0, 0.08), 0px 4px 6px -2px rgba(0, 0, 0, 0.03);
+  --shadow-large:
+    0px 20px 24px -4px rgba(0, 0, 0, 0.08), 0px 8px 8px -4px rgba(0, 0, 0, 0.03);
+  --shadow-xlarge: 0px 24px 48px -12px rgba(0, 0, 0, 0.18);
+  --shadow-xxlarge: 0px 32px 64px -12px rgba(0, 0, 0, 0.14);
+
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-md: 1.125rem;
+  --text-md--line-height: 1.5;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.4;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.4;
+  --text-3xl: 1.75rem;
+  --text-3xl--line-height: 1.4;
+  --text-4xl: 2rem;
+  --text-4xl--line-height: 1.3;
+  --text-5xl: 2.25rem;
+  --text-5xl--line-height: 1.2;
+  --text-6xl: 2.5rem;
+  --text-6xl--line-height: 1.2;
+  --text-7xl: 2.75rem;
+  --text-7xl--line-height: 1.2;
+  --text-8xl: 3rem;
+  --text-8xl--line-height: 1.2;
+  --text-9xl: 3.25rem;
+  --text-9xl--line-height: 1.2;
+  --text-10xl: 3.5rem;
+  --text-10xl--line-height: 1.2;
+
+  --spacing-0: 0px;
+  --spacing-px: 1px;
+
+  /* Fixed palette tokens (intentionally NOT theme-driven) */
+  --color-brand-black: #000000;
+  --color-brand-white: #ffffff;
+
+  --color-neutral: #666666;
+  --color-neutral-black: #000000;
+  --color-neutral-white: #ffffff;
+  --color-neutral-lightest: #eeeeee;
+  --color-neutral-lighter: #cccccc;
+  --color-neutral-light: #aaaaaa;
+  --color-neutral-dark: #444444;
+  --color-neutral-darker: #222222;
+  --color-neutral-darkest: #111111;
+
+  --color-system-success-green: #027a48;
+  --color-system-success-green-light: #ecfdf3;
+  --color-system-error-red: #b42318;
+  --color-system-error-red-light: #fef3f2;
+
+  /* Relume success/error surfaces — fixed state colors (no shadcn equivalent) */
+  --color-background-success: #ecfdf3;
+  --color-background-error: #fef3f2;
+  --color-text-success: #027a48;
+  --color-text-error: #b42318;
+  --color-border-success: #027a48;
+  --color-border-error: #b42318;
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-loop-horizontally: loop-horizontally 20s linear infinite;
+  --animate-loop-testimonials: loop-testimonials 30s linear infinite;
+  --animate-loop-vertically: loop-vertically 30s linear infinite;
+  --animate-loop-vertically-top: loop-vertically-top 50s linear infinite;
+  --animate-loop-vertically-bottom: loop-vertically-bottom 50s linear infinite;
+  --animate-marquee-horizontally: marquee-top 30s linear infinite;
+  --animate-marquee-top: marquee-top 50s linear infinite;
+  --animate-marquee-right: marquee-right 25s linear infinite;
+  --animate-marquee-bottom: marquee-bottom 50s linear infinite;
+  --animate-marquee-left: marquee-left 25s linear infinite;
+  --animate-tabs: tabs 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+
+  @keyframes accordion-down {
+    from {
+      height: 0px;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0px;
+    }
+  }
+  @keyframes loop-horizontally {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
+  }
+  @keyframes loop-testimonials {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-135rem);
+    }
+  }
+  @keyframes loop-vertically {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-50%);
+    }
+  }
+  @keyframes loop-vertically-top {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-50%);
+    }
+  }
+  @keyframes loop-vertically-bottom {
+    from {
+      transform: translateY(-50%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  @keyframes marquee-horizontally {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes marquee-top {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes marquee-right {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes marquee-bottom {
+    from {
+      transform: translateX(-50%);
+    }
+    to {
+      transform: translateX(0%);
+    }
+  }
+  @keyframes marquee-left {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @keyframes tabs {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  /* Default border + ring color follow the theme (replaces the v4 gray-200 compat shim). */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+}
+
+/* Moved out of the Relume preset's addComponents plugin. (.animate-disable was
+   dropped — 0 usages.) */
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Tailwind v4 removed the default cursor:pointer on buttons — restore it. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   OVERLAY SKIN — the 100r tool chrome mirrors the ThemeLab overlay's look
+   (packages/overlay/src/design-tokens.ts). Scoped to .tl-overlay so it never
+   leaks into the themed preview. Centralized here so no hex is scattered.
+   ───────────────────────────────────────────────────────────────────────── */
+.tl-overlay {
+  --ov-bg: #12121a;
+  --ov-surface: #1d222d;
+  --ov-surface-2: #262d3b;
+  --ov-border: #333950;
+  --ov-border-strong: #43506d;
+  --ov-text: #d1cdcd;
+  --ov-text-dim: #8b8b95;
+  --ov-text-ghost: #5f6470;
+  --ov-accent: #ec003f;
+  --ov-accent-hover: #c40034;
+  --ov-accent-soft: rgba(236, 0, 63, 0.12);
+  --ov-danger: #e5484d;
+  --ov-danger-soft: rgba(229, 72, 77, 0.14);
+  --ov-radius-xs: 4px;
+  --ov-radius-sm: 6px;
+  --ov-radius-md: 10px;
+  --ov-radius-lg: 14px;
+
+  /* Map shadcn tokens to overlay values so embedded shadcn controls (Slider,
+     Switch, Select, Dialog, Button) in the chrome adopt the overlay look with
+     no per-component restyling. The preview overrides these on its own element. */
+  --background: var(--ov-bg);
+  --foreground: var(--ov-text);
+  --card: var(--ov-surface);
+  --card-foreground: var(--ov-text);
+  --popover: var(--ov-surface);
+  --popover-foreground: var(--ov-text);
+  --primary: var(--ov-accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--ov-surface-2);
+  --secondary-foreground: var(--ov-text);
+  --muted: var(--ov-surface);
+  --muted-foreground: var(--ov-text-dim);
+  --accent: var(--ov-surface-2);
+  --accent-foreground: var(--ov-text);
+  --destructive: var(--ov-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--ov-border);
+  --input: var(--ov-border);
+  --ring: var(--ov-accent);
+  --radius: var(--ov-radius-sm);
+
+  background: var(--ov-bg);
+  color: var(--ov-text);
+  font-family: var(--font-google-sans-code), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.tl-overlay ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.tl-overlay ::-webkit-scrollbar-thumb {
+  background: var(--ov-border);
+  border-radius: 999px;
+  border: 2px solid var(--ov-bg);
+}
+
+.ov-input {
+  padding: 3px 6px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--ov-text);
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius-xs);
+  outline: none;
+  transition: border-color 100ms ease;
+}
+.ov-input:focus {
+  border-color: var(--ov-accent);
+}
+
+.ov-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ov-text);
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius-sm);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+.ov-btn:hover {
+  background: var(--ov-surface-2);
+  border-color: var(--ov-border-strong);
+}
+.ov-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ov-btn-primary {
+  color: #fff;
+  background: var(--ov-accent);
+  border-color: var(--ov-accent);
+}
+.ov-btn-primary:hover {
+  background: var(--ov-accent-hover);
+  border-color: var(--ov-accent-hover);
+}
+
+.ov-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: var(--ov-radius-xs);
+}
+.ov-row:hover {
+  background: var(--ov-surface);
+}
+
+.ov-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ov-surface);
+  border-radius: var(--ov-radius-sm);
+}
+.ov-seg-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: capitalize;
+  color: var(--ov-text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--ov-radius-xs);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.ov-seg-btn[data-active="true"] {
+  color: var(--ov-text);
+  background: var(--ov-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.ov-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid var(--ov-border);
+  color: var(--ov-text-dim);
+}
+.ov-chip[data-tone="pass"] {
+  color: #fff;
+  background: var(--ov-accent);
+  border-color: var(--ov-accent);
+}
+.ov-chip[data-tone="partial"] {
+  color: var(--ov-text);
+  background: var(--ov-surface-2);
+  border-color: var(--ov-border-strong);
+}
+.ov-chip[data-tone="fail"] {
+  color: var(--ov-danger);
+  border-color: var(--ov-danger);
+  background: var(--ov-danger-soft);
+}

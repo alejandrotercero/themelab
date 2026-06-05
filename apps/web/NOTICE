@@ -1,0 +1,34 @@
+ThemeLab web app
+================
+
+This product includes software adapted from tweakcn
+(https://github.com/jnsahaj/tweakcn), Copyright (c) tweakcn contributors,
+licensed under the Apache License, Version 2.0
+(https://www.apache.org/licenses/LICENSE-2.0).
+
+The following files are derivative works adapted from tweakcn and carry an
+attribution header:
+
+  - components/theme-transpiler/color-picker.tsx
+      from components/editor/color-picker.tsx
+  - components/theme-transpiler/apply-vars.ts
+      from utils/apply-style-to-element.ts
+  - lib/theme-engine/css.ts
+      from utils/theme-style-generator.ts
+  - components/theme-transpiler/export-dialog.tsx
+      from components/editor/code-panel.tsx
+
+Changes: decoupled from tweakcn's zustand store, retargeted to the Hundred
+Rabbits → shadcn token pipeline, and rewritten to emit OKLCH for Tailwind v4.
+
+----
+
+This product also includes software from Radix UI:
+
+  - lib/theme-engine/radix/generate-radix-colors.ts
+      vendored verbatim from radix-ui/website components/generateRadixColors.tsx
+      (https://github.com/radix-ui/website), MIT © WorkOS / Radix UI contributors.
+      The exact algorithm behind https://www.radix-ui.com/colors/custom.
+
+  - components/kibo-ui/color-picker/index.tsx
+      from Kibo UI (https://www.kibo-ui.com), MIT — added via its shadcn registry.

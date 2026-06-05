@@ -42,7 +42,7 @@ export function openColorPicker(opts: ColorPickerOptions): void {
     transition: opacity ${TRANSITIONS.medium};
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
   `;
 
   // Viewport bounds check
@@ -72,20 +72,21 @@ export function openColorPicker(opts: ColorPickerOptions): void {
   // --- Color area (saturation/brightness) ---
   const colorArea = document.createElement("canvas");
   colorArea.width = 176;
-  colorArea.height = 120;
-  colorArea.style.cssText = `width:176px;height:120px;border-radius:4px;cursor:crosshair;`;
+  colorArea.height = 150;
+  colorArea.style.cssText = `width:176px;height:150px;border-radius:${RADII.sm};cursor:crosshair;display:block;`;
   const colorCtx = colorArea.getContext("2d")!;
 
   const colorPicker = document.createElement("div");
   colorPicker.style.cssText = `
-    width: 10px; height: 10px; border-radius: 50%;
-    background: white; box-shadow: ${SHADOWS.sm};
+    width: 16px; height: 16px; border-radius: 50%;
+    background: transparent; border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
     position: absolute; pointer-events: none;
     transform: translate(-50%, -50%);
   `;
 
   const colorAreaWrapper = document.createElement("div");
-  colorAreaWrapper.style.cssText = "position:relative;width:176px;height:120px;";
+  colorAreaWrapper.style.cssText = "position:relative;width:176px;height:150px;";
   colorAreaWrapper.appendChild(colorArea);
   colorAreaWrapper.appendChild(colorPicker);
   container.appendChild(colorAreaWrapper);
@@ -96,15 +97,15 @@ export function openColorPicker(opts: ColorPickerOptions): void {
     gradH.addColorStop(0, `hsl(${hue}, 0%, 100%)`);
     gradH.addColorStop(1, `hsl(${hue}, 100%, 50%)`);
     colorCtx.fillStyle = gradH;
-    colorCtx.fillRect(0, 0, 176, 120);
-    const gradV = colorCtx.createLinearGradient(0, 0, 0, 120);
+    colorCtx.fillRect(0, 0, 176, 150);
+    const gradV = colorCtx.createLinearGradient(0, 0, 0, 150);
     gradV.addColorStop(0, "rgba(0,0,0,0)");
     gradV.addColorStop(1, "rgba(0,0,0,1)");
     colorCtx.fillStyle = gradV;
-    colorCtx.fillRect(0, 0, 176, 120);
+    colorCtx.fillRect(0, 0, 176, 150);
 
     const px = (currentHsv.s / 100) * 176;
-    const py = (1 - currentHsv.v / 100) * 120;
+    const py = (1 - currentHsv.v / 100) * 150;
     colorPicker.style.left = `${px}px`;
     colorPicker.style.top = `${py}px`;
   }
@@ -118,9 +119,9 @@ export function openColorPicker(opts: ColorPickerOptions): void {
   function updateAreaFromMouse(e: MouseEvent) {
     const rect = colorArea.getBoundingClientRect();
     const x = Math.max(0, Math.min(176, e.clientX - rect.left));
-    const y = Math.max(0, Math.min(120, e.clientY - rect.top));
+    const y = Math.max(0, Math.min(150, e.clientY - rect.top));
     currentHsv.s = (x / 176) * 100;
-    currentHsv.v = (1 - y / 120) * 100;
+    currentHsv.v = (1 - y / 150) * 100;
     drawColorArea();
     emitColor();
   }
@@ -128,20 +129,21 @@ export function openColorPicker(opts: ColorPickerOptions): void {
   // --- Hue strip ---
   const hueStrip = document.createElement("canvas");
   hueStrip.width = 176;
-  hueStrip.height = 14;
-  hueStrip.style.cssText = "width:176px;height:14px;border-radius:7px;cursor:crosshair;";
+  hueStrip.height = 12;
+  hueStrip.style.cssText = "width:176px;height:12px;border-radius:999px;cursor:crosshair;display:block;";
   const hueCtx = hueStrip.getContext("2d")!;
 
   const huePickerEl = document.createElement("div");
   huePickerEl.style.cssText = `
-    width: 10px; height: 10px; border-radius: 50%;
-    background: white; box-shadow: ${SHADOWS.sm};
+    width: 16px; height: 16px; border-radius: 50%;
+    background: ${COLORS.bgPrimary}; border: 1px solid ${COLORS.borderStrong};
+    box-shadow: ${SHADOWS.sm};
     position: absolute; pointer-events: none;
-    top: 2px; transform: translateX(-50%);
+    top: -2px; transform: translateX(-50%);
   `;
 
   const hueWrapper = document.createElement("div");
-  hueWrapper.style.cssText = "position:relative;width:176px;height:14px;";
+  hueWrapper.style.cssText = "position:relative;width:176px;height:12px;";
   hueWrapper.appendChild(hueStrip);
   hueWrapper.appendChild(huePickerEl);
   container.appendChild(hueWrapper);
@@ -152,7 +154,7 @@ export function openColorPicker(opts: ColorPickerOptions): void {
       grad.addColorStop(i / 6, `hsl(${i * 60}, 100%, 50%)`);
     }
     hueCtx.fillStyle = grad;
-    hueCtx.fillRect(0, 0, 176, 14);
+    hueCtx.fillRect(0, 0, 176, 12);
     huePickerEl.style.left = `${(currentHsv.h / 360) * 176}px`;
   }
 
@@ -183,7 +185,7 @@ export function openColorPicker(opts: ColorPickerOptions): void {
     color: ${COLORS.textPrimary};
     font-family: monospace;
     font-size: 12px;
-    padding: 4px 8px;
+    padding: 6px 8px;
     outline: none;
   `;
   hexInput.addEventListener("keydown", (e) => {

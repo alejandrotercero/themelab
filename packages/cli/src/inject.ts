@@ -15,13 +15,15 @@ interface ProxyServerOptions {
   targetHost: string;
   proxyPort: number;
   wsPort: number;
+  /** Base URL of the ThemeLab studio, for the overlay's "Open in editor". */
+  studioUrl: string;
   getActiveClient: () => WebSocket | null;
 }
 
 export function createProxyServer(
   options: ProxyServerOptions
 ): http.Server {
-  const { targetPort, targetHost, proxyPort, wsPort, getActiveClient } = options;
+  const { targetPort, targetHost, proxyPort, wsPort, studioUrl, getActiveClient } = options;
 
   const proxy = httpProxy.createProxyServer({
     target: `http://${targetHost}:${targetPort}`,
@@ -97,7 +99,7 @@ export function createProxyServer(
 
       const injectedScript = `
 <script src="/__themelab/overlay.js"></script>
-<script>window.__THEMELAB_WS_PORT__ = ${wsPort};</script>`;
+<script>window.__THEMELAB_WS_PORT__ = ${wsPort}; window.__THEMELAB_STUDIO_URL__ = ${JSON.stringify(studioUrl)};</script>`;
 
       if (body.includes("</body>")) {
         body = body.replace("</body>", `${injectedScript}\n</body>`);

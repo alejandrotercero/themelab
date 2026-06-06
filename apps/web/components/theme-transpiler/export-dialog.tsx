@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { COLOR_FORMATS, themeStylesToCss, themeToJson, type ColorFormat } from "@/lib/theme-engine";
+import { COLOR_FORMATS, themeStylesToCss, themeStylesToJson, type ColorFormat } from "@/lib/theme-engine";
 
 type Tab = "shadcn" | "json" | "tailwind";
 
@@ -38,12 +38,11 @@ interface ExportDialogProps {
   theme: ThemeStyles;
   /** Radius CSS value, e.g. "0.625rem". */
   radius: string;
-  mode: "light" | "dark";
   /** Optional Tailwind-scale generator; when set, a third tab is shown. */
   tailwindCss?: (format: ColorFormat) => string;
 }
 
-export function ExportDialog({ theme, radius, mode, tailwindCss }: ExportDialogProps) {
+export function ExportDialog({ theme, radius, tailwindCss }: ExportDialogProps) {
   const [format, setFormat] = useState<ColorFormat>("oklch");
   const [tab, setTab] = useState<Tab>("shadcn");
   const [copied, setCopied] = useState(false);
@@ -53,8 +52,8 @@ export function ExportDialog({ theme, radius, mode, tailwindCss }: ExportDialogP
     [theme, radius, format],
   );
   const json = useMemo(
-    () => themeToJson(mode === "dark" ? theme.dark : theme.light, { radius, format }),
-    [theme, mode, radius, format],
+    () => themeStylesToJson(theme, { radius, format }),
+    [theme, radius, format],
   );
   const twCss = useMemo(
     () => (tailwindCss ? tailwindCss(format) : ""),

@@ -25,6 +25,28 @@ function shadowVars(foreground: string): Record<string, string> {
 }
 
 /**
+ * Flat `--token: value` object for one mode's tokens, plus the shadow scale
+ * (from this mode's foreground). When `meta` is set, also emits the radius,
+ * tracking and spacing that belong on `:root` only.
+ */
+function modeObject(
+  vars: Record<string, string>,
+  opts: { radius: string; format: ColorFormat; meta: boolean },
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (opts.meta) out["--radius"] = opts.radius;
+  for (const token of THEME_TOKENS) {
+    if (vars[token] != null) out[`--${token}`] = reformat(vars[token], opts.format);
+  }
+  Object.assign(out, shadowVars(vars.foreground ?? "#000000"));
+  if (opts.meta) {
+    out["--tracking-normal"] = "0em";
+    out["--spacing"] = "0.25rem";
+  }
+  return out;
+}
+
+/**
  * Flat `--token: value` JSON for one mode's tokens, plus radius, the shadow
  * scale (from foreground), tracking and spacing — the tweakcn theme-object shape.
  */
@@ -34,15 +56,28 @@ export function themeToJson(
 ): string {
   const radius = opts.radius ?? "0.625rem";
   const format = opts.format ?? "hex";
-  const out: Record<string, string> = {};
-  for (const token of THEME_TOKENS) {
-    if (vars[token] != null) out[`--${token}`] = reformat(vars[token], format);
-  }
-  out["--radius"] = radius;
-  Object.assign(out, shadowVars(vars.foreground ?? "#000000"));
-  out["--tracking-normal"] = "0em";
-  out["--spacing"] = "0.25rem";
-  return JSON.stringify(out, null, 2);
+  return JSON.stringify(modeObject(vars, { radius, format, meta: true }), null, 2);
+}
+
+/**
+ * Dual-mode JSON keyed to the CSS selectors — `{ "root": {…}, "dark": {…} }` —
+ * so the JSON export carries both light and dark, mirroring the CSS export.
+ * Round-trips through `parseThemeInput` in @themelab/shared.
+ */
+export function themeStylesToJson(
+  theme: ThemeStyles,
+  opts: { radius?: string; format?: ColorFormat } = {},
+): string {
+  const radius = opts.radius ?? "0.625rem";
+  const format = opts.format ?? "hex";
+  return JSON.stringify(
+    {
+      root: modeObject(theme.light, { radius, format, meta: true }),
+      dark: modeObject(theme.dark, { radius, format, meta: false }),
+    },
+    null,
+    2,
+  );
 }
 
 export interface CssOptions {

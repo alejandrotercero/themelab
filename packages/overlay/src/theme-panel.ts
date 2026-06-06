@@ -7,7 +7,8 @@
 import { COLORS, RADII, SHADOWS, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { openColorPicker } from "./color-picker.js";
 import { openTailwindPalette, closeTailwindPalette, isTailwindPaletteOpen, tailwindLogoSvg } from "./properties/tailwind-palette.js";
-import { detectColorKind, toRenderableCss, toHex, serializeToKind } from "./utils/color-format.js";
+import { detectColorKind, toRenderableCss, toHex, serializeToKind, type ColorKind } from "./utils/color-format.js";
+import { encodeTheme, parseThemeInput } from "@themelab/shared";
 import {
   hasTheme,
   getSource,
@@ -22,14 +23,30 @@ import {
   resetPreview,
   commit,
   onThemeChange,
+  getCurrentThemeStyles,
+  batchApplyTheme,
+  detectThemeFormat,
+  convertThemeFormat,
   type ThemeMode,
 } from "./theme-state.js";
+
+declare global {
+  interface Window {
+    __THEMELAB_STUDIO_URL__?: string;
+  }
+}
 
 let root: ShadowRoot | null = null;
 let dock: HTMLDivElement | null = null;
 let expanded = false;
 let lastStructuralKey = "";
 let unsubscribe: (() => void) | null = null;
+
+// Paste-to-batch-update state. Draft survives re-renders (render() rebuilds the
+// dock), so typing doesn't trigger render() and the textarea keeps its content.
+let pasteOpen = false;
+let pasteDraft = "";
+let pasteStatus = "";
 
 
 export function initThemePanel(shadowRoot: ShadowRoot): void {
@@ -112,8 +129,180 @@ function render(): void {
     animation: rrThemeSlideIn ${TRANSITIONS.settle};
   `;
   dock.appendChild(header());
+  dock.appendChild(actionsBar());
   dock.appendChild(tokenList());
   dock.appendChild(footer());
+}
+
+/** A secondary (non-primary) panel button with the shared dock styling. */
+function secondaryButton(text: string): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.textContent = text;
+  b.style.cssText = `
+    flex: 1 1 auto; padding: 6px 10px; font: 500 11px/1 ${FONT_FAMILY};
+    color: ${COLORS.textSecondary}; background: ${COLORS.bgSecondary};
+    border: 1px solid ${COLORS.border}; border-radius: ${RADII.sm};
+    cursor: pointer; transition: ${TRANSITIONS.fast}; white-space: nowrap;
+  `;
+  return b;
+}
+
+/** Open the current theme (committed + staged edits) in the web studio's /edit.
+ *  Channel-triples (`H S% L%`) are wrapped into `hsl(…)`/`rgb(…)` first — the
+ *  studio consumes tokens via `var(--x)` directly, so a bare triple wouldn't be
+ *  a valid color there. */
+function openInEditor(): void {
+  const theme = getCurrentThemeStyles();
+  if (!theme) return;
+  const webSafe = (vars: Record<string, string>): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(vars)) out[k] = toRenderableCss(v) ?? v;
+    return out;
+  };
+  const base = (window.__THEMELAB_STUDIO_URL__ || "http://localhost:3000").replace(/\/+$/, "");
+  const encoded = encodeTheme({ light: webSafe(theme.light), dark: webSafe(theme.dark) });
+  window.open(`${base}/edit#theme=${encoded}`, "_blank", "noopener,noreferrer");
+}
+
+/** Actions row under the header: open-in-editor + the paste-to-batch-update box. */
+function actionsBar(): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = `
+    display: flex; flex-direction: column; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px solid ${COLORS.border}; flex: 0 0 auto;
+  `;
+
+  const row = document.createElement("div");
+  row.style.cssText = `display: flex; gap: 8px;`;
+
+  const openBtn = secondaryButton("↗ Open in editor");
+  openBtn.title = "Open this theme in the ThemeLab studio";
+  openBtn.addEventListener("click", openInEditor);
+  row.appendChild(openBtn);
+
+  const pasteBtn = secondaryButton(pasteOpen ? "Close paste" : "Paste theme");
+  pasteBtn.title = "Paste a studio export to batch-update every token";
+  pasteBtn.addEventListener("click", () => {
+    pasteOpen = !pasteOpen;
+    pasteStatus = "";
+    render();
+  });
+  row.appendChild(pasteBtn);
+
+  wrap.appendChild(row);
+  wrap.appendChild(formatRow());
+  if (pasteOpen) wrap.appendChild(pasteBox());
+
+  if (pasteStatus) {
+    const status = document.createElement("div");
+    status.textContent = pasteStatus;
+    status.style.cssText = `font: 400 10px/1.4 ${FONT_FAMILY}; color: ${COLORS.textTertiary};`;
+    wrap.appendChild(status);
+  }
+  return wrap;
+}
+
+// The full color-function kinds the studio-style convert offers. Triples are
+// excluded: a project on triples consumes them via `hsl(var(--x))`, so the
+// format is fixed by the component code, not switchable from here.
+const CONVERT_KINDS: ColorKind[] = ["hex", "hsl", "rgb", "oklch"];
+
+function convertOption(kind: ColorKind): ColorKind {
+  if (kind === "hsla") return "hsl";
+  if (kind === "rgba") return "rgb";
+  if (kind === "css") return "hex";
+  return kind;
+}
+
+/** Shows the theme's detected color format, with a convert dropdown when the
+ *  tokens are full color functions (safe to re-serialize). */
+function formatRow(): HTMLElement {
+  const bar = document.createElement("div");
+  bar.style.cssText = `display: flex; align-items: center; gap: 6px;`;
+
+  const info = detectThemeFormat();
+
+  const label = document.createElement("span");
+  label.textContent = `Format: ${info.label}`;
+  label.style.cssText = `font: 500 10px/1.4 ${FONT_FAMILY}; color: ${COLORS.textTertiary}; flex: 0 0 auto;`;
+  bar.appendChild(label);
+
+  if (info.convertible) {
+    const sel = document.createElement("select");
+    sel.title = "Convert every color token to this format";
+    sel.style.cssText = `
+      margin-left: auto; padding: 2px 6px; font: 500 10px/1.4 ${FONT_FAMILY};
+      color: ${COLORS.textSecondary}; background: ${COLORS.bgSecondary};
+      border: 1px solid ${COLORS.border}; border-radius: ${RADII.xs}; cursor: pointer;
+    `;
+    const current = info.kind ? convertOption(info.kind) : "oklch";
+    for (const k of CONVERT_KINDS) {
+      const opt = document.createElement("option");
+      opt.value = k;
+      opt.textContent = k.toUpperCase();
+      if (k === current) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => {
+      const changed = convertThemeFormat(sel.value as ColorKind);
+      pasteStatus = changed
+        ? `Converted ${changed} token${changed === 1 ? "" : "s"} to ${sel.value.toUpperCase()}. Hit Apply to save.`
+        : "";
+      render();
+    });
+    bar.appendChild(sel);
+  } else if (info.kind) {
+    const note = document.createElement("span");
+    note.textContent = "fixed — consumed via hsl(var())";
+    note.title = "Channel-triple themes are wrapped by your components, so the format can't be switched here.";
+    note.style.cssText = `margin-left: auto; font: 400 10px/1.4 ${FONT_FAMILY}; color: ${COLORS.textTertiary}; opacity: 0.7;`;
+    bar.appendChild(note);
+  }
+
+  return bar;
+}
+
+function pasteBox(): HTMLElement {
+  const box = document.createElement("div");
+  box.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
+
+  const ta = document.createElement("textarea");
+  ta.value = pasteDraft;
+  ta.placeholder = "Paste the studio export — shadcn CSS (:root + .dark) or JSON ({ root, dark })";
+  ta.spellcheck = false;
+  ta.rows = 5;
+  ta.style.cssText = `
+    width: 100%; box-sizing: border-box; resize: vertical; padding: 6px 8px;
+    font: 400 11px/1.4 ui-monospace, monospace; color: ${COLORS.textPrimary};
+    background: ${COLORS.bgSecondary}; border: 1px solid ${COLORS.border};
+    border-radius: ${RADII.xs}; outline: none;
+  `;
+  ta.addEventListener("input", () => { pasteDraft = ta.value; });
+  ta.addEventListener("focus", () => { ta.style.borderColor = COLORS.accent; });
+  ta.addEventListener("blur", () => { ta.style.borderColor = COLORS.border; });
+  box.appendChild(ta);
+
+  const applyPasted = secondaryButton("Apply pasted");
+  applyPasted.addEventListener("click", () => {
+    const parsed = parseThemeInput(pasteDraft);
+    if (!parsed) {
+      pasteStatus = "Couldn't parse — paste the CSS or JSON export.";
+      render();
+      return;
+    }
+    const { applied, skipped, modes } = batchApplyTheme(parsed);
+    if (applied > 0) {
+      const skip = skipped ? `, skipped ${skipped} unknown` : "";
+      const where = modes === "both" ? "toggle light/dark to preview both" : `applied to ${modes}`;
+      pasteStatus = `Applied ${applied} token${applied === 1 ? "" : "s"}${skip} — ${where}. Hit Apply to save.`;
+      pasteDraft = "";
+    } else {
+      pasteStatus = "No matching tokens found in this project's theme.";
+    }
+    render();
+  });
+  box.appendChild(applyPasted);
+  return box;
 }
 
 function header(): HTMLElement {

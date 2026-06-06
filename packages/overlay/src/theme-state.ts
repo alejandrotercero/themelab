@@ -7,7 +7,7 @@
 
 import type { ThemeStyles, ThemeSource } from "@themelab/shared";
 import { send } from "./bridge.js";
-import { isColor } from "./utils/color-format.js";
+import { isColor, detectColorKind, toHex, serializeToKind, type ColorKind } from "./utils/color-format.js";
 
 export type ThemeMode = "light" | "dark";
 
@@ -60,7 +60,25 @@ export function canEditDark(): boolean {
 export function setMode(next: ThemeMode): void {
   if (next === "dark" && !canEditDark()) return;
   mode = next;
+  // Re-point the inline preview at the new mode's staged values so toggling
+  // light/dark shows each mode's pending edits — both are previewable before commit.
+  syncInlinePreview();
   notify();
+}
+
+/**
+ * Make the inline :root overrides reflect exactly the active mode's pending
+ * edits. Inline overrides can only hold one value per variable, so switching
+ * modes swaps which mode's staged values are forced onto the page.
+ */
+function syncInlinePreview(): void {
+  const staged = new Set([...Object.keys(pending.light), ...Object.keys(pending.dark)]);
+  for (const name of staged) {
+    document.documentElement.style.removeProperty(`--${name}`);
+  }
+  for (const [name, value] of Object.entries(pending[mode])) {
+    document.documentElement.style.setProperty(`--${name}`, value);
+  }
 }
 
 /** All token names for the current mode (committed keys ∪ base light keys), sorted. */
@@ -92,6 +110,169 @@ export function getValue(name: string): string | undefined {
 /** Whether a token currently has an uncommitted edit in the active mode. */
 export function isEdited(name: string): boolean {
   return pending[mode][name] !== undefined;
+}
+
+/** The current theme (committed values + staged edits) for both modes — used to
+ *  hand the live theme off to the web studio's editor. */
+export function getCurrentThemeStyles(): ThemeStyles | null {
+  if (!theme) return null;
+  return {
+    light: { ...theme.light, ...pending.light },
+    dark: { ...theme.dark, ...pending.dark },
+  };
+}
+
+export interface BatchApplyResult {
+  applied: number;
+  skipped: number;
+  /** Which modes were written — "both" for a dual paste, else the single mode. */
+  modes: "both" | ThemeMode;
+}
+
+/**
+ * Stage a full pasted theme across both modes at once. Only tokens the project
+ * already defines are applied (so a commit never invents new vars the CSS file
+ * doesn't have); unknown tokens are counted as skipped. Values are written
+ * verbatim — we don't reformat to the token's original color kind, since a paste
+ * is an intentional wholesale replacement. Both modes are staged and previewable
+ * (toggle light/dark) before the next commit() writes them.
+ */
+export function batchApplyTheme(parsed: {
+  light?: Record<string, string>;
+  dark?: Record<string, string>;
+}): BatchApplyResult {
+  if (!theme) return { applied: 0, skipped: 0, modes: mode };
+
+  const hasLight = Object.keys(parsed.light ?? {}).length > 0;
+  const hasDark = Object.keys(parsed.dark ?? {}).length > 0;
+
+  // A single-mode paste applies to the mode you're currently editing — "paste
+  // one theme" updates just the active mode, not always light. A dual paste
+  // (CSS :root + .dark, or JSON { root, dark }) writes both.
+  const apply: Record<ThemeMode, Record<string, string>> = { light: {}, dark: {} };
+  let modes: "both" | ThemeMode;
+  if (hasLight && hasDark) {
+    apply.light = parsed.light ?? {};
+    apply.dark = parsed.dark ?? {};
+    modes = "both";
+  } else {
+    apply[mode] = hasLight ? (parsed.light ?? {}) : (parsed.dark ?? {});
+    modes = mode;
+  }
+
+  let applied = 0;
+  let skipped = 0;
+  for (const m of ["light", "dark"] as ThemeMode[]) {
+    // The project's known tokens for this mode (dark may share light's keys).
+    const known = new Set([...Object.keys(theme.light), ...Object.keys(theme[m])]);
+    for (const [name, value] of Object.entries(apply[m])) {
+      if (!known.has(name)) {
+        skipped++;
+        continue;
+      }
+      const existing = theme[m]?.[name] ?? theme.light?.[name];
+      pending[m][name] = coerceToTokenFormat(existing, value);
+      applied++;
+    }
+  }
+  syncInlinePreview();
+  notify();
+  return { applied, skipped, modes };
+}
+
+/**
+ * Convert an incoming pasted value into the project token's existing color
+ * format — e.g. an `hsl(…)` paste into an `hsl`-triple token becomes the bare
+ * `H S% L%` channels the project consumes via `hsl(var(--x))`. Mirrors the
+ * single-token color picker. Non-color or unparseable values pass through.
+ */
+function coerceToTokenFormat(existing: string | undefined, incoming: string): string {
+  if (existing === undefined) return incoming;
+  const kind = detectColorKind(existing);
+  if (!kind) return incoming;
+  const hex = toHex(incoming);
+  return hex ? serializeToKind(hex, kind) : incoming;
+}
+
+const KIND_LABELS: Record<ColorKind, string> = {
+  "hsl-triple": "HSL (triple)",
+  "rgb-triple": "RGB (triple)",
+  hex: "HEX",
+  hsl: "HSL",
+  hsla: "HSL",
+  rgb: "RGB",
+  rgba: "RGB",
+  oklch: "OKLCH",
+  css: "CSS",
+};
+
+export interface ThemeFormatInfo {
+  /** The dominant color format across the theme's color tokens. */
+  kind: ColorKind | null;
+  /** Human-readable label, e.g. "HSL (triple)". */
+  label: string;
+  /**
+   * True when tokens are full color functions (consumed via `var(--x)`), so
+   * reformatting to another function format is safe. False for channel-triples
+   * (`H S% L%` consumed via `hsl(var(--x))`), where the format is fixed — the
+   * component code, not the token, decides the wrapper.
+   */
+  convertible: boolean;
+}
+
+/** Inspect the committed theme and report its dominant color format. */
+export function detectThemeFormat(): ThemeFormatInfo {
+  const counts = new Map<ColorKind, number>();
+  let hasTriple = false;
+  if (theme) {
+    for (const value of Object.values(theme.light)) {
+      const kind = detectColorKind(value);
+      if (!kind) continue;
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+      if (kind === "hsl-triple" || kind === "rgb-triple") hasTriple = true;
+    }
+  }
+  let kind: ColorKind | null = null;
+  let max = 0;
+  for (const [k, n] of counts) {
+    if (n > max) {
+      max = n;
+      kind = k;
+    }
+  }
+  return {
+    kind,
+    label: kind ? KIND_LABELS[kind] : "—",
+    convertible: kind !== null && !hasTriple,
+  };
+}
+
+/**
+ * Re-serialize every color token (both modes) into `target`, staging the result
+ * as pending edits to preview + commit. Only safe for full-function themes — see
+ * {@link detectThemeFormat}. Returns how many tokens changed.
+ */
+export function convertThemeFormat(target: ColorKind): number {
+  if (!theme) return 0;
+  let changed = 0;
+  for (const m of ["light", "dark"] as ThemeMode[]) {
+    for (const [name, committed] of Object.entries(theme[m])) {
+      const current = pending[m][name] ?? committed;
+      if (!isColor(current)) continue;
+      const hex = toHex(current);
+      if (!hex) continue;
+      const next = serializeToKind(hex, target);
+      if (next !== committed) {
+        pending[m][name] = next;
+        changed++;
+      } else {
+        delete pending[m][name];
+      }
+    }
+  }
+  syncInlinePreview();
+  notify();
+  return changed;
 }
 
 export function hasPendingEdits(): boolean {

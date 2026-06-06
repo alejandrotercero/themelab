@@ -3,6 +3,7 @@
 // Slim top bar: logo + title, and the Code export dialog. (Light/dark + radius
 // live in the editor; "apply to page" lives by the input.)
 
+import type { ReactNode } from "react";
 import type { ThemeStyles } from "@themelab/shared";
 import type { ColorFormat } from "@/lib/theme-engine";
 import { ExportDialog } from "./export-dialog";
@@ -11,15 +12,16 @@ import { Logo } from "./logo";
 interface ToolbarProps {
   theme: ThemeStyles;
   radius: string;
-  mode: "light" | "dark";
   title?: string;
   /** Tailwind-scale generator — when set, the Code dialog gains a second tab. */
   tailwindCss?: (format: ColorFormat) => string;
+  /** Extra controls rendered before the Code button (e.g. the /edit Import dialog). */
+  extra?: ReactNode;
   /** When provided, the logo/title becomes a button (e.g. to reopen the intro). */
   onShowIntro?: () => void;
 }
 
-export function Toolbar({ theme, radius, mode, title = "100r → shadcn", tailwindCss, onShowIntro }: ToolbarProps) {
+export function Toolbar({ theme, radius, title = "100r → shadcn", tailwindCss, extra, onShowIntro }: ToolbarProps) {
   const brand = (
     <>
       <Logo className="h-3.5" />
@@ -43,8 +45,9 @@ export function Toolbar({ theme, radius, mode, title = "100r → shadcn", tailwi
         <div className="flex items-center gap-2.5 text-[var(--ov-text)]">{brand}</div>
       )}
 
-      <div className="ml-auto">
-        <ExportDialog theme={theme} radius={radius} mode={mode} tailwindCss={tailwindCss} />
+      <div className="ml-auto flex items-center gap-2">
+        {extra}
+        <ExportDialog theme={theme} radius={radius} tailwindCss={tailwindCss} />
       </div>
     </header>
   );

@@ -109,7 +109,7 @@ export function ThemeCreator() {
   return (
     <EditorShell
       editor={editor}
-      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} mode={editor.mode} title="create" tailwindCss={tailwindCss} />}
+      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} title="create" tailwindCss={tailwindCss} />}
       input={
         <div className="flex flex-col gap-2">
           {algo === "themelab" ? (

@@ -73,7 +73,7 @@ export function ThemeTranspiler() {
   return (
     <EditorShell
       editor={editor}
-      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} mode={editor.mode} onShowIntro={() => setIntroOpen(true)} />}
+      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} onShowIntro={() => setIntroOpen(true)} />}
       input={
         <>
           <HrInput onLoad={load} onError={setError} />

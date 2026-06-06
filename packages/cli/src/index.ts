@@ -44,6 +44,7 @@ program
   .argument("[port]", "Dev server port override")
   .option("--no-open", "Don't open browser automatically")
   .option("--host <host>", "Dev server host", "localhost")
+  .option("--studio-url <url>", "ThemeLab studio base URL (for 'Open in editor')")
   .option("--verbose", "Enable debug logging")
   .action(async (portArg?: string) => {
     try {
@@ -52,6 +53,8 @@ program
         setLogLevel("debug");
       }
       const host = opts.host || "localhost";
+      const studioUrl =
+        opts.studioUrl || process.env.THEMELAB_STUDIO_URL || "http://localhost:3000";
 
       printBanner();
 
@@ -82,6 +85,7 @@ program
         targetHost: host,
         proxyPort,
         wsPort,
+        studioUrl,
         getActiveClient: sketchServer.getActiveClient,
       });
 

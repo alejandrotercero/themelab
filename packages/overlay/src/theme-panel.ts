@@ -159,7 +159,7 @@ function openInEditor(): void {
     for (const [k, v] of Object.entries(vars)) out[k] = toRenderableCss(v) ?? v;
     return out;
   };
-  const base = (window.__THEMELAB_STUDIO_URL__ || "http://localhost:3000").replace(/\/+$/, "");
+  const base = (window.__THEMELAB_STUDIO_URL__ || "https://themelab.dev").replace(/\/+$/, "");
   const encoded = encodeTheme({ light: webSafe(theme.light), dark: webSafe(theme.dark) });
   window.open(`${base}/edit#theme=${encoded}`, "_blank", "noopener,noreferrer");
 }

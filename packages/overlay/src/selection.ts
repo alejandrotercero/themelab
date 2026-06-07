@@ -441,6 +441,20 @@ let selectedElement: HTMLElement | null = null;
 let isActive = false;
 let listenersAttached = false;
 
+// Mirror the current selection to the CLI (for MCP). Deduped by component
+// identity so re-renders/HMR don't spam the socket. Call after any change to
+// `currentSelection`; null reports a deselect.
+let lastReportedSelectionKey = "";
+function reportSelectionToCli(): void {
+  const sel = currentSelection;
+  const key = sel
+    ? `${sel.componentName}|${sel.filePath}|${sel.lineNumber}|${sel.columnNumber}`
+    : "";
+  if (key === lastReportedSelectionKey) return;
+  lastReportedSelectionKey = key;
+  send({ type: "setSelection", selection: sel });
+}
+
 // Multi-selection state
 interface MultiSelectEntry {
   element: HTMLElement;
@@ -954,6 +968,8 @@ export async function selectElement(el: HTMLElement, options?: { skipSidebar?: b
       jsxPath: resolved.jsxPath,
     };
 
+    reportSelectionToCli();
+
     // Capture the staleness baseline (file mtime/size at selection time) so edits
     // can be rejected if the file changed underneath. Best-effort + async; guarded
     // against the selection moving on before the stat resolves.
@@ -1438,6 +1454,7 @@ function hideHoverOverlay(): void {
 export function clearSelection(): void {
   deselectProperty();
   currentSelection = null;
+  reportSelectionToCli();
   selectedElement = null;
   resizeDragCorner = null;
   resizeInitialRect = null;

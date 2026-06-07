@@ -5,6 +5,7 @@ import open from "open";
 import { detect, healthCheck } from "./detect.js";
 import { createProxyServer } from "./inject.js";
 import { createSketchServer } from "./server.js";
+import { createMcpHttpServer } from "./mcp/server.js";
 import { getAvailablePort } from "./utils.js";
 import { logger, setLogLevel } from "./logger.js";
 
@@ -45,6 +46,8 @@ program
   .option("--no-open", "Don't open browser automatically")
   .option("--host <host>", "Dev server host", "localhost")
   .option("--studio-url <url>", "ThemeLab studio base URL (for 'Open in editor')")
+  .option("--no-mcp", "Disable the MCP server for coding agents")
+  .option("--mcp-port <port>", "Preferred port for the MCP server")
   .option("--verbose", "Enable debug logging")
   .action(async (portArg?: string) => {
     try {
@@ -54,7 +57,7 @@ program
       }
       const host = opts.host || "localhost";
       const studioUrl =
-        opts.studioUrl || process.env.THEMELAB_STUDIO_URL || "http://localhost:3000";
+        opts.studioUrl || process.env.THEMELAB_STUDIO_URL || "https://themelab.dev";
 
       printBanner();
 
@@ -78,6 +81,24 @@ program
       const wsPort = await getAvailablePort(3457);
       const sketchServer = createSketchServer({ port: wsPort });
 
+      // Start MCP server (lets coding agents read the live selection/theme).
+      let mcpServer: ReturnType<typeof createMcpHttpServer> | null = null;
+      let mcpPort = 0;
+      if (opts.mcp !== false) {
+        const preferred = opts.mcpPort ? parseInt(opts.mcpPort, 10) : 3458;
+        mcpPort = await getAvailablePort(preferred);
+        mcpServer = createMcpHttpServer(
+          {
+            getSelection: sketchServer.getSelection,
+            getTheme: sketchServer.getTheme,
+            getTailwindTokens: sketchServer.getTailwindTokens,
+            discoverComponentFile: sketchServer.discoverComponentFile,
+            isOverlayConnected: sketchServer.isOverlayConnected,
+          },
+          mcpPort,
+        );
+      }
+
       // Start proxy server
       const proxyPort = await getAvailablePort(3456);
       const proxyServer = createProxyServer({
@@ -97,6 +118,11 @@ program
         logger.info(
           chalk.dim("  WebSocket: ") + chalk.green(`ws://localhost:${wsPort}`)
         );
+        if (mcpServer) {
+          logger.info(
+            chalk.dim("  MCP: ") + chalk.green(`http://localhost:${mcpPort}/mcp`)
+          );
+        }
         logger.info(
           chalk.dim("\n  Press ") +
             chalk.white("Ctrl+C") +
@@ -113,6 +139,7 @@ program
         logger.info(chalk.dim("\n  Shutting down...\n"));
         proxyServer.close();
         sketchServer.close();
+        mcpServer?.close();
         process.exit(0);
       };
 

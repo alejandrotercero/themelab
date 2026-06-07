@@ -10,6 +10,9 @@ import type {
   UndoEntry,
   TransformErrorCode,
   TailwindTokenMap,
+  ComponentInfo,
+  ThemeStyles,
+  ThemeSource,
 } from "@themelab/shared";
 import { reorderComponent, getSiblings } from "./transform.js";
 import { updateClassName, updateTextContent } from "./transform.js";
@@ -34,6 +37,16 @@ interface SketchServer {
   wss: WebSocketServer;
   close: () => void;
   getActiveClient: () => WebSocket | null;
+  /** The overlay's current component selection, or null if nothing is selected. */
+  getSelection: () => ComponentInfo | null;
+  /** The project's resolved design-token theme (light/dark), or null if unresolved. */
+  getTheme: () => { theme: ThemeStyles; source: ThemeSource | null } | null;
+  /** The project's resolved Tailwind token map, or null if unresolved. */
+  getTailwindTokens: () => TailwindTokenMap | null;
+  /** Resolve a component name to its source file path (grep-based discovery). */
+  discoverComponentFile: (componentName: string) => Promise<string | null>;
+  /** Whether an overlay client is currently connected. */
+  isOverlayConnected: () => boolean;
 }
 
 export function attachUndoIdsToBatchResults(
@@ -88,6 +101,12 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
   let activeClient: WebSocket | null = null;
   let processing = false;
   const queue: Array<{ msg: ClientMessage; ws: WebSocket }> = [];
+
+  // Live context surfaced to external agents over MCP. Selection is reported by
+  // the overlay via `setSelection`; theme/tokens are resolved once per connect.
+  let currentSelection: ComponentInfo | null = null;
+  let currentTheme: { theme: ThemeStyles; source: ThemeSource | null } | null = null;
+  let currentTokens: TailwindTokenMap | null = null;
 
   // Single source of truth for mutating message types: these are processed
   // sequentially via the queue (processQueue). Anything listed here MUST have a
@@ -603,6 +622,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
     try {
       const config = resolveTailwindConfig(projectRoot);
       resolvedTokens = config.tokens;
+      currentTokens = config.tokens;
       send(ws, { type: "tailwindTokens", tokens: config.tokens });
     } catch (err) {
       logger.warn("[ThemeLab] Could not resolve Tailwind config:", err);
@@ -612,6 +632,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
     try {
       const resolved = resolveTheme(projectRoot);
       if (resolved) {
+        currentTheme = { theme: resolved.theme, source: resolved.source };
         send(ws, { type: "themeStyles", theme: resolved.theme, source: resolved.source });
         logger.debug(
           `[theme] ${path.relative(projectRoot, resolved.source.filePath)} — ` +
@@ -641,6 +662,11 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
       switch (msg.type) {
         case "ping":
           send(ws, { type: "pong" });
+          break;
+
+        case "setSelection":
+          // Overlay reported a selection change — store it for MCP reads. No reply.
+          currentSelection = msg.selection;
           break;
 
         case "getSettings": {
@@ -716,6 +742,7 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
         activeClient = null;
         undoStack.length = 0; // Clear undo stack on disconnect
         queue.length = 0;
+        currentSelection = null; // Stale once the overlay is gone
       }
     });
   });
@@ -724,5 +751,10 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
     wss,
     close: () => wss.close(),
     getActiveClient: () => activeClient,
+    getSelection: () => currentSelection,
+    getTheme: () => currentTheme,
+    getTailwindTokens: () => currentTokens,
+    discoverComponentFile: (componentName: string) => discoverFile(componentName, projectRoot),
+    isOverlayConnected: () => activeClient !== null && activeClient.readyState === WebSocket.OPEN,
   };
 }

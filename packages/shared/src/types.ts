@@ -319,7 +319,11 @@ export type ClientMessage =
   | { type: "fileStat"; filePath: string }
   | { type: "getSettings" }
   | { type: "saveSettings"; ai: AiSettingsPatch }
-  | { type: "confirmResolution"; id: string; accept: boolean };
+  | { type: "confirmResolution"; id: string; accept: boolean }
+  // Reports the overlay's current component selection to the CLI so it can be
+  // surfaced to external agents over MCP. Read-only (not a mutation): the CLI
+  // just stores the latest value. `null` clears it (deselect / disconnect).
+  | { type: "setSelection"; selection: ComponentInfo | null };
 
 export type ServerMessage =
   | { type: "reorderComplete"; success: boolean; error?: string }

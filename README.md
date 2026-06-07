@@ -61,6 +61,66 @@ Most edits resolve deterministically. For the hard cases — an element rendered
 - **Confirm with AI (⚡):** the lightning button beside **Confirm** resolves every staged change via the AI locator up front, instead of trying deterministic resolution first — handy when deterministic resolution keeps landing on the wrong element.
 - **Reordering:** move up/down also gets the AI fallback. Reordering an item rendered by a `.map()` swaps the matching entry in the **source data array** (it'll ask to confirm), rather than trying to move JSX that isn't there.
 
+## MCP server (for coding agents)
+
+While `themelab` is running it also exposes a small **[MCP](https://modelcontextprotocol.io) server**,
+so a coding agent (Claude Code, Cursor, …) can read what you're doing in the overlay. The headline:
+**click a component in the browser and your agent knows the exact file and line** — no more "which
+`Button` did you mean?".
+
+It starts automatically on `http://localhost:3458/mcp` (Streamable HTTP, loopback only). The actual
+URL is printed at startup — if `3458` is taken it picks the next free port, so pin it with
+`themelab --mcp-port 3458` when you want a stable address for your config, or turn it off with `--no-mcp`.
+
+**Tools exposed**
+
+| Tool | What it returns |
+| --- | --- |
+| `get_selection` | The currently selected component: name, source `file:line`, the ancestor stack, and a structural JSX path |
+| `get_theme` | The project's resolved design-token theme (light/dark CSS-variable maps) |
+| `get_tailwind_tokens` | The project's resolved Tailwind token map |
+| `find_component` | Resolve a component name to its source file path |
+
+### Register it with Claude Code
+
+```bash
+# Run once, from your project root (while themelab is running):
+claude mcp add --transport http themelab http://localhost:3458/mcp
+```
+
+Or commit a project-scoped `.mcp.json` so your team gets it automatically:
+
+```json
+{
+  "mcpServers": {
+    "themelab": {
+      "type": "http",
+      "url": "http://localhost:3458/mcp"
+    }
+  }
+}
+```
+
+Then just ask: *"what component is selected? add `rounded-lg` to it."* — the agent calls
+`get_selection` to find the file and line for you.
+
+### Register it with Cursor
+
+Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
+
+```json
+{
+  "mcpServers": {
+    "themelab": {
+      "url": "http://localhost:3458/mcp"
+    }
+  }
+}
+```
+
+> The server is only up while `themelab` is running and serves loopback only. If no overlay is
+> connected (no browser tab open), the read tools say so rather than returning stale data.
+
 ## Requirements
 
 - Node.js 20+
@@ -113,9 +173,12 @@ Arguments:
   port           Dev server port override
 
 Options:
-  --no-open      Don't open browser automatically
-  --host <host>  Dev server host (default: "localhost")
-  --verbose      Enable debug logging
+  --no-open           Don't open browser automatically
+  --host <host>       Dev server host (default: "localhost")
+  --studio-url <url>  ThemeLab studio base URL (for 'Open in editor')
+  --no-mcp            Disable the MCP server for coding agents
+  --mcp-port <port>   Preferred port for the MCP server (default: 3458)
+  --verbose           Enable debug logging
 ```
 
 ## Shortcuts

@@ -15,13 +15,15 @@ interface ToolbarProps {
   title?: string;
   /** Tailwind-scale generator — when set, the Code dialog gains a second tab. */
   tailwindCss?: (format: ColorFormat) => string;
+  /** Figma SVG generator — when set, a "figma" tab appears in the export dialog (used by /create). */
+  figmaSvg?: () => string;
   /** Extra controls rendered before the Code button (e.g. the /edit Import dialog). */
   extra?: ReactNode;
   /** When provided, the logo/title becomes a button (e.g. to reopen the intro). */
   onShowIntro?: () => void;
 }
 
-export function Toolbar({ theme, radius, title = "100r → shadcn", tailwindCss, extra, onShowIntro }: ToolbarProps) {
+export function Toolbar({ theme, radius, title = "100r → shadcn", tailwindCss, figmaSvg, extra, onShowIntro }: ToolbarProps) {
   const brand = (
     <>
       <Logo className="h-3.5" />
@@ -47,7 +49,7 @@ export function Toolbar({ theme, radius, title = "100r → shadcn", tailwindCss,
 
       <div className="ml-auto flex items-center gap-2">
         {extra}
-        <ExportDialog theme={theme} radius={radius} tailwindCss={tailwindCss} />
+        <ExportDialog theme={theme} radius={radius} tailwindCss={tailwindCss} figmaSvg={figmaSvg} />
       </div>
     </header>
   );

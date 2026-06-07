@@ -32,7 +32,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { COLOR_FORMATS, themeStylesToCss, themeStylesToJson, type ColorFormat } from "@/lib/theme-engine";
 
-type Tab = "shadcn" | "json" | "tailwind";
+type Tab = "shadcn" | "json" | "tailwind" | "figma";
 
 interface ExportDialogProps {
   theme: ThemeStyles;
@@ -40,9 +40,11 @@ interface ExportDialogProps {
   radius: string;
   /** Optional Tailwind-scale generator; when set, a third tab is shown. */
   tailwindCss?: (format: ColorFormat) => string;
+  /** Optional Figma SVG generator (used by /create). When set, a "figma" tab appears. */
+  figmaSvg?: () => string;
 }
 
-export function ExportDialog({ theme, radius, tailwindCss }: ExportDialogProps) {
+export function ExportDialog({ theme, radius, tailwindCss, figmaSvg }: ExportDialogProps) {
   const [format, setFormat] = useState<ColorFormat>("oklch");
   const [tab, setTab] = useState<Tab>("shadcn");
   const [copied, setCopied] = useState(false);
@@ -61,11 +63,18 @@ export function ExportDialog({ theme, radius, tailwindCss }: ExportDialogProps) 
   );
   const css = tab === "tailwind" ? twCss : tab === "json" ? json : shadcnCss;
 
+  const figma = useMemo(() => (figmaSvg ? figmaSvg() : ""), [figmaSvg]);
+
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(css);
+      const text = tab === "figma" ? figma : css;
+      await navigator.clipboard.writeText(text);
       setCopied(true);
-      toast.success("Copied to clipboard");
+      if (tab === "figma") {
+        toast.success("SVG copied — paste into Figma");
+      } else {
+        toast.success("Copied to clipboard");
+      }
       setTimeout(() => setCopied(false), 1500);
     } catch {
       toast.error("Couldn't access the clipboard.");
@@ -87,7 +96,9 @@ export function ExportDialog({ theme, radius, tailwindCss }: ExportDialogProps) 
           <div className="text-left">
             <DialogTitle className="text-sm">Theme code</DialogTitle>
             <DialogDescription className="text-xs">
-              Tailwind v4 — paste into your <code>globals.css</code>.
+              {tab === "figma"
+                ? "SVG color scales for Figma — paste directly into your file."
+                : "Tailwind v4 — paste into your globals.css."}
             </DialogDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -96,34 +107,61 @@ export function ExportDialog({ theme, radius, tailwindCss }: ExportDialogProps) 
                 <TabsTrigger value="shadcn">shadcn</TabsTrigger>
                 <TabsTrigger value="json">json</TabsTrigger>
                 {tailwindCss && <TabsTrigger value="tailwind">tailwind</TabsTrigger>}
+                {figmaSvg && <TabsTrigger value="figma">figma</TabsTrigger>}
               </TabsList>
             </Tabs>
-            <Select value={format} onValueChange={(v) => v && setFormat(v as ColorFormat)}>
-              <SelectTrigger size="sm" className="w-28 uppercase">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="tl-overlay">
-                {COLOR_FORMATS.map((f) => (
-                  <SelectItem key={f} value={f} className="uppercase">
-                    {f}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {tab !== "figma" && (
+              <Select value={format} onValueChange={(v) => v && setFormat(v as ColorFormat)}>
+                <SelectTrigger size="sm" className="w-28 uppercase">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="tl-overlay">
+                  {COLOR_FORMATS.map((f) => (
+                    <SelectItem key={f} value={f} className="uppercase">
+                      {f}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <button type="button" className="ov-btn" onClick={copy}>
               {copied ? <CheckIcon weight="bold" className="size-3.5" /> : <CopyIcon weight="bold" className="size-3.5" />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? "Copied" : tab === "figma" ? "Copy SVG" : "Copy"}
             </button>
             <DialogClose className="ov-btn px-2" aria-label="Close">
               <XIcon weight="bold" className="size-3.5" />
             </DialogClose>
           </div>
         </DialogHeader>
-        <ScrollArea className="h-[60vh]">
-          <pre className="p-4 text-xs leading-relaxed text-[var(--ov-text)]">
-            <code>{css}</code>
-          </pre>
-        </ScrollArea>
+        {tab === "figma" ? (
+          <div className="flex h-[60vh] flex-col items-center justify-center gap-4 overflow-auto bg-[var(--ov-bg)] p-6">
+            <div className="w-full max-w-[980px]">
+              <div className="mb-2 text-center text-[10px] text-[var(--ov-text-dim)]">
+                White canvas with solid + alpha rows. Layer names are set via ids. Paste into Figma, then create color styles / variables from the rectangles.
+              </div>
+              <div className="overflow-auto rounded border border-[var(--ov-border)] bg-white p-3 shadow-inner">
+                {/* Render the SVG via data URI so it scales cleanly as an image preview */}
+                {figma && (
+                  <img
+                    src={`data:image/svg+xml;utf8,${encodeURIComponent(figma)}`}
+                    alt="Figma scale preview"
+                    className="block h-auto w-full max-w-full"
+                  />
+                )}
+              </div>
+            </div>
+            <button type="button" className="ov-btn" onClick={copy}>
+              {copied ? <CheckIcon weight="bold" className="size-3.5" /> : <CopyIcon weight="bold" className="size-3.5" />}
+              {copied ? "Copied" : "Copy SVG for Figma"}
+            </button>
+          </div>
+        ) : (
+          <ScrollArea className="h-[60vh]">
+            <pre className="p-4 text-xs leading-relaxed text-[var(--ov-text)]">
+              <code>{css}</code>
+            </pre>
+          </ScrollArea>
+        )}
       </DialogContent>
     </Dialog>
   );

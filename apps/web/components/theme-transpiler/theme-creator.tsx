@@ -16,6 +16,7 @@ import {
   radixScales,
   radixThemeStyles,
   scaleToCss,
+  scalesToFigmaSvg,
   toOklch,
   type ColorFormat,
   type RadixInputs,
@@ -106,10 +107,21 @@ export function ThemeCreator() {
     [scales],
   );
 
+  const figmaSvg = useCallback(
+    () =>
+      scalesToFigmaSvg({
+        primary: scales.primary,
+        neutral: scales.neutral,
+        mode: editor.mode,
+        title: gen.algo === "radix" ? "Radix" : "ThemeLab",
+      }),
+    [scales, editor.mode, gen.algo],
+  );
+
   return (
     <EditorShell
       editor={editor}
-      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} title="create" tailwindCss={tailwindCss} />}
+      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} title="create" tailwindCss={tailwindCss} figmaSvg={figmaSvg} />}
       input={
         <div className="flex flex-col gap-2">
           {algo === "themelab" ? (
@@ -177,6 +189,7 @@ export function ThemeCreator() {
             { name: "primary", scale: scales.primary },
             { name: "neutral", scale: scales.neutral },
           ]}
+          figmaSvg={figmaSvg}
         />
       }
     >

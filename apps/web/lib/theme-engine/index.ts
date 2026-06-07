@@ -9,3 +9,4 @@ export { PRESETS, type Preset } from "./presets";
 export { lStar, toOklch, oklchCss, oklchToHex, reformat, COLOR_FORMATS, type ColorFormat } from "./oklch";
 export { buildScale, scaleToCss, scalesToThemeStyles, TAILWIND_STOPS, type Scale, type ScaleStop } from "./scale";
 export { radixThemeStyles, radixScales, type RadixInputs, type RadixModeColors, type Appearance } from "./radix";
+export { scalesToFigmaSvg, type FigmaSvgOptions } from "./figma";

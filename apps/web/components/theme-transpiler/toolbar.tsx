@@ -4,6 +4,7 @@
 // live in the editor; "apply to page" lives by the input.)
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { ThemeStyles } from "@themelab/shared";
 import type { ColorFormat } from "@/lib/theme-engine";
 import { ExportDialog } from "./export-dialog";
@@ -24,28 +25,26 @@ interface ToolbarProps {
 }
 
 export function Toolbar({ theme, radius, title = "100r → shadcn", tailwindCss, figmaSvg, extra, onShowIntro }: ToolbarProps) {
-  const brand = (
-    <>
-      <Logo className="h-3.5" />
-      <span className="text-[var(--ov-text-ghost)]">/</span>
-      <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
-    </>
-  );
-
   return (
     <header className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--ov-border)] px-4 py-2.5">
-      {onShowIntro ? (
-        <button
-          type="button"
-          onClick={onShowIntro}
-          title="About 100r themes"
-          className="flex items-center gap-2.5 text-[var(--ov-text)]"
-        >
-          {brand}
-        </button>
-      ) : (
-        <div className="flex items-center gap-2.5 text-[var(--ov-text)]">{brand}</div>
-      )}
+      <div className="flex items-center gap-2.5 text-[var(--ov-text)]">
+        <Link href="/" aria-label="ThemeLab home" className="flex items-center">
+          <Logo className="h-3.5" />
+        </Link>
+        <span className="text-[var(--ov-text-ghost)]">/</span>
+        {onShowIntro ? (
+          <button
+            type="button"
+            onClick={onShowIntro}
+            title="About 100r themes"
+            className="text-sm font-semibold tracking-tight"
+          >
+            {title}
+          </button>
+        ) : (
+          <h1 className="text-sm font-semibold tracking-tight">{title}</h1>
+        )}
+      </div>
 
       <div className="ml-auto flex items-center gap-2">
         {extra}

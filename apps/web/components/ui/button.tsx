@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
   [
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap",
-    "rounded-md", // border-radius: var(--radius-md) → derived from the theme --radius
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap font-heading",
+    "rounded-lg", // border-radius: var(--radius-md) → derived from the theme --radius
     "text-sm font-medium",
     "ring-offset-background transition-colors",
     "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",

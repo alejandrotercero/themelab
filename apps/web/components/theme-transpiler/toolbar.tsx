@@ -8,7 +8,7 @@ import Link from "next/link";
 import type { ThemeStyles } from "@themelab/shared";
 import type { ColorFormat } from "@/lib/theme-engine";
 import { ExportDialog } from "./export-dialog";
-import { Logo } from "./logo";
+import { Logo } from "@/components/logo";
 
 interface ToolbarProps {
   theme: ThemeStyles;

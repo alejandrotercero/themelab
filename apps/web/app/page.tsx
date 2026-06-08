@@ -1,31 +1,84 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
+import { Navbar2 } from "@/sections/landing-nav";
+import { Header } from "@/sections/hero";
+import { Features1 } from "@/sections/features1";
+import { Footer } from "@/sections/footer";
 
 export default function Page() {
   return (
-    <main className="flex min-h-svh flex-col items-center justify-center gap-8 p-6">
-      <div className="flex max-w-xl flex-col items-center gap-4 text-center">
-        <h1 className="text-4xl font-medium tracking-tight text-balance">ThemeLab</h1>
-        <p className="text-muted-foreground text-balance">
-          Tools for building and translating design-token themes.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <Link href="/create">
-          <Button size="lg">
-            Create a theme
-            <ArrowRightIcon weight="bold" />
-          </Button>
-        </Link>
-        <Link href="/100r">
-          <Button size="lg" variant="outline">
-            100r → shadcn
-            <ArrowRightIcon weight="bold" />
-          </Button>
-        </Link>
-      </div>
+    <main>
+      <Navbar2 />
+      <Header
+        heading="Tools for building and translating design-token themes."
+        buttons={[
+          {
+            title: "How it Works",
+            url: "/",
+            size: "lg"
+          },
+          {
+            title: "Create a Theme",
+            url: "/create",
+            size: "lg",
+            variant: "outline",
+            children: ""
+          }
+        ]}
+        image={{ src: "screen.png", alt: "ThemeLab screenshot" }}
+      />
+      <Features1
+        cardsSmall={[
+          {
+            tagline: "cli native",
+            heading: "CLi and MCP",
+            description: "Use the CLI and MCP server to generate, transform, and apply themes directly from your terminal.",
+            image: {
+              src: "/type-vars.png",
+              alt: "CLI",
+            },
+            button: {
+              title: "Button",
+              variant: "link",
+              size: "link",
+            },
+          },
+          {
+            tagline: "cli native",
+            heading: "CLi and MCP",
+            description: "Use the CLI and MCP server to generate, transform, and apply themes directly from your terminal.",
+            image: {
+              src: "/theme.png",
+              alt: "CLI",
+            },
+            button: {
+              title: "Button",
+              variant: "link",
+              size: "link",
+            },
+          },
+        ]}
+        cardBig={{
+          tagline: "Tagline",
+          image: {
+            src: "/term.png",
+            alt: "Placeholder image 3",
+          },
+          heading: "Medium length section heading goes here",
+          description:
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique. Duis cursus, mi quis viverra ornare, eros dolor interdum nulla, ut commodo diam libero vitae erat.",
+          buttons: [
+            { title: "Button", variant: "outline" },
+            {
+              title: "Button",
+              variant: "link",
+              size: "link",
+            },
+          ],
+        }}
+      />
+      <Footer />
     </main>
   );
 }

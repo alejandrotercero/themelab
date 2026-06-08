@@ -33,6 +33,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn("antialiased", googleSansCode.variable, inter.variable, "font-sans")}
     >
+      <head>
+        {/* Geomanist — exposed via the `font-heading` utility (globals.css); not applied anywhere yet. */}
+        <link rel="stylesheet" href="https://cdn.nonx.dev/fonts/geomanist.full.css" />
+      </head>
       <body>
         <ThemeProvider>
           <TooltipProvider>{children}</TooltipProvider>

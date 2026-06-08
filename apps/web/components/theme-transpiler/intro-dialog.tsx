@@ -5,7 +5,7 @@
 
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Logo } from "./logo";
+import { Logo } from "@/components/logo";
 
 const THEMES_URL = "https://github.com/hundredrabbits/Themes";
 

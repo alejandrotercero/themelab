@@ -36,7 +36,7 @@
    overrides the page regardless of what's set here.
    ───────────────────────────────────────────────────────────────────────── */
 :root {
-  --radius: 0.375rem;
+  --radius: 0.5rem;
 
   --background: oklch(0.186 0.016 284.716);
   --foreground: oklch(0.852 0.004 17.244);
@@ -175,6 +175,13 @@
    mapped here, so the 3,800+ existing `bg-background-primary` / `text-text-*` /
    `border-border-*` usages across all blocks follow the theme + dark mode too.
    ───────────────────────────────────────────────────────────────────────── */
+/* `font-heading` → Geomanist at weight 450 (geomanist.full.css is linked in
+   layout.tsx). Config only — intentionally not applied anywhere yet. */
+@utility font-heading {
+  font-family: "geomanist", sans-serif;
+  font-weight: 450;
+}
+
 @theme inline {
   /* — typography — both map to Google Sans Code (set by next/font in layout.tsx)
      so the app matches the ThemeLab overlay's all-mono code-tool aesthetic — */
@@ -485,6 +492,8 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
+    /* Google Sans Code defaults to Light (300); utilities like font-medium override. */
+    font-weight: 300;
   }
 }
 

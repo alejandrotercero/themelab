@@ -3,7 +3,10 @@ import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import httpProxy from "http-proxy";
+// http-proxy-3: maintained TypeScript fork of http-proxy (same API). The
+// original calls the deprecated util._extend on every request, spamming
+// DEP0060 warnings on Node 22+.
+import httpProxy from "http-proxy-3";
 import { WebSocket } from "ws";
 import { OVERLAY_JS } from "./generated/overlay-bundle.js";
 

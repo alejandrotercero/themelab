@@ -37,6 +37,36 @@ const BUNDLER_SUFFIXES = [
 ];
 
 /**
+ * React server components produce virtual stack-frame URLs like
+ * "rsc://React/Server/webpack-internal:///(rsc)/./src/app/page.tsx?42".
+ * The real (still bundler-wrapped) path follows the environment segment.
+ */
+const SERVER_COMPONENT_URL_PREFIXES = ["about://React/", "rsc://React/"];
+
+export function isServerComponentUrl(url: string): boolean {
+  return SERVER_COMPONENT_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
+/** Strip the virtual server-component wrapper, returning the inner URL. */
+export function devirtualizeServerUrl(url: string): string {
+  for (const prefix of SERVER_COMPONENT_URL_PREFIXES) {
+    if (!url.startsWith(prefix)) continue;
+    const environmentEndIndex = url.indexOf("/", prefix.length);
+    if (environmentEndIndex === -1) continue;
+    const pathStart = environmentEndIndex + 1;
+    const querySuffixIndex = url.lastIndexOf("?");
+    const rawPath =
+      querySuffixIndex > pathStart ? url.slice(pathStart, querySuffixIndex) : url.slice(pathStart);
+    try {
+      return decodeURIComponent(rawPath);
+    } catch {
+      return rawPath;
+    }
+  }
+  return url;
+}
+
+/**
  * Extract a real file path from a bundler-mangled URL.
  *
  * Examples:
@@ -48,7 +78,11 @@ const BUNDLER_SUFFIXES = [
 export function extractFilePath(rawFileName: string): string {
   if (!rawFileName) return "";
 
-  let cleaned = rawFileName;
+  // Unwrap server-component virtual URLs first — the inner path is a normal
+  // bundler URL that the prefix stripping below already handles.
+  let cleaned = isServerComponentUrl(rawFileName)
+    ? devirtualizeServerUrl(rawFileName)
+    : rawFileName;
 
   // Strip known bundler prefixes
   for (const prefix of BUNDLER_PREFIXES) {

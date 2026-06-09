@@ -1,7 +1,7 @@
 import type { ServerMessage, ComponentInfo, ElementIdentity, TextEditAnchor, TextEditAnnotation } from "@themelab/shared";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
-import { getOwnerStack } from "bippy/source";
 import { resolveFrameFilePath } from "./utils/source-resolve.js";
+import { getResolvedOwnerStack } from "./utils/server-symbolication.js";
 import { send, onMessage, requestFileDiscovery } from "./bridge.js";
 import { getCachedFilePath, setCachedFilePath } from "./file-discovery-cache.js";
 import { COLORS } from "./design-tokens.js";
@@ -195,7 +195,7 @@ async function resolveComponent(el: HTMLElement): Promise<ComponentInfo | null> 
 
   // Strategy 1: async getOwnerStack (React 19 — _debugSource is absent)
   try {
-    const frames = await getOwnerStack(fiber);
+    const frames = await getResolvedOwnerStack(fiber);
     if (frames && frames.length > 0) {
       for (const frame of frames) {
         if (!frame.functionName) continue;

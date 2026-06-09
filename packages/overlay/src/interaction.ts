@@ -1,7 +1,7 @@
 // packages/overlay/src/interaction.ts
 
 import { getCachedElement, setCachedElement, clearElementCache } from "./utils/element-cache.js";
-import { isFullPageElement } from "./utils/component-filter.js";
+import { isOverlayLikeElement } from "./utils/component-filter.js";
 import { handleWheelZoom, panCanvas } from "./canvas-transform.js";
 import { isTextEditing } from "./inline-text-edit.js";
 import { isEditableFocused } from "./utils/active-element.js";
@@ -168,7 +168,7 @@ export function getPageElementAtPoint(clientX: number, clientY: number): HTMLEle
     if (el.hasAttribute("data-themelab-interaction")) continue;
     if (el.hasAttribute("data-themelab-placeholder")) continue;
     if (el === document.body || el === document.documentElement) continue;
-    if (isFullPageElement(el)) continue;
+    if (isOverlayLikeElement(el)) continue;
     result = el;
     break;
   }

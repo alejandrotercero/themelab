@@ -1,7 +1,7 @@
 // packages/overlay/src/tools/resolve-helper.ts
 import type { ComponentRef } from "@themelab/shared";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
-import { getOwnerStack } from "bippy/source";
+import { getResolvedOwnerStack } from "../utils/server-symbolication.js";
 
 interface FiberDebugSource {
   fileName: string;
@@ -40,7 +40,7 @@ export async function resolveComponentAtPoint(clientX: number, clientY: number):
 
   // Try owner stack first (React 19 + source map symbolication)
   try {
-    const frames = await getOwnerStack(fiber);
+    const frames = await getResolvedOwnerStack(fiber);
     if (frames && frames.length > 0) {
       for (const frame of frames) {
         if (!frame.functionName) continue;
@@ -126,7 +126,7 @@ export async function resolveComponentFromElement(el: HTMLElement): Promise<Comp
   let result: ComponentRef | null = null;
 
   try {
-    const frames = await getOwnerStack(fiber);
+    const frames = await getResolvedOwnerStack(fiber);
     if (frames && frames.length > 0) {
       for (const frame of frames) {
         if (!frame.functionName) continue;

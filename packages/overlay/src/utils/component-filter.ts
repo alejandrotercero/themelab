@@ -65,20 +65,6 @@ export function isLibraryPath(filePath: string): boolean {
   );
 }
 
-/** Returns true if the element is effectively the whole page and should not be selectable. */
-export function isFullPageElement(el: HTMLElement): boolean {
-  const tag = el.tagName.toLowerCase();
-  if (tag === "html" || tag === "body") return true;
-
-  // Skip elements that cover ≥90% of the viewport in both dimensions
-  const rect = el.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  if (rect.width >= vw * 0.9 && rect.height >= vh * 0.9) return true;
-
-  return false;
-}
-
 // --- Visibility cache (from react-grab pattern, avoids redundant getComputedStyle) ---
 const VISIBILITY_CACHE_TTL_MS = 50;
 const VIEWPORT_COVERAGE_THRESHOLD = 0.9;
@@ -109,14 +95,32 @@ function isFullViewportOverlay(el: Element, style: CSSStyleDeclaration): boolean
   const pos = style.position;
   if (pos !== "fixed" && pos !== "absolute") return false;
 
-  const rect = el.getBoundingClientRect();
-  if (rect.width / window.innerWidth < VIEWPORT_COVERAGE_THRESHOLD || rect.height / window.innerHeight < VIEWPORT_COVERAGE_THRESHOLD) return false;
-
   const bg = style.backgroundColor;
   if (bg === "transparent" || bg === "rgba(0, 0, 0, 0)" || parseFloat(style.opacity) < 0.1) return true;
 
   const z = parseInt(style.zIndex, 10);
   return !isNaN(z) && z > OVERLAY_Z_INDEX_THRESHOLD;
+}
+
+function isOverlayLike(el: Element, style: CSSStyleDeclaration): boolean {
+  const rect = el.getBoundingClientRect();
+  if (
+    rect.width / window.innerWidth < VIEWPORT_COVERAGE_THRESHOLD ||
+    rect.height / window.innerHeight < VIEWPORT_COVERAGE_THRESHOLD
+  ) {
+    return false;
+  }
+  return isDevToolsOverlay(style) || isFullViewportOverlay(el, style);
+}
+
+/**
+ * True if a viewport-covering element looks like an overlay (dev-tools canvas,
+ * transparent backdrop, modal scrim) rather than page content. Legitimate
+ * full-page sections (heroes, layout wrappers) also cover the viewport —
+ * those must stay selectable, so size alone is never a reason to reject.
+ */
+export function isOverlayLikeElement(el: Element): boolean {
+  return isOverlayLike(el, window.getComputedStyle(el));
 }
 
 /**
@@ -126,7 +130,6 @@ function isFullViewportOverlay(el: Element, style: CSSStyleDeclaration): boolean
 export function isValidElement(el: Element): boolean {
   const tag = el instanceof HTMLElement ? el.tagName.toLowerCase() : "";
   if (tag === "html" || tag === "body") return false;
-  if (el instanceof HTMLElement && isFullPageElement(el)) return false;
 
   if (el.closest("#themelab-root")) return false;
   if (el instanceof HTMLElement && el.hasAttribute("data-themelab-interaction")) return false;
@@ -145,14 +148,9 @@ export function isValidElement(el: Element): boolean {
     return false;
   }
 
-  const coversViewport = el.clientWidth / window.innerWidth >= VIEWPORT_COVERAGE_THRESHOLD
-    && el.clientHeight / window.innerHeight >= VIEWPORT_COVERAGE_THRESHOLD;
-
-  if (coversViewport) {
-    if (isDevToolsOverlay(style) || isFullViewportOverlay(el, style)) {
-      visibilityCache.set(el, { isValid: false, timestamp: now });
-      return false;
-    }
+  if (isOverlayLike(el, style)) {
+    visibilityCache.set(el, { isValid: false, timestamp: now });
+    return false;
   }
 
   visibilityCache.set(el, { isValid: true, timestamp: now });

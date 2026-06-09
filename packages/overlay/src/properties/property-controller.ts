@@ -14,8 +14,8 @@ import type { PropertyControl, ControlContext } from "./controls/types.js";
 import { addPendingPropertyOperation, pushUndoAction, type PropertyChangeRuntime } from "../canvas-state.js";
 import { dismissOnboarding } from "../onboarding.js";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
-import { getOwnerStack } from "bippy/source";
 import { resolveFrameFilePath } from "../utils/source-resolve.js";
+import { getResolvedOwnerStack } from "../utils/server-symbolication.js";
 import { computeNthOfType } from "../utils/nth-of-type.js";
 import { classMatchesPrefix, pickWinningVariant } from "../utils/class-matches-prefix.js";
 import { setStyle, clearStyle } from "../utils/style-access.js";
@@ -224,7 +224,7 @@ async function reacquireViaOwnerStack(identity: ElementIdentity): Promise<HTMLEl
       const fiber = getFiberFromHostInstance(el);
       if (!fiber) continue;
 
-      const frames = await getOwnerStack(fiber);
+      const frames = await getResolvedOwnerStack(fiber);
       if (!frames || frames.length === 0) continue;
 
       for (const frame of frames) {
@@ -263,7 +263,7 @@ async function resolveFreshComponentInfo(
 
   // Try getOwnerStack (React 19)
   try {
-    const frames = await getOwnerStack(fiber);
+    const frames = await getResolvedOwnerStack(fiber);
     if (frames && frames.length > 0) {
       for (const frame of frames) {
         if (!frame.functionName) continue;

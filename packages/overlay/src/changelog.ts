@@ -4,11 +4,13 @@ import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-token
 import { showToast } from "./toolbar.js";
 import { selectElement } from "./selection.js";
 import { reacquireMovedElement, reacquireMovedElementAsync } from "./move-state.js";
+import { getHistoryEntries, getHistoryEntry, onSelectionHistoryChange } from "./selection-history.js";
 
 // --- State ---
 
 const entries = new Map<string, ChangeEntry>();
 let panelOpen = false;
+let activeTab: "history" | "logs" = "history";
 const pendingRevertLogEntryIds = new Set<string>();
 
 // --- Listener pattern (matches canvas-state.ts) ---
@@ -184,6 +186,8 @@ export function removeAllPending(): void {
 let panelEl: HTMLElement | null = null;
 let bodyEl: HTMLElement | null = null;
 let countEl: HTMLElement | null = null;
+let historyTabEl: HTMLButtonElement | null = null;
+let logsTabEl: HTMLButtonElement | null = null;
 let chevronEl: HTMLElement | null = null;
 let cleanupMessageListener: (() => void) | null = null;
 let styleEl: HTMLElement | null = null;
@@ -251,9 +255,31 @@ const CHANGELOG_STYLES = `
     color: ${COLORS.accent};
     flex-shrink: 0;
   }
-  .changelog-title {
-    font-size: 13px;
+  .changelog-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .changelog-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    padding: 4px 10px;
+    font-family: ${FONT_FAMILY};
+    font-size: 12px;
     font-weight: 600;
+    color: ${COLORS.textTertiary};
+    cursor: pointer;
+    border-radius: ${RADII.xs};
+    transition: background ${TRANSITIONS.fast}, color ${TRANSITIONS.fast};
+  }
+  .changelog-tab:hover {
+    color: ${COLORS.textSecondary};
+  }
+  .changelog-tab.active {
+    background: ${COLORS.bgTertiary};
     color: ${COLORS.textPrimary};
   }
   .changelog-badge {
@@ -268,10 +294,6 @@ const CHANGELOG_STYLES = `
   }
   .changelog-badge.hidden {
     display: none;
-  }
-  .changelog-header-copy {
-    color: ${COLORS.textTertiary};
-    font-size: 11px;
   }
   .changelog-chevron {
     width: 14px;
@@ -312,6 +334,9 @@ const CHANGELOG_STYLES = `
   }
   .changelog-entry.reverted {
     opacity: 0.5;
+  }
+  .changelog-entry.stale {
+    opacity: 0.55;
   }
   .changelog-entry.reverted .entry-summary {
     text-decoration: line-through;
@@ -461,6 +486,59 @@ async function focusEntryTarget(id: string): Promise<void> {
   await selectElement(el, { skipSidebar: false });
 }
 
+function renderBody(): void {
+  if (activeTab === "history") {
+    renderHistory();
+  } else {
+    renderEntries();
+  }
+}
+
+async function focusHistoryTarget(id: string): Promise<void> {
+  const entry = getHistoryEntry(id);
+  if (!entry) return;
+
+  let el: HTMLElement | null = entry.element.isConnected ? entry.element : null;
+  // Element replaced (HMR or re-render) — reacquire by source identity.
+  if (!el) el = reacquireMovedElement(entry.identity);
+  if (!el) el = await reacquireMovedElementAsync(entry.identity);
+  if (!el) {
+    showToast(`Couldn't find ${entry.identity.componentName}`);
+    return;
+  }
+  await selectElement(el, { skipSidebar: false });
+}
+
+function renderHistory(): void {
+  if (!bodyEl) return;
+  const historyEntries = getHistoryEntries();
+  if (historyEntries.length === 0) {
+    bodyEl.innerHTML = `<div class="changelog-empty">No selections yet. Selected elements appear here.</div>`;
+    return;
+  }
+  bodyEl.innerHTML = historyEntries
+    .map((entry) => {
+      const stale = !entry.element.isConnected;
+      const fileName = entry.identity.filePath ? getBasename(entry.identity.filePath) : "";
+      const time = formatRelativeTime(entry.timestamp);
+      return `<div class="changelog-entry selectable${stale ? " stale" : ""}" data-history-id="${escapeHtml(entry.id)}">
+  <span class="entry-summary"><span class="component-name">${escapeHtml(entry.identity.componentName)}</span><span class="entry-separator">•</span>&lt;${escapeHtml(entry.identity.tagName)}&gt;</span>
+  ${fileName ? `<span class="entry-file" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</span>` : ""}
+  <span class="entry-time">${time}</span>
+</div>`;
+    })
+    .join("");
+
+  const entryDivs = Array.from(bodyEl.querySelectorAll(".changelog-entry")) as HTMLElement[];
+  for (const entryDiv of entryDivs) {
+    const id = entryDiv.dataset["historyId"];
+    if (!id) continue;
+    entryDiv.addEventListener("click", () => {
+      void focusHistoryTarget(id);
+    });
+  }
+}
+
 function renderEntries(): void {
   if (!bodyEl) return;
   const allEntries = Array.from(entries.values()).reverse();
@@ -561,17 +639,41 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   iconEl.setAttribute("stroke-linejoin", "round");
   iconEl.innerHTML = `<path d="M7 6h12"></path><path d="M7 12h12"></path><path d="M7 18h12"></path><path d="M3.5 6h.01"></path><path d="M3.5 12h.01"></path><path d="M3.5 18h.01"></path>`;
 
-  const titleEl = document.createElement("span");
-  titleEl.className = "changelog-title";
-  titleEl.textContent = "Logs";
+  const tabsEl = document.createElement("div");
+  tabsEl.className = "changelog-tabs";
+
+  historyTabEl = document.createElement("button");
+  historyTabEl.className = "changelog-tab active";
+  historyTabEl.textContent = "History";
+
+  logsTabEl = document.createElement("button");
+  logsTabEl.className = "changelog-tab";
+  logsTabEl.textContent = "Logs";
 
   countEl = document.createElement("span");
   countEl.className = "changelog-badge hidden";
   countEl.textContent = "0";
+  logsTabEl.appendChild(countEl);
 
-  const copyEl = document.createElement("span");
-  copyEl.className = "changelog-header-copy";
-  copyEl.textContent = "Latest changes";
+  const selectTab = (tab: "history" | "logs") => {
+    activeTab = tab;
+    historyTabEl?.classList.toggle("active", tab === "history");
+    logsTabEl?.classList.toggle("active", tab === "logs");
+    renderBody();
+  };
+  historyTabEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!panelOpen) setChangelogOpen(true);
+    selectTab("history");
+  });
+  logsTabEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!panelOpen) setChangelogOpen(true);
+    selectTab("logs");
+  });
+
+  tabsEl.appendChild(historyTabEl);
+  tabsEl.appendChild(logsTabEl);
 
   chevronEl = document.createElement("svg");
   chevronEl.className = "changelog-chevron";
@@ -580,9 +682,7 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   chevronEl.innerHTML = `<path d="M3.5 5.5L8 10l4.5-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
 
   headerMainEl.appendChild(iconEl);
-  headerMainEl.appendChild(titleEl);
-  headerMainEl.appendChild(countEl);
-  headerMainEl.appendChild(copyEl);
+  headerMainEl.appendChild(tabsEl);
   headerEl.appendChild(headerMainEl);
   headerEl.appendChild(chevronEl);
   headerEl.addEventListener("click", () => setChangelogOpen(!panelOpen));
@@ -596,9 +696,15 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
 
   shadowRoot.appendChild(panelEl);
 
+  // Re-render the History tab as selections happen (only while visible — the
+  // open/close path below re-renders on next open anyway)
+  const unsubscribeHistory = onSelectionHistoryChange(() => {
+    if (panelOpen && activeTab === "history") renderHistory();
+  });
+
   // Subscribe to state changes
   const unsubscribe = onChangelogChange(() => {
-    renderEntries();
+    renderBody();
     updateCount();
 
     if (!panelEl) return;
@@ -655,6 +761,7 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   destroyChangelogCleanup = () => {
     origDestroy();
     unsubscribe();
+    unsubscribeHistory();
   };
 }
 
@@ -675,6 +782,8 @@ export function destroyChangelog(): void {
   styleEl = null;
   bodyEl = null;
   countEl = null;
+  historyTabEl = null;
+  logsTabEl = null;
   chevronEl = null;
 
   pendingRevertLogEntryIds.clear();

@@ -31,6 +31,7 @@ import { initInlineTextEdit, destroyInlineTextEdit, cancelTextEditSession } from
 import { initCanvasTransform, destroyCanvasTransform, resetCanvasTransform, saveCanvasState, restoreCanvasState, clearSavedCanvasState } from "./canvas-transform.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY, ensurePanelFont } from "./design-tokens.js";
 import { initChangelog, destroyChangelog, addChangeEntry, isChangelogOpen, setChangelogOpen, clearChangelog } from "./changelog.js";
+import { clearSelectionHistory } from "./selection-history.js";
 import { initThemePanel, destroyThemePanel } from "./theme-panel.js";
 import { initSettingsPanel } from "./settings-panel.js";
 
@@ -158,6 +159,7 @@ function resetOverlayState(): void {
   clearSelection();
   clearAnnotationLayer();
   clearChangelog();
+  clearSelectionHistory();
   setChangelogOpen(false);
   resetCanvas();
   resetCanvasTransform();

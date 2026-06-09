@@ -16,11 +16,11 @@
 // Therefore, no viewportToPage/pageToViewport mapping is needed in this module.
 //
 import { getFiberFromHostInstance, getDisplayName, isCompositeFiber, isInstrumentationActive, instrument } from "bippy";
-import { getOwnerStack } from "bippy/source";
 import { resolveFrameFilePath } from "./utils/source-resolve.js";
+import { getResolvedOwnerStack } from "./utils/server-symbolication.js";
 import type { ComponentInfo, JSXStructuralPath } from "@themelab/shared";
 import { getShadowRoot, updateComponentDetail, showToast } from "./toolbar.js";
-import { isInternalName, isMdxFilePath, isFullPageElement, isValidElement } from "./utils/component-filter.js";
+import { isInternalName, isMdxFilePath, isValidElement } from "./utils/component-filter.js";
 import { buildJSXPath } from "./utils/jsx-path.js";
 import { getElementsInArea } from "./utils/area-selection.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
@@ -36,6 +36,7 @@ import { isEditableFocused } from "./utils/active-element.js";
 import { copyElement, hasClipboard, pasteElement, isInsideMapTemplate, resolveFromCloneAncestry, getCloneForElement } from "./clone-state.js";
 import { deleteElement } from "./delete-state.js";
 import { addChangeEntry } from "./changelog.js";
+import { recordSelection } from "./selection-history.js";
 
 // Ensure bippy instrumentation is active so we can read fiber info
 if (!isInstrumentationActive()) {
@@ -79,9 +80,10 @@ async function resolveComponentFromElement(el: HTMLElement): Promise<ResolvedCom
     return null;
   }
 
-  // Try bippy/source getOwnerStack first — handles React 19 owner stacks with symbolication
+  // Try owner stacks first — React 19 owner stacks with source map symbolication,
+  // plus Next.js RSC frame resolution via the dev server endpoint
   try {
-    const frames = await getOwnerStack(fiber);
+    const frames = await getResolvedOwnerStack(fiber);
     if (frames && frames.length > 0) {
       const stack: ResolvedComponent["stack"] = [];
       for (const frame of frames) {
@@ -342,6 +344,51 @@ function navigateHierarchy(key: string): boolean {
   if (!dir) return false;
   navigate(dir);
   return true;
+}
+
+// --- Z-stack navigation ---------------------------------------------------
+// Walk the document.elementsFromPoint() stack at the selected element's center,
+// reaching elements stacked at the same screen position that hit-testing alone
+// can't surface (scrims, absolutely-positioned layers). `z` drills deeper
+// below the selection, `x` surfaces back up. Read-only — unlike [ / ] sibling
+// reorder, this never writes to source.
+
+function getZStackAt(clientX: number, clientY: number): HTMLElement[] {
+  const stack: HTMLElement[] = [];
+  for (const el of document.elementsFromPoint(clientX, clientY)) {
+    if (!(el instanceof HTMLElement)) continue;
+    if (el.closest("#themelab-root")) continue;
+    if (el.hasAttribute("data-themelab-interaction")) continue;
+    if (el.hasAttribute("data-themelab-placeholder")) continue;
+    if (el === document.body || el === document.documentElement) continue;
+    if (!isValidElement(el)) continue;
+    stack.push(el);
+  }
+  return stack;
+}
+
+function navigateZStack(dir: 1 | -1): void {
+  if (!selectedElement || !currentSelection || multiSelected.size > 0) return;
+  const rect = selectedElement.getBoundingClientRect();
+  const stack = getZStackAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  if (stack.length === 0) return;
+
+  const index = stack.indexOf(selectedElement);
+  // Selection absent from its own center stack (scrolled away or fully
+  // covered): restart from the topmost element rather than doing nothing.
+  const targetIndex = index === -1 ? 0 : index + dir;
+  if (targetIndex < 0) {
+    showToast("Top of stack");
+    return;
+  }
+  if (targetIndex >= stack.length) {
+    showToast("Bottom of stack");
+    return;
+  }
+  const target = stack[targetIndex];
+  if (target === selectedElement) return;
+  clearMultiSelectState();
+  selectElement(target);
 }
 
 // --- Move element among siblings (issue #5) ------------------------------
@@ -969,6 +1016,7 @@ export async function selectElement(el: HTMLElement, options?: { skipSidebar?: b
     };
 
     reportSelectionToCli();
+    recordSelection(el, currentSelection);
 
     // Capture the staleness baseline (file mtime/size at selection time) so edits
     // can be rejected if the file changed underneath. Best-effort + async; guarded
@@ -1375,6 +1423,21 @@ function handleKeyDown(e: KeyboardEvent): void {
   ) {
     if (selectedElement && currentSelection && multiSelected.size === 0) {
       moveSelectedSibling(e.key === "[" ? "up" : "down");
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  // z / x = drill down / surface up through elements stacked at the selection's
+  // center point (overlapping layers the hierarchy arrows can't reach).
+  if (
+    (e.key === "z" || e.key === "x") &&
+    !isEditing &&
+    !isInteractActive() &&
+    !e.metaKey && !e.ctrlKey && !e.altKey
+  ) {
+    if (selectedElement && currentSelection && multiSelected.size === 0) {
+      navigateZStack(e.key === "z" ? 1 : -1);
       e.preventDefault();
       e.stopPropagation();
     }

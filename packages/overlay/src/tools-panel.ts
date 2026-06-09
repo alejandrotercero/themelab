@@ -421,7 +421,7 @@ export function initToolsPanel(): void {
   logsBtn = document.createElement("button");
   logsBtn.className = "action-btn has-badge";
   logsBtn.innerHTML = `${ICONS.logs}<span class="action-badge hidden">0</span>`;
-  logsBtn.title = "Logs";
+  logsBtn.title = "History & Logs";
   logsBtn.addEventListener("click", () => {
     setChangelogOpen(!isChangelogOpen());
   });

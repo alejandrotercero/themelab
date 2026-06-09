@@ -1,6 +1,7 @@
 import type { ComponentRef, ElementIdentity } from "@themelab/shared";
 import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
-import { getOwnerStack, normalizeFileName, isSourceFile } from "bippy/source";
+import { normalizeFileName, isSourceFile } from "bippy/source";
+import { getResolvedOwnerStack } from "./utils/server-symbolication.js";
 import { SHADOWS } from "./design-tokens.js";
 import { setStyle } from "./utils/style-access.js";
 import { getDebugSource } from "./tools/resolve-helper.js";
@@ -173,7 +174,7 @@ export async function reacquireMovedElementAsync(identity: ElementIdentity): Pro
     try {
       const fiber = getFiberFromHostInstance(el);
       if (!fiber) continue;
-      const frames = await getOwnerStack(fiber);
+      const frames = await getResolvedOwnerStack(fiber);
       if (!frames || frames.length === 0) continue;
       for (const frame of frames) {
         if (!frame.functionName || frame.functionName !== identity.componentName) continue;

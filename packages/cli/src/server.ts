@@ -86,13 +86,15 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
       baseURL: cfg.baseURL,
       model: cfg.model,
       enableAi: !forceDisableAi && cfg.enabled,
+      escalation: { enabled: cfg.escalationEnabled, model: cfg.escalationModel },
     };
   }
   let aiOptions: AiOptions = buildAiOptions();
-  // Per-request options: adds a "locating…" signal when the AI loop starts.
+  // Per-request options: adds a "locating…" signal when an AI attempt starts
+  // (tier 2 = the escalated "looking harder" retry).
   const aiOptionsFor = (ws: WebSocket): AiOptions => ({
     ...aiOptions,
-    onEscalate: () => send(ws, { type: "aiResolving" }),
+    onEscalate: (tier) => send(ws, { type: "aiResolving", tier }),
   });
   // Pending AI proposals (structural / cross-file) awaiting user confirmation.
   const pendingProposals = new Map<string, AiProposal>();
@@ -533,6 +535,8 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               hasApiKey: !!cfg.apiKey,
               baseURL: cfg.baseURL,
               model: cfg.model,
+              escalationEnabled: cfg.escalationEnabled,
+              escalationModel: cfg.escalationModel,
               source: cfg.source,
             },
           });
@@ -678,6 +682,8 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
               hasApiKey: !!cfg.apiKey,
               baseURL: cfg.baseURL,
               model: cfg.model,
+              escalationEnabled: cfg.escalationEnabled,
+              escalationModel: cfg.escalationModel,
               source: cfg.source,
             },
           });

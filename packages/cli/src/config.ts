@@ -19,6 +19,10 @@ export interface AiConfig {
   model?: string;
   /** Explicit on/off. Defaults to "on when an API key is present". */
   enabled?: boolean;
+  /** Retry failed locates with a stronger model (tier 2). Defaults to on. */
+  escalationEnabled?: boolean;
+  /** Override the tier-2 model. */
+  escalationModel?: string;
 }
 
 export interface AppConfig {
@@ -31,8 +35,15 @@ export interface ResolvedAiConfig {
   baseURL?: string;
   model?: string;
   enabled: boolean;
+  escalationEnabled: boolean;
+  escalationModel?: string;
   /** Where each value came from — for the settings UI (never leaks the key). */
-  source: { apiKey: "env" | "file" | "none"; baseURL: "env" | "file" | "none"; model: "env" | "file" | "none" };
+  source: {
+    apiKey: "env" | "file" | "none";
+    baseURL: "env" | "file" | "none";
+    model: "env" | "file" | "none";
+    escalationModel: "env" | "file" | "none";
+  };
 }
 
 function configDir(): string {
@@ -64,7 +75,7 @@ export function updateAiConfig(patch: AiConfig): void {
   const cfg = loadConfig();
   cfg.ai = { ...(cfg.ai ?? {}), ...patch };
   // Empty string clears a value.
-  for (const k of ["apiKey", "baseURL", "model"] as const) {
+  for (const k of ["apiKey", "baseURL", "model", "escalationModel"] as const) {
     if (cfg.ai[k] === "") delete cfg.ai[k];
   }
   saveConfig(cfg);
@@ -76,21 +87,31 @@ export function resolveAiConfig(): ResolvedAiConfig {
   const envKey = process.env.ANTHROPIC_API_KEY;
   const envBase = process.env.ANTHROPIC_BASE_URL;
   const envModel = process.env.THEMELAB_AI_MODEL;
+  const envEscModel = process.env.THEMELAB_AI_MODEL_ESCALATED;
+  const envEscalation = process.env.THEMELAB_AI_ESCALATION;
 
   const apiKey = envKey || file.apiKey;
   const baseURL = envBase || file.baseURL;
   const model = envModel || file.model;
   const enabled = (file.enabled ?? true) && !!apiKey;
+  // THEMELAB_AI_ESCALATION=0/false disables the tier-2 retry; default on.
+  const escalationEnabled = envEscalation != null
+    ? !["0", "false", "off"].includes(envEscalation.toLowerCase())
+    : (file.escalationEnabled ?? true);
+  const escalationModel = envEscModel || file.escalationModel;
 
   return {
     apiKey,
     baseURL,
     model,
     enabled,
+    escalationEnabled,
+    escalationModel,
     source: {
       apiKey: envKey ? "env" : file.apiKey ? "file" : "none",
       baseURL: envBase ? "env" : file.baseURL ? "file" : "none",
       model: envModel ? "env" : file.model ? "file" : "none",
+      escalationModel: envEscModel ? "env" : file.escalationModel ? "file" : "none",
     },
   };
 }

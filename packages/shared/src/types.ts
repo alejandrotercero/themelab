@@ -368,7 +368,9 @@ export type ServerMessage =
     }
   | { type: "fileStatResult"; filePath: string; mtime: number; size: number }
   | { type: "settings"; ai: AiSettingsView }
-  | { type: "aiResolving" }
+  // tier 1 = first locator attempt, tier 2 = escalated retry with a stronger
+  // model. Optional so stale overlays keep working against a newer CLI.
+  | { type: "aiResolving"; tier?: 1 | 2 }
   | {
       // A structural / cross-file resolution the AI proposes — awaits confirm.
       type: "aiProposal";
@@ -397,6 +399,10 @@ export interface AiSettingsPatch {
   baseURL?: string;
   model?: string;
   enabled?: boolean;
+  /** Retry failed locates with a stronger model (tier 2). */
+  escalationEnabled?: boolean;
+  /** Override the tier-2 model ("" = clear back to default). */
+  escalationModel?: string;
 }
 
 /** Settings view sent to the overlay — never includes the raw API key. */
@@ -405,7 +411,14 @@ export interface AiSettingsView {
   hasApiKey: boolean;
   baseURL?: string;
   model?: string;
-  source: { apiKey: "env" | "file" | "none"; baseURL: "env" | "file" | "none"; model: "env" | "file" | "none" };
+  escalationEnabled: boolean;
+  escalationModel?: string;
+  source: {
+    apiKey: "env" | "file" | "none";
+    baseURL: "env" | "file" | "none";
+    model: "env" | "file" | "none";
+    escalationModel: "env" | "file" | "none";
+  };
 }
 
 export interface ComponentInfo {

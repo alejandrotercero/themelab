@@ -18,6 +18,8 @@ let inputs: {
   baseURL: HTMLInputElement;
   model: HTMLInputElement;
   enabled: HTMLInputElement;
+  escalationEnabled: HTMLInputElement;
+  escalationModel: HTMLInputElement;
 } | null = null;
 
 const STYLES = `
@@ -153,6 +155,17 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
   enabledLabel.textContent = "Enable AI locator";
   enabledRow.append(enabled, enabledLabel);
 
+  const escalationEnabled = document.createElement("input");
+  escalationEnabled.type = "checkbox";
+  const escalationRow = document.createElement("div");
+  escalationRow.className = "rr-row";
+  const escalationLabel = document.createElement("label");
+  escalationLabel.style.cssText = "font-size:11px;color:" + COLORS.textPrimary + ";text-transform:none;letter-spacing:0;";
+  escalationLabel.textContent = "Smart retry (stronger model on failure)";
+  escalationRow.append(escalationEnabled, escalationLabel);
+
+  const escalationModel = mkInput("text", "claude-sonnet-4-6 (default)");
+
   const hint = document.createElement("div");
   hint.className = "rr-hint";
   hint.textContent = "Used only when deterministic resolution can't pin the element (maps, instances, conditionals). Key is stored locally; leave blank to keep the current one.";
@@ -162,6 +175,8 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
     field("Custom endpoint (base URL)", baseURL),
     field("Model", model),
     enabledRow,
+    escalationRow,
+    field("Retry model", escalationModel),
     hint,
   );
 
@@ -182,6 +197,8 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
       baseURL: baseURL.value.trim(),
       model: model.value.trim(),
       enabled: enabled.checked,
+      escalationEnabled: escalationEnabled.checked,
+      escalationModel: escalationModel.value.trim(),
     };
     if (apiKey.value.trim()) patch.apiKey = apiKey.value.trim(); // blank = keep current
     send({ type: "saveSettings", ai: patch });
@@ -200,7 +217,7 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
     if (e.target === overlayEl) toggleSettingsPanel();
   });
   shadowRoot.appendChild(overlayEl);
-  inputs = { apiKey, baseURL, model, enabled };
+  inputs = { apiKey, baseURL, model, enabled, escalationEnabled, escalationModel };
 
   // Esc closes the modal (capture + stopPropagation so it doesn't also deselect).
   document.addEventListener(
@@ -218,7 +235,7 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
 
   onMessage((msg) => {
     if (msg.type === "settings") applyView(msg.ai);
-    else if (msg.type === "aiResolving") indResolving();
+    else if (msg.type === "aiResolving") indResolving(msg.tier);
     else if (msg.type === "aiProposal") { indFound("Located it — confirm below"); showProposal(msg); }
     else if (msg.type === "aiProposalComplete") onProposalComplete(msg);
     else if (msg.type === "commitBatchComplete") {
@@ -237,6 +254,9 @@ function applyView(v: AiSettingsView): void {
   inputs.baseURL.value = v.baseURL ?? "";
   inputs.model.value = v.model ?? "";
   inputs.enabled.checked = v.enabled;
+  inputs.escalationEnabled.checked = v.escalationEnabled;
+  inputs.escalationModel.value = v.escalationModel ?? "";
+  inputs.escalationModel.disabled = v.source.escalationModel === "env";
   // Never receive the raw key — reflect presence via placeholder.
   inputs.apiKey.value = "";
   inputs.apiKey.placeholder = v.hasApiKey
@@ -299,13 +319,15 @@ function indSetText(t: string): void {
   if (span) span.textContent = t;
 }
 
-function indResolving(): void {
+function indResolving(tier?: 1 | 2): void {
   if (!indEl) return;
   indActive = true;
   clearIndTimers();
   indEl.className = "rr-ai-ind resolving visible";
-  indSetText("Locating with AI…");
-  indSafetyTimer = setTimeout(indHide, 25000); // safety: never hang forever
+  indSetText(tier === 2 ? "Looking harder…" : "Locating with AI…");
+  // Safety: never hang forever. Generous because tier 1 + tier 2 run
+  // back-to-back; each aiResolving message re-arms the timer anyway.
+  indSafetyTimer = setTimeout(indHide, 45000);
 }
 
 function indFound(text: string): void {

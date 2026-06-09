@@ -2,12 +2,15 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   executeBatchWithAi,
   readFileTool,
+  findComponentDefinitionTool,
   validateAnswer,
   type LocateFn,
+  type LocateAttemptOptions,
 } from "../ai-locate.js";
 import { executeBatch } from "../batch-transform.js";
 import type { BatchOperation } from "@themelab/shared";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 const fixturesDir = path.join(__dirname, "fixtures");
@@ -474,6 +477,159 @@ describe("ai-locate: read_file window + computed-value grep", () => {
     } as BatchOperation;
     await executeBatchWithAi([op], path.dirname(f.filePath), { apiKey: "k", enableAi: true, forceAi: true, locate });
     expect(seen?.some((m) => m.text.includes("Total Parts XYZ"))).toBe(true);
+  });
+});
+
+describe("ai-locate: tiered escalation", () => {
+  let cleanups: Array<() => void> = [];
+  afterEach(() => { for (const fn of cleanups) fn(); cleanups = []; });
+  function setup(name: string, content: string) {
+    const f = writeFixture(name, content); cleanups.push(f.cleanup); return f;
+  }
+
+  it("escalates to tier 2 on a tier-1 null and applies its resolution", async () => {
+    const { filePath } = setup("tier-null.tsx", TWO_CARDS);
+    const tiersSeen: number[] = [];
+    const escalateTiers: number[] = [];
+    const locate: LocateFn = async (input, opts) => {
+      tiersSeen.push(opts.tier);
+      if (opts.tier === 1) return null;
+      const c = input.candidates[input.candidates.length - 1];
+      return { filePath: input.primaryFile.path, line: c.line, col: c.col, kind: "direct", reasoning: "tier-2 pick" };
+    };
+    const res = await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), {
+      apiKey: "k", enableAi: true, locate,
+      escalation: { enabled: true },
+      onEscalate: (tier) => escalateTiers.push(tier),
+    });
+    expect(tiersSeen).toEqual([1, 2]);
+    expect(escalateTiers).toEqual([1, 2]);
+    expect(res.results[0].success).toBe(true);
+    expect(res.results[0].resolvedBy).toBe("ai");
+  });
+
+  it("does not run tier 2 when tier 1 succeeds", async () => {
+    const { filePath } = setup("tier-ok.tsx", TWO_CARDS);
+    const tiersSeen: number[] = [];
+    const locate: LocateFn = async (input, opts) => {
+      tiersSeen.push(opts.tier);
+      const c = input.candidates[0];
+      return { filePath: input.primaryFile.path, line: c.line, col: c.col, kind: "direct", reasoning: "tier-1 pick" };
+    };
+    const res = await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), {
+      apiKey: "k", enableAi: true, locate, escalation: { enabled: true },
+    });
+    expect(tiersSeen).toEqual([1]);
+    expect(res.results[0].success).toBe(true);
+  });
+
+  it("escalates a tier-1 cannot_locate refusal; a tier-2 refusal is final and surfaced", async () => {
+    const { filePath } = setup("tier-refuse.tsx", TWO_CARDS);
+    const tiersSeen: number[] = [];
+    let tier2Prior: LocateAttemptOptions["priorAttempt"];
+    const locate: LocateFn = async (_input, opts) => {
+      tiersSeen.push(opts.tier);
+      if (opts.tier === 2) tier2Prior = opts.priorAttempt;
+      return { cannotLocate: opts.tier === 1 ? "tier-1 gives up" : "genuinely server data" };
+    };
+    const res = await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), {
+      apiKey: "k", enableAi: true, locate, escalation: { enabled: true },
+    });
+    expect(tiersSeen).toEqual([1, 2]);
+    expect(tier2Prior?.failure).toMatch(/tier 1 refused: tier-1 gives up/);
+    expect(res.results[0].success).toBe(false);
+    expect(res.results[0].error).toMatch(/AI couldn't locate this element — genuinely server data/);
+  });
+
+  it("kill switch: escalation disabled means a single tier-1 attempt", async () => {
+    const { filePath } = setup("tier-off.tsx", TWO_CARDS);
+    const tiersSeen: number[] = [];
+    const locate: LocateFn = async (_input, opts) => { tiersSeen.push(opts.tier); return null; };
+    const res = await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), {
+      apiKey: "k", enableAi: true, locate, escalation: { enabled: false },
+    });
+    expect(tiersSeen).toEqual([1]);
+    expect(res.results[0].success).toBe(false);
+  });
+
+  it("a tier-1-only negative does not block tier 2 once escalation is on; a tier-2 negative caches", async () => {
+    const { filePath } = setup("tier-cache.tsx", TWO_CARDS);
+    const dir = path.dirname(filePath);
+    let calls = 0;
+    const locate: LocateFn = async () => { calls++; return null; };
+    // Run 1: escalation off → negative cached at maxTierTried 1.
+    await executeBatchWithAi([classOp(filePath)], dir, { apiKey: "k", enableAi: true, locate, escalation: { enabled: false } });
+    expect(calls).toBe(1);
+    // Run 2: escalation on → tier-1 negative must NOT satisfy the cache; both tiers run.
+    await executeBatchWithAi([classOp(filePath)], dir, { apiKey: "k", enableAi: true, locate, escalation: { enabled: true } });
+    expect(calls).toBe(3); // +tier1 +tier2
+    // Run 3: the tier-2 negative is now cached (within TTL) → no new calls.
+    await executeBatchWithAi([classOp(filePath)], dir, { apiKey: "k", enableAi: true, locate, escalation: { enabled: true } });
+    expect(calls).toBe(3);
+  });
+
+  it("tier 2 receives tier 1's tool-call trace as priorAttempt", async () => {
+    const { filePath } = setup("tier-trace.tsx", TWO_CARDS);
+    let tier2Prior: LocateAttemptOptions["priorAttempt"];
+    const locate: LocateFn = async (_input, opts) => {
+      if (opts.tier === 1) {
+        opts.trace?.push("grep /Total Parts/ → 3 hits");
+        return null;
+      }
+      tier2Prior = opts.priorAttempt;
+      return null;
+    };
+    await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), {
+      apiKey: "k", enableAi: true, locate, escalation: { enabled: true },
+    });
+    expect(tier2Prior?.trace).toContain("grep /Total Parts/ → 3 hits");
+    expect(tier2Prior?.failure).toMatch(/exhausted exploration/);
+  });
+
+  it("forceAi composes with escalation (tier-1 null → tier 2 resolves)", async () => {
+    const { filePath } = setup("tier-force.tsx", TWO_CARDS);
+    const tiersSeen: number[] = [];
+    const locate: LocateFn = async (input, opts) => {
+      tiersSeen.push(opts.tier);
+      if (opts.tier === 1) return null;
+      const lines = TWO_CARDS.split("\n");
+      const line = lines.findIndex((l) => l.includes(">B<")) + 1;
+      return { filePath: input.primaryFile.path, line, col: lines[line - 1].indexOf("<div"), kind: "direct", reasoning: "B card" };
+    };
+    const res = await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), {
+      apiKey: "k", enableAi: true, forceAi: true, locate, escalation: { enabled: true },
+    });
+    expect(tiersSeen).toEqual([1, 2]);
+    expect(res.results[0].success).toBe(true);
+    expect(fs.readFileSync(filePath, "utf-8")).toMatch(/className="card bg-red-500">B/);
+  });
+
+  it("passes per-tier budgets and default models through to the locator", async () => {
+    const { filePath } = setup("tier-budget.tsx", TWO_CARDS);
+    const seen: Array<{ tier: number; maxSteps: number; maxTokens: number; model?: string }> = [];
+    const locate: LocateFn = async (_input, opts) => {
+      seen.push({ tier: opts.tier, maxSteps: opts.maxSteps, maxTokens: opts.maxTokens, model: opts.model });
+      return null;
+    };
+    await executeBatchWithAi([classOp(filePath)], path.dirname(filePath), {
+      apiKey: "k", enableAi: true, locate, escalation: { enabled: true, model: "custom-strong-model" },
+    });
+    expect(seen[0]).toEqual({ tier: 1, maxSteps: 8, maxTokens: 2048, model: "claude-haiku-4-5-20251001" });
+    expect(seen[1]).toEqual({ tier: 2, maxSteps: 16, maxTokens: 4096, model: "custom-strong-model" });
+  });
+
+  it("find_component_definition resolves a component's defining file (read-only)", async () => {
+    // Own temp dir: grepping the shared fixtures dir races with other test
+    // files creating/deleting their temp fixtures (grep exits non-zero when a
+    // file vanishes mid-walk).
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tl-find-comp-"));
+    cleanups.push(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
+    fs.writeFileSync(path.join(dir, "zq-widget.tsx"), `export function ZqEscalationWidget() {\n  return <div/>;\n}\n`, "utf-8");
+    const found = await findComponentDefinitionTool({ componentName: "ZqEscalationWidget" }, dir);
+    expect(found).toContain("zq-widget.tsx");
+    const missing = await findComponentDefinitionTool({ componentName: "NoSuchComponentZzz" }, dir);
+    expect(missing).toBe("(not found)");
+    expect(await findComponentDefinitionTool({}, dir)).toMatch(/ERROR/);
   });
 });
 

@@ -1,5 +1,5 @@
 // packages/cli/src/ai-locate.ts
-// Tier-1 AI element locator. Off by default (requires ANTHROPIC_API_KEY).
+// Tiered AI element locator. Off by default (requires ANTHROPIC_API_KEY).
 //
 // When the deterministic resolver fails on structurally-hard cases (.map()
 // iterations, reused component instances, conditional/state-dependent
@@ -8,6 +8,10 @@
 // never to edit. The deterministic transform then applies + validates at the
 // returned location. Hard guardrails: read-only tools, location-only output,
 // this-one-edit-only.
+//
+// Tiers: tier 1 is a cheap fast model; when it fails OR refuses, tier 2 retries
+// with a stronger model, double the budget, one extra read-only tool, and a
+// summary of what tier 1 already tried. Tier 2 is automatic (config kill-switch).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -18,10 +22,16 @@ import {
   type OperationResult,
 } from "./batch-transform.js";
 import { resolveProjectFilePath, isProjectFilePathSafe } from "./path-resolver.js";
+import { discoverFile } from "./file-discovery.js";
 import { logger, getLogLevel } from "./logger.js";
 
-const HAIKU_MODEL = "claude-haiku-4-5-20251001";
-const MAX_STEPS = 8;
+const TIER1_MODEL = "claude-haiku-4-5-20251001";
+// Exact model string — do NOT append a date suffix (dated variants 404).
+const TIER2_MODEL = "claude-sonnet-4-6";
+const TIER_BUDGET = {
+  1: { maxSteps: 8, maxTokens: 2048 },
+  2: { maxSteps: 16, maxTokens: 4096 },
+} as const;
 const MAX_GREP_RESULTS = 40;
 const SOURCE_EXT = new Set([".tsx", ".jsx", ".ts", ".js", ".mdx"]);
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "out", "coverage"]);
@@ -81,9 +91,23 @@ function aiFailureMessage(answer: LocateOutcome): string {
   return "The AI couldn't pinpoint this element in the source.";
 }
 
+export interface LocateAttemptOptions {
+  apiKey: string;
+  baseURL?: string;
+  model?: string;
+  tier: 1 | 2;
+  maxSteps: number;
+  maxTokens: number;
+  /** The locator appends one human-readable line per tool call here — tier 1's
+   *  trace becomes tier 2's "what was already tried" context. */
+  trace?: string[];
+  /** Tier 2 only: what tier 1 explored and why it failed. */
+  priorAttempt?: { trace: string[]; failure: string };
+}
+
 export type LocateFn = (
   input: LocateInput,
-  opts: { apiKey: string; baseURL?: string; model?: string },
+  opts: LocateAttemptOptions,
 ) => Promise<LocateOutcome>;
 
 export interface AiProposal {
@@ -106,11 +130,13 @@ export interface AiOptions {
   /** Resolve every op via the locator up front (the "Confirm with AI" path),
    *  instead of trying deterministic first and only escalating failures. */
   forceAi?: boolean;
+  /** Tier-2 retry on tier-1 failure/refusal. Absent = no escalation (tests). */
+  escalation?: { enabled: boolean; model?: string };
   /** Injectable locator (default = SDK tool-use loop). Tests pass a stub. */
   locate?: LocateFn;
-  /** Called when the AI loop actually starts (not on cache hits) — for a UI
-   *  "locating…" indicator. */
-  onEscalate?: () => void;
+  /** Called when an AI attempt actually starts (not on cache hits) — for a UI
+   *  "locating…" indicator. Tier 2 = the escalated retry. */
+  onEscalate?: (tier: 1 | 2) => void;
 }
 
 export interface AiBatchResult extends BatchResult {
@@ -215,6 +241,34 @@ function grepTool(input: { query?: string }, projectRoot: string): string {
   return hits.length > 0 ? hits.map((h) => `${h.file}:${h.line}: ${h.text}`).join("\n") : "(no matches)";
 }
 
+// Tier-2 only: the dominant tier-1 failure is "element rendered by a reused
+// component defined elsewhere" — this answers that in one step instead of a
+// grep-and-guess walk. Read-only like everything else here.
+const FIND_COMPONENT_DEFINITION_TOOL = {
+  name: "find_component_definition",
+  description:
+    "Find the source file that DEFINES a React component by name (follows barrel re-exports). Use when the element is rendered by a reused component and you need its definition file.",
+  input_schema: {
+    type: "object" as const,
+    properties: { componentName: { type: "string" } },
+    required: ["componentName"],
+  },
+};
+
+export async function findComponentDefinitionTool(
+  input: { componentName?: string },
+  projectRoot: string,
+): Promise<string> {
+  const name = input?.componentName?.trim();
+  if (!name) return "ERROR: missing componentName";
+  try {
+    const found = await discoverFile(name, projectRoot);
+    return found ?? "(not found)";
+  } catch {
+    return "(not found)";
+  }
+}
+
 const TOOLS = [
   {
     name: "read_file",
@@ -294,7 +348,7 @@ If, after investigating, you genuinely cannot pinpoint the element, call cannot_
 
 Be decisive: if a provided candidate or text-grep line clearly matches the element (its text and/or className line up), call resolve_location immediately — don't keep exploring. The 'col' is the 0-based column of the opening '<'. 'reasoning' is ONE sentence on WHY this is the right node (which file/element and how you identified it) — do NOT restate or guess the styling change; that is applied deterministically.`;
 
-function buildSeedMessage(input: LocateInput): string {
+function buildSeedMessage(input: LocateInput, priorAttempt?: LocateAttemptOptions["priorAttempt"]): string {
   const id = input.identity;
   const idLines = [
     id.componentName ? `  component: ${id.componentName}` : "",
@@ -314,6 +368,15 @@ function buildSeedMessage(input: LocateInput): string {
     ? `\n## Project lines containing the element's text (strong hint — the target is very likely one of these)\n${input.textMatches.map((m) => `  ${m.file}:${m.line}: ${m.text}`).join("\n")}\n`
     : "";
 
+  // Tier 2: tier 1's failed exploration is valuable negative information —
+  // a compact trace, not the transcript.
+  const prior = priorAttempt
+    ? `\n## Previous attempt (smaller model) — FAILED
+It explored the following and could not resolve (don't repeat dead ends; consider what it missed):
+${priorAttempt.trace.length ? priorAttempt.trace.map((t) => `  - ${t}`).join("\n") : "  (no tool calls recorded)"}
+Outcome: ${priorAttempt.failure}\n`
+    : "";
+
   return `## Change to locate
 ${input.intent}
 
@@ -322,7 +385,7 @@ ${idLines}
 
 ## Deterministic best-guess candidates (hints — the true target may be elsewhere)
 ${cands}
-${textGrep}
+${textGrep}${prior}
 ## Primary file: ${input.primaryFile.path}
 \`\`\`tsx
 ${numbered(input.primaryFile.content)}
@@ -345,7 +408,9 @@ export function validateAnswer(ans: any, projectRoot: string): LocateResult | nu
 
 // ── Default locator: SDK tool-use loop (lazy-imported) ─────────────────────
 
-export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model }) => {
+export const defaultLocate: LocateFn = async (input, opts) => {
+  const { apiKey, baseURL, tier, maxSteps, maxTokens, trace, priorAttempt } = opts;
+  const model = opts.model || (tier === 2 ? TIER2_MODEL : TIER1_MODEL);
   let Anthropic: any;
   try {
     Anthropic = (await import("@anthropic-ai/sdk")).default;
@@ -354,36 +419,65 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
     return null;
   }
   const client = new Anthropic(baseURL ? { apiKey, baseURL } : { apiKey });
-  const messages: any[] = [{ role: "user", content: buildSeedMessage(input) }];
+  const tools = tier === 2
+    ? [...TOOLS.slice(0, 3), FIND_COMPONENT_DEFINITION_TOOL, ...TOOLS.slice(3)]
+    : TOOLS;
+
+  // Prompt caching: the loop re-sends the whole prefix every step (up to
+  // maxSteps×). Breakpoints: system prompt + the seed message (it embeds the
+  // full primary file — first prefix big enough to clear the model's minimum
+  // cacheable size) + a MOVING breakpoint on the latest tool_result (the prior
+  // turn's marker is stripped each step so we never exceed the 4-breakpoint cap).
+  const seedBlock: any = { type: "text", text: buildSeedMessage(input, priorAttempt), cache_control: { type: "ephemeral" } };
+  const messages: any[] = [{ role: "user", content: [seedBlock] }];
+  let lastMarkedBlock: any = null;
+  const usage = { in: 0, out: 0, cacheRead: 0, cacheWrite: 0, steps: 0 };
+
+  const finish = (outcome: LocateOutcome): LocateOutcome => {
+    logger.info(
+      `[ai-locate] tier ${tier} (${model}): ${usage.steps} step${usage.steps === 1 ? "" : "s"} · tokens in=${usage.in} (cached ${usage.cacheRead}) out=${usage.out}`,
+    );
+    return outcome;
+  };
 
   // --verbose: dump exactly what we send and what the model sends back.
   const verbose = getLogLevel() === "debug";
   const vtrunc = (s: string, n = 4000) => (s.length > n ? s.slice(0, n) + `\n…[+${s.length - n} chars truncated]` : s);
   if (verbose) {
-    logger.debug(`\n════════ [ai-locate] REQUEST → ${model || HAIKU_MODEL} ════════`);
+    logger.debug(`\n════════ [ai-locate] REQUEST (tier ${tier}) → ${model} ════════`);
     logger.debug(`──── system prompt ────\n${SYSTEM_PROMPT}`);
-    logger.debug(`──── user seed ────\n${messages[0].content}`);
-    logger.debug(`──── tools ────\n${TOOLS.map((t) => t.name).join(", ")}`);
+    logger.debug(`──── user seed ────\n${seedBlock.text}`);
+    logger.debug(`──── tools ────\n${tools.map((t) => t.name).join(", ")}`);
   }
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  for (let step = 0; step < maxSteps; step++) {
     let resp: any;
     try {
       resp = await client.messages.create({
-        model: model || HAIKU_MODEL,
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        tools: TOOLS,
+        model,
+        max_tokens: maxTokens,
+        // Locating is a precision task — pin the sampling. NOTE: drop this if an
+        // Opus 4.7+ model is ever configured here (those reject temperature).
+        temperature: 0,
+        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        tools,
         messages,
       });
     } catch (err) {
       logger.warn("[ai-locate] API error:", err instanceof Error ? err.message : String(err));
-      return null;
+      return finish(null);
+    }
+    usage.steps++;
+    if (resp.usage) {
+      usage.in += resp.usage.input_tokens ?? 0;
+      usage.out += resp.usage.output_tokens ?? 0;
+      usage.cacheRead += resp.usage.cache_read_input_tokens ?? 0;
+      usage.cacheWrite += resp.usage.cache_creation_input_tokens ?? 0;
     }
 
     if (verbose) {
-      const u = resp.usage ? ` · tokens in=${resp.usage.input_tokens} out=${resp.usage.output_tokens}` : "";
-      logger.debug(`\n──── [ai-locate] step ${step + 1} ← ${resp.stop_reason ?? "?"}${u} ────`);
+      const u = resp.usage ? ` · tokens in=${resp.usage.input_tokens} (cache read ${resp.usage.cache_read_input_tokens ?? 0}) out=${resp.usage.output_tokens}` : "";
+      logger.debug(`\n──── [ai-locate] tier ${tier} step ${step + 1} ← ${resp.stop_reason ?? "?"}${u} ────`);
       for (const b of resp.content ?? []) {
         if (b.type === "text") logger.debug(`  [text] ${b.text}`);
         else if (b.type === "tool_use") logger.debug(`  [tool_use] ${b.name}(${JSON.stringify(b.input)})`);
@@ -391,7 +485,7 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
     }
 
     const toolUses = (resp.content ?? []).filter((b: any) => b.type === "tool_use");
-    if (toolUses.length === 0) return null; // no tool call — give up (fail safe)
+    if (toolUses.length === 0) return finish(null); // no tool call — give up (fail safe)
 
     messages.push({ role: "assistant", content: resp.content });
 
@@ -402,26 +496,40 @@ export const defaultLocate: LocateFn = async (input, { apiKey, baseURL, model })
           ? tu.input.reason.trim()
           : "couldn't determine the source location.";
         if (verbose) logger.debug(`  [cannot_locate] ${reason}`);
-        logger.info(`[ai-locate] cannot_locate: ${reason}`);
-        return { cannotLocate: reason };
+        logger.info(`[ai-locate] tier ${tier} cannot_locate: ${reason}`);
+        return finish({ cannotLocate: reason });
       }
       if (tu.name === "resolve_location") {
         const answer = validateAnswer(tu.input, input.projectRoot);
         if (verbose) logger.debug(`  [resolve_location] input=${JSON.stringify(tu.input)} → ${answer ? "accepted" : "REJECTED (out-of-project / bad shape)"}`);
         logger.debug(`[ai-locate] resolve_location → ${answer ? `${answer.filePath}:${answer.line}:${answer.col} (${answer.kind})` : "invalid"}`);
-        return answer;
+        return finish(answer);
       }
       let out = "ERROR: unknown tool";
-      if (tu.name === "read_file") out = readFileTool(tu.input, input.projectRoot);
-      else if (tu.name === "grep") out = grepTool(tu.input, input.projectRoot);
-      else if (tu.name === "list_dir") out = listDirTool(tu.input, input.projectRoot);
+      if (tu.name === "read_file") {
+        out = readFileTool(tu.input, input.projectRoot);
+        trace?.push(`read_file ${tu.input?.path ?? "?"}${tu.input?.offset ? ` (offset ${tu.input.offset})` : ""}`);
+      } else if (tu.name === "grep") {
+        out = grepTool(tu.input, input.projectRoot);
+        trace?.push(`grep /${tu.input?.query ?? "?"}/ → ${out === "(no matches)" ? "0 hits" : `${out.split("\n").length} hits`}`);
+      } else if (tu.name === "list_dir") {
+        out = listDirTool(tu.input, input.projectRoot);
+        trace?.push(`list_dir ${tu.input?.path ?? "."}`);
+      } else if (tu.name === "find_component_definition") {
+        out = await findComponentDefinitionTool(tu.input, input.projectRoot);
+        trace?.push(`find_component_definition ${tu.input?.componentName ?? "?"} → ${out}`);
+      }
       if (verbose) logger.debug(`  [tool_result] ${tu.name}(${JSON.stringify(tu.input)}) →\n${vtrunc(out)}`);
       toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: out });
     }
+    // Move the cache breakpoint to this turn's last tool_result.
+    if (lastMarkedBlock) delete lastMarkedBlock.cache_control;
+    lastMarkedBlock = toolResults[toolResults.length - 1];
+    lastMarkedBlock.cache_control = { type: "ephemeral" };
     messages.push({ role: "user", content: toolResults });
   }
-  logger.debug("[ai-locate] exhausted maxSteps without resolve_location");
-  return null;
+  logger.debug(`[ai-locate] tier ${tier} exhausted maxSteps without resolve_location`);
+  return finish(null);
 };
 
 // ── Intent / identity extraction from an op ────────────────────────────────
@@ -486,7 +594,11 @@ function isEscalatable(r: OperationResult, op?: BatchOperation): boolean {
 // same element, so cache WHERE (not the edit value). Positive results live for
 // the process; negatives expire so a fix (e.g. enabling AI) can retry.
 const NEG_TTL_MS = 60_000;
-const locateCache = new Map<string, { result: LocateOutcome; at: number }>();
+const locateCache = new Map<string, { result: LocateOutcome; at: number; maxTierTried: 1 | 2 }>();
+
+function highestEnabledTier(ai: AiOptions): 1 | 2 {
+  return ai.escalation?.enabled ? 2 : 1;
+}
 
 /** Drop a cached resolution so a retry re-resolves from scratch — called
  *  whenever an AI-resolved change fails to apply for any reason. */
@@ -586,9 +698,14 @@ async function locateOp(
   const key = cacheKey(op);
   if (useCache) {
     const cached = locateCache.get(key);
-    // Positive resolutions cache for the process; failures (null / cannot_locate)
-    // expire so a retry re-attempts.
-    if (cached && (isLocateResult(cached.result) || Date.now() - cached.at < NEG_TTL_MS)) {
+    // Positive resolutions cache for the process. Negatives (null /
+    // cannot_locate) expire after the TTL, and are only honored when they were
+    // produced at the highest tier we'd run now — a tier-1-only negative must
+    // not block a tier-2 retry after escalation is enabled.
+    if (cached && (
+      isLocateResult(cached.result) ||
+      (Date.now() - cached.at < NEG_TTL_MS && cached.maxTierTried >= highestEnabledTier(ai))
+    )) {
       return cached.result;
     }
   }
@@ -596,18 +713,57 @@ async function locateOp(
   let content = "";
   if (resolved) { try { content = fs.readFileSync(resolved, "utf-8"); } catch { /* unreadable */ } }
 
-  ai.onEscalate?.();
   const id = identityOf(op);
+  const input: LocateInput = {
+    intent: describeIntent(op),
+    identity: id,
+    candidates,
+    primaryFile: { path: op.file, content },
+    textMatches: computeTextMatches(id, projectRoot),
+    projectRoot,
+  };
+
+  // Tier 1: cheap fast model.
+  ai.onEscalate?.(1);
+  const trace: string[] = [];
+  let maxTierTried: 1 | 2 = 1;
   let answer: LocateOutcome = null;
   try {
-    answer = await locate(
-      { intent: describeIntent(op), identity: id, candidates, primaryFile: { path: op.file, content }, textMatches: computeTextMatches(id, projectRoot), projectRoot },
-      { apiKey: ai.apiKey!, baseURL: ai.baseURL, model: ai.model },
-    );
+    answer = await locate(input, {
+      apiKey: ai.apiKey!, baseURL: ai.baseURL,
+      model: ai.model ?? TIER1_MODEL,
+      tier: 1, ...TIER_BUDGET[1], trace,
+    });
   } catch (err) {
     logger.warn("[ai-locate] locator threw:", err instanceof Error ? err.message : String(err));
   }
-  locateCache.set(key, { result: answer, at: Date.now() });
+
+  // Tier 2: stronger model retries any tier-1 failure — including explicit
+  // cannot_locate refusals (the small model gives up too easily on cases the
+  // bigger one resolves). Tier 2's outcome is final.
+  if (!isLocateResult(answer) && ai.escalation?.enabled) {
+    const tier1Answer = answer;
+    const failure = answer ? `tier 1 refused: ${answer.cannotLocate}` : "exhausted exploration without a confident answer";
+    logger.info(`[ai-locate] tier 1 failed — escalating to ${ai.escalation.model ?? TIER2_MODEL}`);
+    ai.onEscalate?.(2);
+    maxTierTried = 2;
+    try {
+      answer = await locate(input, {
+        apiKey: ai.apiKey!, baseURL: ai.baseURL,
+        model: ai.escalation.model ?? TIER2_MODEL,
+        tier: 2, ...TIER_BUDGET[2],
+        priorAttempt: { trace, failure },
+      });
+    } catch (err) {
+      logger.warn("[ai-locate] tier-2 locator threw:", err instanceof Error ? err.message : String(err));
+      answer = null;
+    }
+    // Tier 2 hard-failed but tier 1 gave a reasoned refusal — keep the reason
+    // (better user-facing message than the generic "couldn't pinpoint").
+    if (answer === null && tier1Answer) answer = tier1Answer;
+  }
+
+  locateCache.set(key, { result: answer, at: Date.now(), maxTierTried });
   logger.info(`[ai-locate] → ${isLocateResult(answer) ? `${answer.filePath}:${answer.line} (${answer.kind})` : answer ? `cannot_locate: ${answer.cannotLocate}` : "no resolution"}`);
   return answer;
 }

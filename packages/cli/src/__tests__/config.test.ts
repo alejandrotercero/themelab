@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { loadConfig, saveConfig, updateAiConfig, resolveAiConfig, configPath } from "../config.js";
 
-const ENV_KEYS = ["XDG_CONFIG_HOME", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "THEMELAB_AI_MODEL"] as const;
+const ENV_KEYS = ["XDG_CONFIG_HOME", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "THEMELAB_AI_MODEL", "THEMELAB_AI_MODEL_ESCALATED", "THEMELAB_AI_ESCALATION"] as const;
 
 describe("config: AI settings storage + resolution", () => {
   let saved: Record<string, string | undefined>;
@@ -57,7 +57,28 @@ describe("config: AI settings storage + resolution", () => {
     expect(r.apiKey).toBe("sk-env");
     expect(r.baseURL).toBe("https://env");
     expect(r.model).toBe("env-model");
-    expect(r.source).toEqual({ apiKey: "env", baseURL: "env", model: "env" });
+    expect(r.source).toEqual({ apiKey: "env", baseURL: "env", model: "env", escalationModel: "none" });
+  });
+
+  it("resolves escalation settings: on by default, env kill-switch and model override", () => {
+    saveConfig({ ai: { apiKey: "sk-file" } });
+    expect(resolveAiConfig().escalationEnabled).toBe(true); // default on
+    expect(resolveAiConfig().escalationModel).toBeUndefined();
+
+    saveConfig({ ai: { apiKey: "sk-file", escalationEnabled: false, escalationModel: "file-strong" } });
+    let r = resolveAiConfig();
+    expect(r.escalationEnabled).toBe(false);
+    expect(r.escalationModel).toBe("file-strong");
+    expect(r.source.escalationModel).toBe("file");
+
+    process.env.THEMELAB_AI_ESCALATION = "0"; // env wins over file's (re-enabled) flag
+    saveConfig({ ai: { apiKey: "sk-file", escalationEnabled: true } });
+    expect(resolveAiConfig().escalationEnabled).toBe(false);
+
+    process.env.THEMELAB_AI_MODEL_ESCALATED = "env-strong";
+    r = resolveAiConfig();
+    expect(r.escalationModel).toBe("env-strong");
+    expect(r.source.escalationModel).toBe("env");
   });
 
   it("updateAiConfig merges, and empty string clears a value", () => {

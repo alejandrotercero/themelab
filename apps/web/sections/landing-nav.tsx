@@ -34,7 +34,7 @@ export const Navbar2 = (props: Navbar2Props) => {
 
   return (
     <section
-      className="z-999 flex w-full items-center border-b border-border-primary bg-background-primary lg:min-h-18 lg:px-[5%]"
+      className="z-999 flex w-full items-center border-b border-border-primary bg-foreground dark:bg-background  text-background dark:text-foreground lg:min-h-18 lg:px-[5%]"
     >
       <div className="mx-auto size-full lg:grid lg:grid-cols-[0.375fr_1fr_0.375fr] lg:items-center lg:justify-between lg:gap-4">
         <div className="flex min-h-16 items-center justify-between px-[5%] md:min-h-18 lg:min-h-full lg:px-0">
@@ -93,22 +93,22 @@ export const Navbar2 = (props: Navbar2Props) => {
             navLink.subMenuLinks && navLink.subMenuLinks.length > 0 ? (
               <SubMenu key={index} navLink={navLink} isMobile={isMobile} />
             ) : (
-              <a
+              <Link
                 key={index}
                 href={navLink.url}
-                className="block py-3 text-md first:pt-7 lg:px-4 lg:py-2 lg:text-base lg:first:pt-2"
+                className="block py-3 text-sm uppercase tracking-wide first:pt-7 lg:px-4 lg:py-2 lg:text-xs lg:first:pt-2"
               >
                 {navLink.title}
-              </a>
+              </Link>
             ),
           )}
         </motion.div>
         <div className="hidden items-center gap-2 justify-self-end lg:flex">
-          <ThemeToggle />
+          <ThemeToggle className="text-background dark:text-foreground " />
           {buttons.map((button, index) => (
             <Button
               key={index}
-              className="px-6 py-2"
+              className="px-6 py-2 "
               variant={button.variant}
               size={button.size}>{button.iconLeft && <span data-icon="inline-start">{button.iconLeft}</span>}{button.title}{button.iconRight && <span data-icon="inline-end">{button.iconRight}</span>}</Button>
           ))}
@@ -127,7 +127,7 @@ const SubMenu = ({ navLink, isMobile }: { navLink: NavLink; isMobile: boolean })
       onMouseLeave={() => !isMobile && setIsDropdownOpen(false)}
     >
       <button
-        className="flex w-full items-center justify-center gap-4 py-3 text-center text-md lg:w-auto lg:flex-none lg:justify-start lg:gap-2 lg:px-4 lg:py-2 lg:text-base"
+        className="flex w-full items-center justify-center gap-4 py-3 text-center text-sm uppercase tracking-wide lg:w-auto lg:flex-none lg:justify-start lg:gap-2 lg:px-4 lg:py-2 lg:text-xs"
         onClick={() => setIsDropdownOpen((prev) => !prev)}
       >
         <span>{navLink.title}</span>
@@ -161,16 +161,16 @@ const SubMenu = ({ navLink, isMobile }: { navLink: NavLink; isMobile: boolean })
               },
             }}
             transition={{ duration: 0.2 }}
-            className="bg-background-primary lg:absolute lg:z-50 lg:border lg:border-border-primary lg:p-2 lg:[--y-close:25%]"
+            className="bg-foreground text-background dark:bg-background dark:text-foreground lg:absolute lg:z-50 lg:border lg:border-border-primary lg:p-2 lg:[--y-close:25%]"
           >
             {navLink.subMenuLinks?.map((subMenuLink, index) => (
-              <a
+              <Link
                 key={index}
                 href={subMenuLink.url}
                 className="block py-3 text-center lg:px-4 lg:py-2 lg:text-left"
               >
                 {subMenuLink.title}
-              </a>
+              </Link>
             ))}
           </motion.nav>
         </AnimatePresence>
@@ -195,10 +195,6 @@ export const Navbar2Defaults: Props = {
     },
   ],
   buttons: [
-    {
-      title: "Button",
-      size: "sm",
-    },
   ],
 };
 

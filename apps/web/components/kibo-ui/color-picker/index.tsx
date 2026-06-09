@@ -83,6 +83,14 @@ export const ColorPicker = ({
   );
   const [mode, setMode] = useState("hex");
 
+  // Read onChange through a ref so a parent passing a new closure each render
+  // (e.g. an inline handler) can't retrigger the notify effect below. Without
+  // this, the effect fires on every render — and a lossy round-trip in the
+  // caller means the emitted color rarely equals the incoming value, so the
+  // parent keeps updating and re-rendering: Maximum update depth exceeded.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   // Update color when controlled value changes
   useEffect(() => {
     if (value) {
@@ -95,15 +103,14 @@ export const ColorPicker = ({
     }
   }, [value]);
 
-  // Notify parent of changes
+  // Notify parent only when the color itself changes (user interaction),
+  // not when the parent hands us a fresh onChange identity.
   useEffect(() => {
-    if (onChange) {
-      const color = Color.hsl(hue, saturation, lightness).alpha(alpha / 100);
-      const rgba = color.rgb().array();
+    const color = Color.hsl(hue, saturation, lightness).alpha(alpha / 100);
+    const rgba = color.rgb().array();
 
-      onChange([rgba[0], rgba[1], rgba[2], alpha / 100]);
-    }
-  }, [hue, saturation, lightness, alpha, onChange]);
+    onChangeRef.current?.([rgba[0], rgba[1], rgba[2], alpha / 100]);
+  }, [hue, saturation, lightness, alpha]);
 
   return (
     <ColorPickerContext.Provider

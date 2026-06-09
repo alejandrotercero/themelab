@@ -60,7 +60,6 @@ export function Showcase() {
           Every component below is styled only by the generated tokens.
         </p>
       </div>
-
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {STATS.map((s) => (
@@ -81,19 +80,17 @@ export function Showcase() {
           </Card>
         ))}
       </div>
-
       {/* Buttons */}
       <div className="flex flex-wrap items-center gap-2">
         <Button>Primary</Button>
         <Button variant="secondary">Secondary</Button>
         <Button variant="outline">Outline</Button>
-        <Button variant="ghost">Ghost</Button>
         <Button variant="destructive">Destructive</Button>
+        <Button variant="ghost">Ghost</Button>
         <Button variant="link">Link</Button>
         <Button size="sm">Small</Button>
         <Button disabled>Disabled</Button>
       </div>
-
       {/* Badges */}
       <div className="flex flex-wrap gap-2">
         <Badge>Default</Badge>
@@ -101,7 +98,6 @@ export function Showcase() {
         <Badge variant="outline">Outline</Badge>
         <Badge variant="destructive">Destructive</Badge>
       </div>
-
       <div className="grid gap-4 md:grid-cols-2">
         {/* Form */}
         <Card>
@@ -176,7 +172,6 @@ export function Showcase() {
           </CardContent>
         </Card>
       </div>
-
       {/* Team + progress + alert */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -226,7 +221,6 @@ export function Showcase() {
           </CardContent>
         </Card>
       </div>
-
       {/* Table */}
       <Card>
         <CardHeader>
@@ -258,7 +252,6 @@ export function Showcase() {
           </Table>
         </CardContent>
       </Card>
-
       {/* Token grid */}
       <div>
         <h3 className="mb-2 text-sm font-medium text-muted-foreground">All 31 tokens</h3>

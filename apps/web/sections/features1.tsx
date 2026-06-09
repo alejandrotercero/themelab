@@ -8,22 +8,22 @@ type ImageProps = {
 };
 
 type CardBaseProps = {
-  tagline: string;
+  tagline?: string;
   image: ImageProps;
   heading: string;
   description: string;
 };
 
 type CardsSmallProps = CardBaseProps & {
-  button: ButtonProps;
+  button?: ButtonProps;
 };
 
 type CardBigProps = CardBaseProps & {
-  buttons: ButtonProps[];
+  buttons?: ButtonProps[];
 };
 
 type Props = {
-  tagline: string;
+  tagline?: string;
   heading: string;
   description: string;
   cardsSmall: CardsSmallProps[];
@@ -38,11 +38,11 @@ export const Features1 = (props: Features1Props) => {
     ...props,
   };
   return (
-    <section className="px-[5%] py-8 md:py-12 lg:py-14 bg-accent dark:bg-neutral-950" >
+    <section className="px-[5%] py-8 md:py-12 lg:py-14 bg-transparent" >
       <div className="container">
         <div className="mb-12 md:mb-18 lg:mb-20">
           <div className="mx-auto max-w-lg text-center">
-            <p className="mb-3 text-base text-muted-foreground uppercase md:mb-4 font-heading tracking-wider">{tagline}</p>
+            {tagline && <p className="mb-3 text-xl uppercase bg-background/50 text-primary md:mb-4 font-heading tracking-wider">{tagline}</p>}
             <h2 className="mb-5 text-6xl font-heading md:mb-6 md:text-8xl lg:text-9xl tracking-tight">
               {heading}
             </h2>
@@ -61,14 +61,14 @@ export const Features1 = (props: Features1Props) => {
               </div>
               <div className="block flex-1 flex-col items-stretch justify-center p-6 md:flex md:p-8 lg:p-12">
                 <div>
-                  <p className="mb-2 font-sm text-muted-foreground uppercase font-heading tracking-wider" >{cardBig.tagline}</p>
+                  {cardBig.tagline && <p className="mb-2 font-sm text-muted-foreground uppercase font-heading tracking-wider" >{cardBig.tagline}</p>}
                   <h3 className="mb-5 text-2xl font-heading leading-[1.2] md:mb-6 md:text-3xl lg:text-4xl">
                     {cardBig.heading}
                   </h3>
-                  <p className="text-sm">{cardBig.description}</p>
+                  <p className="text-sm  text-muted-foreground">{cardBig.description}</p>
                 </div>
                 <div className="mt-6 flex items-center gap-4 md:mt-8">
-                  {cardBig.buttons.map((button, index) => (
+                  {cardBig.buttons?.map((button, index) => (
                     <Button key={index} variant={button.variant} size={button.size}>{button.iconLeft && <span data-icon="inline-start">{button.iconLeft}</span>}{button.title}{button.iconRight && <span data-icon="inline-end">{button.iconRight}</span>}</Button>
                   ))}
                 </div>
@@ -84,12 +84,12 @@ export const Features1 = (props: Features1Props) => {
                 </div>
                 <div className="block flex-col justify-center p-6 md:flex">
                   <div>
-                    <p className="mb-2 text-xs uppercase text-muted-foreground font-heading tracking-wider">{card.tagline}</p>
+                    {card.tagline && <p className="mb-2 text-xs uppercase text-muted-foreground font-heading tracking-wider">{card.tagline}</p>}
                     <h3 className="mb-2 text-lg md:text-2xl font-heading leading-[1.12]">{card.heading}</h3>
-                    <p className="text-sm">{card.description}</p>
+                    <p className="text-sm  text-muted-foreground">{card.description}</p>
                   </div>
                   <div className="mt-5 flex items-center gap-4 md:mt-6">
-                    <Button variant={card.button.variant} size={card.button.size}>{card.button.iconLeft && <span data-icon="inline-start">{card.button.iconLeft}</span>}{card.button.title}{card.button.iconRight && <span data-icon="inline-end">{card.button.iconRight}</span>}</Button>
+
                   </div>
                 </div>
               </div>

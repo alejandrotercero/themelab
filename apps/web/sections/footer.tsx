@@ -60,33 +60,10 @@ export const Footer = (props: FooterProps) => {
   };
 
   return (
-    <footer className="px-[5%] py-8">
+    <footer className="px-[5%] py-8 bg-foreground text-background dark:bg-background dark:text-foreground ">
       <div className="container">
-        <div className="lg:flex lg:items-start lg:justify-between">
-          <div className="mb-6 lg:mb-0">
-            <h1 className="font-heading text-lg md:text-2xl">{newsletterHeading}</h1>
-            <p className="font-light text-sm text-muted-foreground">{newsletterDescription}</p>
-          </div>
-          <div className="max-w-md lg:min-w-xs">
-            <form
-              className="mb-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-[1fr_max-content] sm:gap-y-4 md:gap-4"
-              onSubmit={handleSubmit}
-            >
-              <Input
-                id="email"
-                type="email"
-                placeholder={inputPlaceholder}
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-              />
-              <Button variant={button.variant} size={button.size}>{button.iconLeft && <span data-icon="inline-start">{button.iconLeft}</span>}{button.title}{button.iconRight && <span data-icon="inline-end">{button.iconRight}</span>}</Button>
-            </form>
-            <div dangerouslySetInnerHTML={{ __html: termsAndConditions }} />
-          </div>
-        </div>
-        <div className="py-4 ">
-          <div className="h-px w-full bg-black" />
-        </div>
+
+
 
 
         <div className="flex flex-col items-start pb-4 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between ">

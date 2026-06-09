@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alejandrotercero/themelab/main/logo.svg">
+    <img alt="ThemeLab" src="https://raw.githubusercontent.com/alejandrotercero/themelab/main/logo-light.svg" width="300">
+  </picture>
+</p>
+
 # themelab
 
 `themelab` lets you edit a React app visually while it is running locally, then write those changes back to the source files in your project.

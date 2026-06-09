@@ -12,6 +12,11 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    # The changesets action pushes release tags and opens version PRs — the
+    # default workflow token is read-only (tag push fails with 403).
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout repo
         uses: actions/checkout@v5

@@ -14,10 +14,10 @@
     "ast",
     "cli"
   ],
-  "homepage": "https://github.com/donghaxkim/themelab",
+  "homepage": "https://github.com/alejandrotercero/themelab",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/donghaxkim/themelab.git",
+    "url": "git+https://github.com/alejandrotercero/themelab.git",
     "directory": "packages/cli"
   },
   "engines": {

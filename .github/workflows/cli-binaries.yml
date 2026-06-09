@@ -1,0 +1,59 @@
+name: CLI Binaries
+
+# Builds the self-contained `bun build --compile` binaries for every platform and
+# uploads them as assets on the GitHub Release. install.sh pulls from
+#   https://github.com/<owner>/<repo>/releases/latest/download/themelab-<target>
+on:
+  push:
+    tags:
+      - "v*" # e.g. v0.6.2
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach binaries to"
+        required: true
+
+permissions:
+  contents: write # required to create/update releases and upload assets
+
+jobs:
+  binaries:
+    name: Build & upload binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build binaries (all targets)
+        run: pnpm build:bin:all
+
+      - name: Upload binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            dist/themelab-darwin-arm64
+            dist/themelab-darwin-x64
+            dist/themelab-linux-x64
+            dist/themelab-linux-arm64
+            dist/themelab-windows-x64.exe
+          fail_on_unmatched_files: true

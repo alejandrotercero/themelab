@@ -10,11 +10,13 @@ import { useEffect } from "react";
 import type { ThemeStyles } from "@themelab/shared";
 import { decodeTheme, type ParsedTheme } from "@themelab/shared";
 import { paletteToThemeStyles } from "@/lib/theme-engine";
+import { savedThemesStore } from "@/lib/saved-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { useThemeEditor } from "./use-theme-editor";
 import { EditorShell } from "./editor-shell";
 import { Toolbar } from "./toolbar";
 import { ImportDialog } from "./import-dialog";
+import { LibraryControls } from "./library-controls";
 
 // Shown when /edit is opened without a theme in the hash.
 const FALLBACK: ThemeStyles = paletteToThemeStyles("#3b82f6", "#71717a");
@@ -22,8 +24,17 @@ const FALLBACK: ThemeStyles = paletteToThemeStyles("#3b82f6", "#71717a");
 export function ThemeEditor() {
   const editor = useThemeEditor();
 
-  // Hydrate once from the URL hash; fall back to a neutral default theme.
+  // Hydrate once, in priority order: a saved-library id (?saved=), then the
+  // overlay's encoded theme (#theme=), then a neutral default.
   useEffect(() => {
+    const savedId = new URLSearchParams(window.location.search).get("saved");
+    const saved = savedId ? savedThemesStore.get(savedId) : undefined;
+    if (saved) {
+      editor.loadBase(saved.theme, { source: saved.name, swatches: [], savedId: saved.id });
+      editor.setRadius(saved.radius);
+      return;
+    }
+
     const hash = window.location.hash.replace(/^#/, "");
     const encoded = new URLSearchParams(hash).get("theme");
     const decoded = encoded ? decodeTheme(encoded) : null;
@@ -54,7 +65,12 @@ export function ThemeEditor() {
           theme={editor.theme}
           radius={editor.radius}
           title="edit"
-          extra={<ImportDialog onImport={importTheme} />}
+          extra={
+            <>
+              <LibraryControls editor={editor} />
+              <ImportDialog onImport={importTheme} />
+            </>
+          }
         />
       }
       input={

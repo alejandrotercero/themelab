@@ -25,14 +25,18 @@ interface State {
   overrides: Overrides;
   mode: Mode;
   radius: string;
+  // id of the saved-library entry this theme came from (null when freshly
+  // generated/imported) — drives "update in place" on Save.
+  savedId: string | null;
 }
 
 type Action =
-  | { type: "base"; base: ThemeStyles; source: string; swatches: Swatch[]; mode?: Mode }
+  | { type: "base"; base: ThemeStyles; source: string; swatches: Swatch[]; mode?: Mode; savedId?: string | null }
   | { type: "swatches"; swatches: Swatch[] }
   | { type: "token"; token: string; value: string }
   | { type: "mode"; mode: Mode }
-  | { type: "radius"; value: string };
+  | { type: "radius"; value: string }
+  | { type: "savedId"; savedId: string | null };
 
 const initialState: State = {
   source: "",
@@ -41,6 +45,7 @@ const initialState: State = {
   overrides: { light: {}, dark: {} },
   mode: "dark",
   radius: "0.625rem",
+  savedId: null,
 };
 
 function reducer(state: State, action: Action): State {
@@ -53,6 +58,9 @@ function reducer(state: State, action: Action): State {
         swatches: action.swatches,
         overrides: { light: {}, dark: {} },
         mode: action.mode ?? state.mode,
+        // Generating/importing detaches from any open saved entry unless the
+        // caller explicitly carries one (e.g. opening from the library).
+        savedId: action.savedId ?? null,
       };
     case "swatches":
       return { ...state, swatches: action.swatches };
@@ -68,6 +76,8 @@ function reducer(state: State, action: Action): State {
       return { ...state, mode: action.mode };
     case "radius":
       return { ...state, radius: action.value };
+    case "savedId":
+      return { ...state, savedId: action.savedId };
     default:
       return state;
   }
@@ -107,16 +117,28 @@ export function useThemeEditor() {
     radius: state.radius,
     source: state.source,
     swatches: state.swatches,
+    savedId: state.savedId,
     applyToSite,
     theme,
     activeVars,
     edited,
-    loadBase: (base: ThemeStyles, opts: { source: string; swatches: Swatch[]; mode?: Mode }) =>
-      dispatch({ type: "base", base, source: opts.source, swatches: opts.swatches, mode: opts.mode }),
+    loadBase: (
+      base: ThemeStyles,
+      opts: { source: string; swatches: Swatch[]; mode?: Mode; savedId?: string | null },
+    ) =>
+      dispatch({
+        type: "base",
+        base,
+        source: opts.source,
+        swatches: opts.swatches,
+        mode: opts.mode,
+        savedId: opts.savedId,
+      }),
     setMode: (mode: Mode) => dispatch({ type: "mode", mode }),
     setRadius: (value: string) => dispatch({ type: "radius", value }),
     setToken: (token: string, value: string) => dispatch({ type: "token", token, value }),
     setSwatches: (swatches: Swatch[]) => dispatch({ type: "swatches", swatches }),
+    setSavedId: (savedId: string | null) => dispatch({ type: "savedId", savedId }),
     setApplyToSite,
   };
 }

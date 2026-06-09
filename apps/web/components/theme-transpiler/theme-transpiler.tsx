@@ -18,6 +18,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useThemeEditor } from "./use-theme-editor";
 import { EditorShell } from "./editor-shell";
 import { Toolbar } from "./toolbar";
+import { LibraryControls } from "./library-controls";
 import { IntroDialog } from "./intro-dialog";
 import { HrInput } from "./hr-input";
 import { ValidationReadout } from "./validation-readout";
@@ -73,7 +74,14 @@ export function ThemeTranspiler() {
   return (
     <EditorShell
       editor={editor}
-      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} onShowIntro={() => setIntroOpen(true)} />}
+      toolbar={
+        <Toolbar
+          theme={editor.theme}
+          radius={editor.radius}
+          onShowIntro={() => setIntroOpen(true)}
+          extra={<LibraryControls editor={editor} />}
+        />
+      }
       input={
         <>
           <HrInput onLoad={load} onError={setError} />

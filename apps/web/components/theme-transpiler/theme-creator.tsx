@@ -26,6 +26,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useThemeEditor } from "./use-theme-editor";
 import { EditorShell } from "./editor-shell";
 import { Toolbar } from "./toolbar";
+import { LibraryControls } from "./library-controls";
 import { PaletteInput } from "./palette-input";
 import { ScaleView } from "./scale-view";
 import { RadixConfigDialog } from "./radix-config-dialog";
@@ -121,7 +122,16 @@ export function ThemeCreator() {
   return (
     <EditorShell
       editor={editor}
-      toolbar={<Toolbar theme={editor.theme} radius={editor.radius} title="create" tailwindCss={tailwindCss} figmaSvg={figmaSvg} />}
+      toolbar={
+        <Toolbar
+          theme={editor.theme}
+          radius={editor.radius}
+          title="create"
+          tailwindCss={tailwindCss}
+          figmaSvg={figmaSvg}
+          extra={<LibraryControls editor={editor} />}
+        />
+      }
       input={
         <div className="flex flex-col gap-2">
           {algo === "themelab" ? (

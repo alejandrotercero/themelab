@@ -15,6 +15,7 @@ export default function Page() {
       <Navbar2 navLinks={[
         { title: "Theme Generator", url: "/create" },
         { title: "100r Themes", url: "/100r" },
+        { title: "Library", url: "/library" },
         { title: "Github", url: "https://github.com/alejandrotercero/themelab" },
       ]}/>
       <Header

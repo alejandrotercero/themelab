@@ -13,17 +13,17 @@ export default function Page() {
     <DotBackground className="min-h-svh">
     <main>
       <Navbar2 navLinks={[
-        { title: "Theme Generator", url: "#" },
-        { title: "100r Themes", url: "#" },
-        { title: "Github", url: "#" },
+        { title: "Theme Generator", url: "/create" },
+        { title: "100r Themes", url: "/100r" },
+        { title: "Github", url: "https://github.com/alejandrotercero/themelab" },
       ]}/>
       <Header
         heading="Edit your UI directly. No prompts, no file hunting."
         description="ThemeLab is a local CLI browser overlay for your dev server. Click any element, edit its Tailwind classes or shadcn/ui theme variables, and changes write to source instantly. Faster than describing it. Cheaper than asking an agent."
         buttons={[
           {
-            title: "How it Works (Coming Soon)",
-            url: "#",
+            title: "How it Works",
+            url: "/how-it-works",
             size: "lg",
           },
           {
@@ -43,26 +43,26 @@ export default function Page() {
         cardsSmall={[
           {
             heading: "Theme editing in real time",
-            description: "djust shadcn/ui theme variables and see the cascade across your entire page as you go. Color, radius, spacing, dark mode — all live.",
+            description: "Adjust shadcn/ui theme variables and see the cascade across your entire page as you go. Color, radius, spacing, dark mode — all live.",
             image: {
-              src: "/type-vars.png",
-              alt: "CLI",
+              src: "/type-vars.jpg",
+              alt: "Theme Editor",
             }
           },
           {
             heading: "AI as fallback, not the interface",
             description: "When the engine can't resolve a source location, AI steps in, finds it, and hands back control. You never notice it — which is the point.",
             image: {
-              src: "/theme.png",
-              alt: "CLI",
+              src: "/ai.jpg",
+              alt: "AI UI",
             }
           },
         ]}
         cardBig={{
 
           image: {
-            src: "/term.png",
-            alt: "Placeholder image 3",
+            src: "/manipulation.jpg",
+            alt: "Direct manipulation UI",
           },
           heading: "Direct manipulation",
           description:

@@ -32,6 +32,14 @@ type Props = {
 
 export type Features1Props = React.ComponentPropsWithoutRef<"section"> & Partial<Props>;
 
+// Normalize either card shape (cardBig has `buttons`, cardsSmall has `button`)
+// into a single button list so every card renders uniformly.
+function cardButtons(card: CardBigProps | CardsSmallProps): ButtonProps[] {
+  if ("buttons" in card && card.buttons) return card.buttons;
+  if ("button" in card && card.button) return [card.button];
+  return [];
+}
+
 export const Features1 = (props: Features1Props) => {
   const { tagline, heading, description, cardsSmall, cardBig } = {
     ...Features1Defaults,
@@ -39,7 +47,7 @@ export const Features1 = (props: Features1Props) => {
   };
   return (
     <section className="px-[5%] py-8 md:py-12 lg:py-14 bg-transparent" >
-      <div className="container">
+      <div className="mx-auto w-full ">
         <div className="mb-12 md:mb-18 lg:mb-20">
           <div className="mx-auto max-w-lg text-center">
             {tagline && <p className="mb-3 text-xl uppercase bg-background/50 text-primary md:mb-4 font-heading tracking-wider">{tagline}</p>}
@@ -49,52 +57,34 @@ export const Features1 = (props: Features1Props) => {
             <p className="md:text-md ">{description}</p>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 md:gap-4">
-          <div className="grid grid-cols-1 gap-4 md:gap-4 lg:grid-cols-2">
-            <div className="order-first flex flex-col items-stretch border border-border-primary lg:order-0 lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3 bg-card dark:bg-background rounded-lg">
-              <div>
-                <img
-                  src={cardBig.image.src}
-                  alt={cardBig.image.alt}
-                  className="w-full object-cover rounded-t-lg"
-                />
-              </div>
-              <div className="block flex-1 flex-col items-stretch justify-center p-6 md:flex md:p-8 lg:p-12">
-                <div>
-                  {cardBig.tagline && <p className="mb-2 font-sm text-muted-foreground uppercase font-heading tracking-wider" >{cardBig.tagline}</p>}
-                  <h3 className="mb-5 text-2xl font-heading leading-[1.2] md:mb-6 md:text-3xl lg:text-4xl">
-                    {cardBig.heading}
-                  </h3>
-                  <p className="text-sm  text-muted-foreground">{cardBig.description}</p>
-                </div>
-                <div className="mt-6 flex items-center gap-4 md:mt-8">
-                  {cardBig.buttons?.map((button, index) => (
-                    <Button key={index} variant={button.variant} size={button.size}>{button.iconLeft && <span data-icon="inline-start">{button.iconLeft}</span>}{button.title}{button.iconRight && <span data-icon="inline-end">{button.iconRight}</span>}</Button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {cardsSmall.map((card, index) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[cardBig, ...cardsSmall].map((card, index) => {
+            const buttons = cardButtons(card);
+            return (
               <div
                 key={index}
-                className="order-last flex flex-col border border-border-primary md:grid md:grid-cols-2 lg:order-0 bg-card dark:bg-background rounded-lg"
+                className="flex flex-col overflow-hidden rounded-2xl border border-border-primary bg-card dark:bg-background"
               >
-                <div className="flex w-full items-center justify-center">
-                  <img src={card.image.src} alt={card.image.alt} className="w-full object-cover" />
-                </div>
-                <div className="block flex-col justify-center p-6 md:flex">
-                  <div>
-                    {card.tagline && <p className="mb-2 text-xs uppercase text-muted-foreground font-heading tracking-wider">{card.tagline}</p>}
-                    <h3 className="mb-2 text-lg md:text-2xl font-heading leading-[1.12]">{card.heading}</h3>
-                    <p className="text-sm  text-muted-foreground">{card.description}</p>
-                  </div>
-                  <div className="mt-5 flex items-center gap-4 md:mt-6">
-
-                  </div>
+                <img
+                  src={card.image.src}
+                  alt={card.image.alt}
+                  className="w-full h-auto object-contain border-b border-border-primary"
+                />
+                <div className="flex flex-1 flex-col p-4 md:p-6">
+                  {card.tagline && <p className="mb-2 text-xs uppercase text-muted-foreground font-heading tracking-wider">{card.tagline}</p>}
+                  <h3 className="mb-2 text-lg md:text-2xl font-heading leading-[1.12]">{card.heading}</h3>
+                  <p className="text-sm text-muted-foreground">{card.description}</p>
+                  {buttons.length > 0 && (
+                    <div className="mt-4 flex items-center gap-4">
+                      {buttons.map((button, i) => (
+                        <Button key={i} variant={button.variant} size={button.size}>{button.iconLeft && <span data-icon="inline-start">{button.iconLeft}</span>}{button.title}{button.iconRight && <span data-icon="inline-end">{button.iconRight}</span>}</Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </div>
     </section>

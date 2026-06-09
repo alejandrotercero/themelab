@@ -96,6 +96,8 @@ export const Navbar2 = (props: Navbar2Props) => {
               <Link
                 key={index}
                 href={navLink.url}
+                target={navLink.url.startsWith("http") ? "_blank" : undefined}
+                rel={navLink.url.startsWith("http") ? "noopener noreferrer" : undefined}
                 className="block py-3 text-sm uppercase tracking-wide first:pt-7 lg:px-4 lg:py-2 lg:text-xs lg:first:pt-2"
               >
                 {navLink.title}

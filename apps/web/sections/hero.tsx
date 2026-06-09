@@ -45,7 +45,7 @@ export const Header = (props: HeaderProps) => {
             </div>
           </div>
           <div>
-            <img src={image.src} className="size-full object-cover rounded-2xl border-border border shadow-md shadow-black dark:shadow-primary" alt={image.alt} />
+            <img src={image.src} className="size-full object-cover ok wrap insidne " alt={image.alt} />
           </div>
         </div>
       </div>

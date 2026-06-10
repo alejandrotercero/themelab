@@ -3,7 +3,8 @@ import { Google_Sans_Code, Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { Analytics } from "@vercel/analytics/next";
 
 // Matches the ThemeLab overlay, which renders entirely in Google Sans Code for
 // its code-tool aesthetic (packages/overlay/src/design-tokens.ts → FONT_FAMILY).
@@ -41,6 +42,7 @@ export default function RootLayout({
         <ThemeProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   )

@@ -25,7 +25,7 @@ export function LibraryDialog({ open, onOpenChange, onOpen }: LibraryDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton
-        className="tl-overlay max-h-[85dvh] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl"
+        className="tl-overlay max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
       >
         <DialogHeader>
           <DialogTitle>My themes</DialogTitle>

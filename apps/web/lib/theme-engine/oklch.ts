@@ -2,7 +2,7 @@
 // see packages/overlay/src/utils/color-format.ts). Adds the interpolation and
 // ramp-sampling the transcript needs, which don't exist elsewhere in the repo.
 
-import { parse, converter, formatHex, formatHsl, formatRgb, type Oklch } from "culori";
+import { parse, converter, formatHex, formatHsl, formatRgb, wcagContrast, type Oklch } from "culori";
 
 const toOklchConv = converter("oklch");
 
@@ -46,6 +46,11 @@ export function toOklch(input: string): Oklch | null {
 export function lStar(input: string): number {
   const o = toOklch(input);
   return o ? round(o.l * 100, 1) : 0;
+}
+
+/** WCAG 2.x contrast ratio (1–21) between two CSS colors, rounded to 0.01. */
+export function contrastRatio(a: string, b: string): number {
+  return round(wcagContrast(a, b), 2);
 }
 
 export function oklchToHex(o: Oklch): string {

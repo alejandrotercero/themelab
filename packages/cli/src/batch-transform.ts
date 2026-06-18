@@ -712,7 +712,11 @@ function applyOp(j: any, root: any, rop: ResolvedOp, source: string): string | u
     }
 
     case "reorder": {
-      mutateReorder(j, root, op.fromLine, op.toLine);
+      try {
+        mutateReorder(j, root, op.fromLine, op.toLine);
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
       return undefined;
     }
 

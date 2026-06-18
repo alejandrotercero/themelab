@@ -171,6 +171,15 @@ describe("executeBatch", () => {
     expect(order).toEqual(["<Navbar />", "<Features />", "<Hero />", "<Pricing />", "<Footer />"]);
   });
 
+  it("returns a per-op failure (no throw) when reorder targets a non-existent line", () => {
+    const { filePath } = setup("five-siblings.tsx");
+    const op: BatchOperation = { op: "reorder", file: filePath, fromLine: 1, toLine: 9999 };
+    expect(() => executeBatch([op], path.dirname(filePath))).not.toThrow();
+    const result = executeBatch([op], path.dirname(filePath));
+    expect(result.results[0].success).toBe(false);
+    expect(result.results[0].error).toBeTruthy();
+  });
+
   // ── Multiple operations on the same file ─────────────────────────────
 
   it("applies multiple updateClass ops on different elements in one file", () => {

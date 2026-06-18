@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Typecheck web
+        run: pnpm check:web
+
   test:
     runs-on: ubuntu-latest
     strategy:

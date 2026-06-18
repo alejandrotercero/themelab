@@ -20,6 +20,8 @@
     "dev:web": "pnpm --filter @themelab/web dev",
     "build:web": "pnpm --filter @themelab/web build",
     "typecheck": "pnpm build:shared && pnpm --filter themelab-cli --filter @themelab/overlay exec tsc --noEmit",
+    "typecheck:web": "pnpm --filter @themelab/web typecheck",
+    "check:web": "pnpm typecheck:web",
     "test": "pnpm --filter themelab-cli test",
     "changeset": "changeset",
     "version": "changeset version",

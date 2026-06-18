@@ -1,6 +1,6 @@
 {
   "name": "themelab-cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Visual overlay for React dev servers — select components, drag to reorder, and draw on a Figma-style canvas",
   "keywords": [
     "react",

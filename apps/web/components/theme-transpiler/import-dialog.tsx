@@ -48,7 +48,7 @@ export function ImportDialog({ onImport }: ImportDialogProps) {
       </DialogTrigger>
       <DialogContent
         showCloseButton={false}
-        className="tl-overlay w-[calc(100%-2rem)] gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        className="tl-overlay w-[calc(100%-2rem)] gap-0 overflow-hidden p-0 sm:max-w-[42rem]"
         style={{ borderColor: "var(--ov-border)" }}
       >
         <DialogHeader className="flex-row flex-wrap items-center justify-between gap-3 border-b border-[var(--ov-border)] p-4">

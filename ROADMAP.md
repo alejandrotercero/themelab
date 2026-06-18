@@ -160,7 +160,7 @@ Each is mapped to root cause + fix + files + effort (S/M/L).
 **M0 — Unblock & validate (now)**
 - [x] Build local `main` (ahead of npm 0.1.1)
 - [x] **#7 auto-refresh** — effectively resolved; HMR now reflects writes once resolution lands correctly (the earlier "had to refresh" was failing writes, since fixed)
-- **Not publishing** — this isn't our repo to release. Work stays local / goes back as a contribution if/when upstream wants it.
+- **Publishing**: `packages/cli` is published to npm as `themelab-cli` via changesets (`pnpm release`). This is the canonical source repo.
 
 **M1 — Own the page (flow-breakers)**
 - [x] #1 Interact mode — toggle with `` ` `` (select by default)
@@ -188,7 +188,7 @@ Each is mapped to root cause + fix + files + effort (S/M/L).
 ## 5. Decisions & open questions
 
 **Decided:**
-- **No publishing** — not our repo to release (§4 M0).
+- **Publishing** — `themelab-cli` ships from this repo (changesets); this is the source of record.
 - **Reimplement, don't lift** tweakcn — reference-only, MIT-clean (§3).
 - **Color = bound-or-detached** (Figma-style): vars edit the token by default; explicit Detach for a raw value; rebind to another var anytime (§1.6).
 

@@ -44,6 +44,7 @@ export function ThemeTranspiler() {
   useEffect(() => {
     try {
       const preset = PRESETS[1]; // Ablaze (the tested coral theme)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time seed on mount; load calls editor.loadBase + setReport/setError
       load(parseHrSvg(preset.svg), preset.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load preset.");
@@ -54,6 +55,7 @@ export function ThemeTranspiler() {
   // Show the intro on first visit (remembered so it doesn't nag on every load).
   useEffect(() => {
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: one-time check of localStorage on mount to show intro dialog
       if (!localStorage.getItem("tl-intro-seen")) setIntroOpen(true);
     } catch {
       setIntroOpen(true);

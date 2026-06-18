@@ -80,6 +80,7 @@ export function ThemeCreator() {
 
   // Generate once on mount (default algorithm = ThemeLab).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time seed on mount; generateThemeLab calls editor.loadBase (dispatch), not setState directly
     generateThemeLab(DEFAULT_PRIMARY, DEFAULT_NEUTRAL);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -168,8 +168,8 @@ export default function HowItWorksPage() {
               While ThemeLab is running it also exposes a small MCP server on
               localhost, so a coding agent like Claude Code or Cursor can read
               what you are doing in the overlay. Click a component in the browser
-              and your agent knows the exact file and line — no more "which Button
-              did you mean?". It can ask for the current selection, the resolved
+              and your agent knows the exact file and line — no more &ldquo;which Button
+              did you mean?&rdquo;. It can ask for the current selection, the resolved
               theme tokens, the Tailwind token map, or where a component lives in
               the source.
             </p>

@@ -89,6 +89,7 @@ export const ColorPicker = ({
   // caller means the emitted color rarely equals the incoming value, so the
   // parent keeps updating and re-rendering: Maximum update depth exceeded.
   const onChangeRef = useRef(onChange);
+  // eslint-disable-next-line react-hooks/refs -- intentional: update ref during render to avoid stale closure in notify effect, see apps/web/CLAUDE.md
   onChangeRef.current = onChange;
 
   // Update color when controlled value changes
@@ -96,6 +97,7 @@ export const ColorPicker = ({
     if (value) {
       const color = Color.rgb(value).rgb().object();
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional controlled-value sync patch, see apps/web/CLAUDE.md
       setHue(color.r);
       setSaturation(color.g);
       setLightness(color.b);
@@ -151,6 +153,7 @@ export const ColorPickerSelection = memo(
       const x = saturation / 100;
       const topLightness = x < 0.01 ? 100 : 50 + 50 * (1 - x);
       const y = topLightness === 0 ? 0 : 1 - lightness / topLightness;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount-only thumb placement patch, see apps/web/CLAUDE.md
       setPositionX(Math.min(1, Math.max(0, x)));
       setPositionY(Math.min(1, Math.max(0, y)));
       // eslint-disable-next-line react-hooks/exhaustive-deps

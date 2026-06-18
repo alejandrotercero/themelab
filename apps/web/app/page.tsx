@@ -96,8 +96,8 @@ export default function Page() {
               <div className="container">
                 <div className="grid grid-cols-1 items-start justify-between gap-5 md:grid-cols-2 md:gap-x-12 md:gap-y-8 lg:gap-x-20 lg:gap-y-16">
                   <div>
-                                <h3 className="text-4xl font-heading leading-[1.2] md:text-6xl lg:text-7xl">Who It's For</h3>
-                <p className="font-heading text-xl text-primary py-4">If you've ever asked a coding agent to move something 4px and waited 30 seconds for it, this is for you.</p>
+                                <h3 className="text-4xl font-heading leading-[1.2] md:text-6xl lg:text-7xl">Who It&apos;s For</h3>
+                <p className="font-heading text-xl text-primary py-4">If you&apos;ve ever asked a coding agent to move something 4px and waited 30 seconds for it, this is for you.</p>
                 <p className="mb-5 md:mb-6  text-sm text-muted-foreground">For designers using AI who want fast UI edits. For design engineers who work in code like others work in Figma. For frontend devs who know what needs to change and just want to change it.</p>
 
                   </div>

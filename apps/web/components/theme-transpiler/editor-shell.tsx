@@ -26,8 +26,26 @@ interface EditorShellProps {
 }
 
 export function EditorShell({ editor, toolbar, input, output, children }: EditorShellProps) {
+  // Destructure to avoid the react-hooks/refs false-positive: the linter treats
+  // all properties of an object containing a ref as "ref accesses during render".
+  // These are plain state values and dispatch functions — not refs.
+  const {
+    rootRef,
+    activeVars,
+    edited,
+    mode,
+    radius,
+    swatches,
+    setMode,
+    setToken,
+    setRadius,
+    source,
+    applyToSite,
+    setApplyToSite,
+  } = editor;
+
   return (
-    <div ref={editor.rootRef} className="tl-overlay flex h-dvh flex-col">
+    <div ref={rootRef} className="tl-overlay flex h-dvh flex-col">
       {toolbar}
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -35,14 +53,14 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
         <aside className="min-h-0 overflow-hidden border-b border-[var(--ov-border)] lg:w-[340px] lg:shrink-0 lg:border-r lg:border-b-0">
           <ScrollArea className="h-full">
             <TokenControls
-              vars={editor.activeVars}
-              edited={editor.edited}
-              mode={editor.mode}
-              radius={editor.radius}
-              palette={editor.swatches}
-              onMode={editor.setMode}
-              onToken={editor.setToken}
-              onRadius={editor.setRadius}
+              vars={activeVars}
+              edited={edited}
+              mode={mode}
+              radius={radius}
+              palette={swatches}
+              onMode={setMode}
+              onToken={setToken}
+              onRadius={setRadius}
             />
           </ScrollArea>
         </aside>
@@ -54,28 +72,28 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
               <button
                 type="button"
                 role="tab"
-                aria-selected={editor.mode === "light"}
+                aria-selected={mode === "light"}
                 aria-label="Light"
-                data-active={editor.mode === "light"}
+                data-active={mode === "light"}
                 className="ov-seg-btn"
-                onClick={() => editor.setMode("light")}
+                onClick={() => setMode("light")}
               >
                 <SunIcon weight="bold" className="size-3.5" />
               </button>
               <button
                 type="button"
                 role="tab"
-                aria-selected={editor.mode === "dark"}
+                aria-selected={mode === "dark"}
                 aria-label="Dark"
-                data-active={editor.mode === "dark"}
+                data-active={mode === "dark"}
                 className="ov-seg-btn"
-                onClick={() => editor.setMode("dark")}
+                onClick={() => setMode("dark")}
               >
                 <MoonIcon weight="bold" className="size-3.5" />
               </button>
             </div>
             <ScrollArea className="h-full">
-              <PreviewPane vars={editor.activeVars} mode={editor.mode} radius={editor.radius} />
+              <PreviewPane vars={activeVars} mode={mode} radius={radius} />
             </ScrollArea>
           </main>
 
@@ -88,14 +106,14 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
                       Theme:
                     </span>
                     <span className="truncate text-lg font-semibold text-[var(--ov-text)]">
-                      {editor.source || "Untitled"}
+                      {source || "Untitled"}
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Switch
                       id="apply-page"
-                      checked={editor.applyToSite}
-                      onCheckedChange={editor.setApplyToSite}
+                      checked={applyToSite}
+                      onCheckedChange={setApplyToSite}
                     />
                     <Label htmlFor="apply-page" className="text-xs text-[var(--ov-text-dim)]">
                       Apply to page

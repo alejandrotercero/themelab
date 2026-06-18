@@ -38,6 +38,7 @@ export function NameThemeDialog({
 
   // Reset the field whenever the dialog (re)opens with a new starting name.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- controlled dialog reset: sync local name when dialog opens with a new initialName
     if (open) setName(initialName);
   }, [open, initialName]);
 

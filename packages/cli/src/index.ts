@@ -110,7 +110,7 @@ program
         getActiveClient: sketchServer.getActiveClient,
       });
 
-      proxyServer.listen(proxyPort, () => {
+      proxyServer.listen(proxyPort, "127.0.0.1", () => {
         logger.info(
           chalk.dim("  Proxy: ") +
             chalk.green(`http://localhost:${proxyPort}`)

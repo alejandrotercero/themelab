@@ -27,6 +27,20 @@ import { executeBatch } from "./batch-transform.js";
 import { executeBatchWithAi, invalidateLocateCache, type AiOptions, type AiProposal } from "./ai-locate.js";
 import { resolveAiConfig, updateAiConfig } from "./config.js";
 
+/** Allow only same-machine browser origins. Missing Origin (non-browser
+ * clients) is allowed; a present Origin must resolve to a loopback hostname,
+ * which blocks any real website (and DNS-rebinding, since Origin carries the
+ * page's hostname, not the resolved IP). */
+function isAllowedWsOrigin(origin: string): boolean {
+  if (!origin) return true;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 interface SketchServerOptions {
   port: number;
   /** Force-enable/disable the AI locator. Defaults to !!process.env.ANTHROPIC_API_KEY. */
@@ -73,7 +87,11 @@ export function attachUndoIdsToBatchResults(
 
 export function createSketchServer(portOrOptions: number | SketchServerOptions): SketchServer {
   const port = typeof portOrOptions === "number" ? portOrOptions : portOrOptions.port;
-  const wss = new WebSocketServer({ port });
+  const wss = new WebSocketServer({
+    port,
+    host: "127.0.0.1",
+    verifyClient: (info: { origin: string; secure: boolean }) => isAllowedWsOrigin(info.origin),
+  });
   const projectRoot = path.resolve(process.cwd());
 
   // AI locator config: merged from the persisted settings file + env overrides.

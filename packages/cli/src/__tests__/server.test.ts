@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { attachUndoIdsToBatchResults } from "../server.js";
+import { describe, expect, it, afterEach } from "vitest";
+import { attachUndoIdsToBatchResults, createSketchServer } from "../server.js";
+import { WebSocket } from "ws";
+import * as net from "node:net";
 
 describe("attachUndoIdsToBatchResults", () => {
   it("maps successful results to the undo id for their file", () => {
@@ -31,5 +33,95 @@ describe("attachUndoIdsToBatchResults", () => {
     expect(attachUndoIdsToBatchResults(results, undoEntries, ["undo-a"], "/tmp/project")).toEqual([
       { op: "updateClass", file: "src/a.tsx", line: 10, success: true, undoId: "undo-a" },
     ]);
+  });
+});
+
+/** Pick an ephemeral port by binding a temporary server and then releasing it. */
+function getEphemeralPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address() as net.AddressInfo;
+      srv.close((err) => {
+        if (err) reject(err);
+        else resolve(addr.port);
+      });
+    });
+  });
+}
+
+describe("WebSocket Origin checks", () => {
+  let server: ReturnType<typeof createSketchServer> | null = null;
+
+  afterEach(() => {
+    server?.close();
+    server = null;
+  });
+
+  it("rejects a connection from a non-loopback Origin", async () => {
+    const port = await getEphemeralPort();
+    server = createSketchServer({ port, enableAi: false });
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Timed out waiting for rejection")), 2000);
+      const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: "http://evil.example.com" });
+      ws.on("error", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      ws.on("close", (code) => {
+        clearTimeout(timer);
+        // WS close code 1006 (abnormal) or any non-zero code means the handshake was refused
+        if (code !== 1000) {
+          resolve();
+        } else {
+          reject(new Error(`Expected rejection but connection closed cleanly (code ${code})`));
+        }
+      });
+      ws.on("open", () => {
+        clearTimeout(timer);
+        ws.close();
+        reject(new Error("Expected connection to be rejected but it opened"));
+      });
+    });
+  });
+
+  it("accepts a connection with a loopback Origin", async () => {
+    const port = await getEphemeralPort();
+    server = createSketchServer({ port, enableAi: false });
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Timed out waiting for connection")), 2000);
+      const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: "http://localhost:12345" });
+      ws.on("open", () => {
+        clearTimeout(timer);
+        ws.close();
+        resolve();
+      });
+      ws.on("error", (err) => {
+        clearTimeout(timer);
+        reject(new Error(`Expected open but got error: ${err.message}`));
+      });
+    });
+  });
+
+  it("accepts a connection with no Origin header", async () => {
+    const port = await getEphemeralPort();
+    server = createSketchServer({ port, enableAi: false });
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Timed out waiting for connection")), 2000);
+      // Passing no 'origin' option means the ws client sends no Origin header
+      const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+      ws.on("open", () => {
+        clearTimeout(timer);
+        ws.close();
+        resolve();
+      });
+      ws.on("error", (err) => {
+        clearTimeout(timer);
+        reject(new Error(`Expected open but got error: ${err.message}`));
+      });
+    });
   });
 });

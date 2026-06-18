@@ -18,8 +18,8 @@ update your row when done.
 | 007 | Resolve the `ws` advisory + triage `pnpm audit` | P2 | S | — | DONE |
 | 008 | Fix stale "not publishing" claim and package author | P3 | S | — | DONE |
 | 009 | Investigate dynamic `className` silent-loss (spike) | P3 | M | — | DONE (found 3 gaps → 011) |
-| 010 | Clean up web eslint errors + enable lint gate | P3 | M | 004 | TODO |
-| 011 | Fail loud on unresolvable cn()/clsx() args (fix 009 gaps) | P3 | S | 009 | TODO |
+| 010 | Clean up web eslint errors + enable lint gate | P3 | M | 004 | DONE |
+| 011 | Fail loud on object-key class conflicts (fix 009 object gap) | P3 | S | 009 | DONE (scoped — see note) |
 
 ## Implementation session — 2026-06-18
 
@@ -46,6 +46,28 @@ the advisor, then committed to branch `advisor/implement-plans` and merged to
 
 Follow-ups still open: **010** (web lint cleanup + gate) and **011** (fix the
 className gaps 009 found).
+
+## Follow-up session — 010 + 011 (2026-06-18)
+
+- **010** — DONE. Cleared all 31 web eslint errors and turned the lint gate on
+  (`check:web` now runs typecheck **and** lint). Real fixes: HTML-entity escapes
+  (4) and a behavior-preserving destructure in `editor-shell.tsx` to clear 20
+  `react-hooks/refs` false-positives. Scoped `eslint-disable-next-line … -- <reason>`
+  (with no behavior change) for the documented kibo intentional patch and
+  mount-seed/controlled-sync effects (7). 14 warnings (`no-unused-vars`,
+  `no-img-element`) intentionally left.
+- **011** — DONE, but **scoped down during review**. The original plan would have
+  failed loud on *any* opaque `cn()`/`clsx()` arg, which would have broken adding
+  classes to the dominant shadcn pattern `cn("base", className)` (a real
+  regression caught in review). The shipped fix is precise: extend
+  `checkConflictingConditional` to inspect **object-expression keys** only, so
+  `clsx({ "gap-4": cond })` editing `gap` throws `CONFLICTING_CLASS`, while
+  identifier/spread args keep appending (regression-guarded by a
+  `cn("flex", className)` test). The 009 identifier/spread "gaps" are
+  reclassified as accepted residual (opaque args are not statically resolvable).
+
+All 11 plans are now landed/closed. Full suite green: build, typechecks, CLI 215,
+overlay 80, web 65, and `check:web` (typecheck + lint).
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 

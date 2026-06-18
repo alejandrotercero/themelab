@@ -20,7 +20,14 @@
 
 ## Why this matters
 
-The spike in plan 009 confirmed three real silent-loss gaps in `mutateClassName` (`packages/cli/src/transform.ts`). When a `className` is a `cn(...)`/`clsx(...)` call whose args include shapes that `checkConflictingConditional` does not inspect — an **object** (`clsx({ "gap-4": cond })`), an **identifier** (`cn(base, "flex")`), or a **spread** (`cn("flex", ...extra)`) — and the user edits a class, the code falls through to the `firstStr` append fallback. It appends the new class to the first string-literal arg and never errors, even though the edited class may live in (or conflict with) the uninspected arg. Result: a silent duplicate (`gap-4` and `gap-6` both present) or an edit applied to the wrong argument. The fix follows the resolver's established philosophy (ROADMAP §2 #4): **fail loud** with a typed error the overlay already surfaces, rather than guessing.
+The spike in plan 009 confirmed three silent-loss situations in `mutateClassName` (`packages/cli/src/transform.ts`) involving `cn(...)`/`clsx(...)` args that `checkConflictingConditional` does not inspect. But the three are NOT equivalent, and the right fix differs:
+
+- **Object form** (`clsx({ "gap-4": cond })`) — the conflict is **statically detectable**: the object's keys ARE the class names. Editing `gap` here silently duplicates (`gap-4` in the object + `gap-6` appended). This we can and should catch precisely.
+- **Identifier** (`cn(base, "flex")`) and **spread** (`cn("flex", ...extra)`) — these are **opaque**: we cannot see what classes they contribute at build time.
+
+**Critical constraint:** `cn("<base classes>", className)` — a static literal plus a `className` prop passthrough — is the single most common shadcn component pattern. Adding a brand-new class to such an element by appending it to the literal (`cn("flex p-4", className)`) is correct and is exactly what the user wants. The pre-existing code did this correctly. Therefore the fix must **NOT** blanket-reject every opaque arg — doing so would break class edits on a huge fraction of real shadcn components (a far worse regression than the rare duplicate it would prevent).
+
+So this plan: **precisely catches the detectable object-key conflict** (fail loud with `CONFLICTING_CLASS`, per ROADMAP §2 #4's fail-loud philosophy), and **leaves the opaque identifier/spread append path as-is** (accepted residual — appending a new static class is the correct common operation, and the rare "edited class actually lived in the opaque arg" case is fundamentally undetectable statically).
 
 ## Current state
 
@@ -84,40 +91,48 @@ The spike in plan 009 confirmed three real silent-loss gaps in `mutateClassName`
 
 ## Steps
 
-### Step 1: Make the `CallExpression` branch fail loud on unresolvable args
+### Step 1: Extend `checkConflictingConditional` to inspect object-expression keys
 
-In `mutateClassName`'s `CallExpression` branch, before the `firstStr` append fallback runs (i.e., when `found` is false), detect whether any arg is a shape we cannot safely reason about — `ObjectExpression`, `Identifier`, `SpreadElement`, `MemberExpression`, or a nested `CallExpression` — and if so, throw a typed error instead of appending. Prefer extending `checkConflictingConditional` to also return true for these arg types when the prefix can't be proven absent, OR add a focused pre-check. The simplest robust rule: **if the prefix isn't found in a string literal AND any arg is a non-(StringLiteral|Logical|Conditional) type, throw `CONFLICTING_CLASS`** (the class may live in the unresolvable arg). Keep the pure-string-literal append path working (when every arg is a StringLiteral and the prefix is genuinely new, append as today).
+Do NOT add a blanket "any unresolvable arg" throw. Instead, extend the EXISTING `checkConflictingConditional` (`packages/cli/src/transform.ts:546-577`) to also handle `ObjectExpression` args — mirroring how it already handles `LogicalExpression`/`ConditionalExpression`. For each object property, read the key's class string and, if any class matches the prefix, return `true` (which makes the existing `if (checkConflictingConditional(...)) throw CONFLICTING_CLASS` at the top of the update loop fire).
 
-Target shape:
+Object key AST shapes (jscodeshift tsx parser): a quoted key `"gap-4"` is a `StringLiteral` with `.value`; an unquoted key `flex` is an `Identifier` with `.name`. Skip computed keys and spread/rest properties (can't statically read them — leave them to the append path).
+
+Target shape (added inside the existing `for (const arg of args)` loop in `checkConflictingConditional`):
 
 ```ts
-if (!found) {
-  const hasUnresolvableArg = args.some((a: any) =>
-    a.type !== "StringLiteral" && a.type !== "LogicalExpression" && a.type !== "ConditionalExpression"
-  );
-  if (hasUnresolvableArg) {
-    throw new Error(`CONFLICTING_CLASS: "${update.tailwindPrefix}" cannot be safely applied — className uses a dynamic argument (object/identifier/spread)`);
+// ObjectExpression: `clsx({ "gap-4": cond })` — keys are the class names
+if (arg.type === "ObjectExpression") {
+  for (const prop of arg.properties ?? []) {
+    if (prop.computed) continue;
+    const key = prop.key;
+    const keyStr =
+      key?.type === "StringLiteral" ? key.value :
+      key?.type === "Identifier" ? key.name : null;
+    if (keyStr && keyStr.split(/\s+/).some((c: string) => classMatchesPrefix(c, prefix))) {
+      return true;
+    }
   }
-  const firstStr = args.find((a: any) => a.type === "StringLiteral");
-  if (firstStr) { /* unchanged append */ }
 }
 ```
 
+Do NOT change the `firstStr` append fallback — identifier/spread args must keep appending (the common `cn(base, className)` pattern).
+
 **Verify**: `pnpm typecheck` → exit 0.
 
-### Step 2: Update the 009 characterization tests to assert the fix
+### Step 2: Update the 009 characterization tests to match the precise fix
 
-In `packages/cli/src/__tests__/classname-dynamic-cases.test.ts`, change the three GAP tests:
-- **object form** (`clsx({ "gap-4": cond })`): was asserting the silent duplicate — change to `expect(() => updateClassName(...)).toThrow(/CONFLICTING_CLASS/)`.
-- **identifier arg** (`cn(base, "flex")`): was asserting no-throw — change to assert it throws `CONFLICTING_CLASS`.
-- **spread** (`cn("flex", ...extra)`): same — assert it throws `CONFLICTING_CLASS`.
-- Leave the SAFE and GUARDED tests (string literal, template literal, ternary, logical-AND, pure cn()) unchanged — they must still pass.
+In `packages/cli/src/__tests__/classname-dynamic-cases.test.ts`:
+- **object form, editing a class whose key matches** (`clsx("flex", { "gap-4": cond })` editing `gap`): change from asserting the silent duplicate to `expect(() => updateClassName(...)).toThrow(/CONFLICTING_CLASS/)`.
+- **object form, ADDING a class whose key does NOT match** (e.g. `clsx("flex", { "hidden": cond })` adding `p-4`): assert it does NOT throw and the new class is appended to the literal. (Add this case if a suitable fixture exists, or reuse the object fixture editing a non-conflicting prefix.)
+- **identifier arg** (`cn(base, "flex")`): change to assert it **does NOT throw** and appends the new class to the `"flex"` literal (this documents the accepted residual — opaque args keep appending). Update the describe/comment from "GAP" to "accepted residual (opaque arg — appends)".
+- **spread** (`cn("flex", ...extra)`): same as identifier — assert append, no throw, document as accepted residual.
+- Leave the SAFE and GUARDED tests (string literal, template literal, ternary, logical-AND, pure cn()) unchanged.
 
-**Verify**: `pnpm --filter themelab-cli exec vitest run` → all pass (the 3 flipped tests now assert throws; everything else green).
+**Verify**: `pnpm --filter themelab-cli exec vitest run` → all pass.
 
-### Step 3: Confirm no regression in the legitimate append path
+### Step 3: Add/confirm the regression guard for the common pattern
 
-Confirm the existing `update-classname.test.ts` cases (which include `cn(...)` with string literals and a brand-new-class append) still pass — the guard must not break adding a genuinely new class to an all-string-literal `cn()`.
+Add a test (or confirm an existing one) that `cn("flex", className)` (a literal + an identifier `className` prop) **+ adding a new prefix** appends to the literal and does NOT throw — this is the dominant shadcn pattern and must keep working. Also confirm the existing `update-classname.test.ts` cases still pass.
 
 **Verify**: `pnpm --filter themelab-cli exec vitest run` → all pass, including `update-classname.test.ts`.
 
@@ -126,17 +141,18 @@ Confirm the existing `update-classname.test.ts` cases (which include `cn(...)` w
 ALL must hold:
 - [ ] `pnpm typecheck` exits 0
 - [ ] `pnpm --filter themelab-cli exec vitest run` exits 0
-- [ ] Editing a class on object/identifier/spread `cn()`/`clsx()` args throws `CONFLICTING_CLASS` (asserted by the updated 009 tests)
+- [ ] Editing a class whose name matches an **object key** (`clsx({ "gap-4": cond })`) throws `CONFLICTING_CLASS`
+- [ ] Adding a class to a `cn()`/`clsx()` with an **identifier or spread** arg (e.g. `cn("flex", className)`) still appends — NO throw (regression guard for the common shadcn pattern)
 - [ ] Adding a new class to an all-string-literal `cn()` still works (no false-positive throw)
-- [ ] `transform.ts` change is confined to the `CallExpression` branch / `checkConflictingConditional`
+- [ ] `transform.ts` change is confined to `checkConflictingConditional` (object-key handling only)
 - [ ] No files outside the in-scope list modified
 - [ ] `plans/README.md` status row updated
 
 ## STOP conditions
 
 Stop and report if:
-- The guard causes existing `update-classname.test.ts` cases to fail (it's catching a legitimate append — the rule is too broad; report the failing case).
-- Throwing `CONFLICTING_CLASS` here is not surfaced acceptably by the overlay (check `server.ts:149-155` `extractErrorCode` — it should map it).
+- The object-key check causes existing `update-classname.test.ts` cases to fail (report the failing case — the rule may be too broad).
+- Adding a class to `cn("flex", className)` (identifier arg) throws — that means the change wrongly rejected the common pattern; the object-key handling must NOT affect identifier/spread args.
 - `transform.ts` no longer matches the "Current state" excerpts.
 
 ## Maintenance notes

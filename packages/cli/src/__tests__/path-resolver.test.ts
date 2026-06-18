@@ -68,4 +68,50 @@ describe("resolveProjectFilePath", () => {
     expect(resolveProjectFilePath(outsideFile, projectRoot)).toBeNull();
     expect(isProjectFilePathSafe(outsideFile, projectRoot)).toBe(false);
   });
+
+  it("rejects symlink that escapes the project root", () => {
+    // Skip gracefully on platforms where symlink creation is not permitted.
+    let canSymlink = true;
+    try {
+      const testLink = path.join(os.tmpdir(), `themelab-symtest-${process.pid}`);
+      fs.symlinkSync(os.tmpdir(), testLink);
+      fs.unlinkSync(testLink);
+    } catch {
+      canSymlink = false;
+    }
+    if (!canSymlink) return;
+
+    const projectRoot = makeProject();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "themelab-escape-"));
+    tempRoots.push(outsideDir);
+    fs.writeFileSync(path.join(outsideDir, "secret.txt"), "secret", "utf-8");
+    // Create a symlink inside the project that points outside.
+    fs.symlinkSync(outsideDir, path.join(projectRoot, "escape"));
+
+    expect(resolveProjectFilePath("escape/secret.txt", projectRoot)).toBeNull();
+    expect(isProjectFilePathSafe("escape/secret.txt", projectRoot)).toBe(false);
+  });
+
+  it("allows symlink that stays inside the project root", () => {
+    // Skip gracefully on platforms where symlink creation is not permitted.
+    let canSymlink = true;
+    try {
+      const testLink = path.join(os.tmpdir(), `themelab-symtest2-${process.pid}`);
+      fs.symlinkSync(os.tmpdir(), testLink);
+      fs.unlinkSync(testLink);
+    } catch {
+      canSymlink = false;
+    }
+    if (!canSymlink) return;
+
+    const projectRoot = makeProject();
+    // Create a real directory and file inside the project.
+    fs.mkdirSync(path.join(projectRoot, "real"));
+    fs.writeFileSync(path.join(projectRoot, "real", "Button.tsx"), "export {};", "utf-8");
+    // Create a symlink inside the project that points to another dir inside the project.
+    fs.symlinkSync(path.join(projectRoot, "real"), path.join(projectRoot, "link"));
+
+    expect(resolveProjectFilePath("link/Button.tsx", projectRoot)).not.toBeNull();
+    expect(isProjectFilePathSafe("link/Button.tsx", projectRoot)).toBe(true);
+  });
 });

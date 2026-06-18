@@ -9,16 +9,43 @@ update your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Bind proxy + WS to loopback; reject cross-origin WS | P1 | S | — | TODO |
-| 002 | Enable DNS-rebinding protection on the MCP server | P1 | S | — | TODO |
-| 003 | Give the `reorder` batch op an error boundary | P2 | S | — | TODO |
-| 004 | Wire web **typecheck** into root scripts and CI (lint deferred → 010) | P1 | S | — | TODO |
-| 005 | Test runner + characterization tests for the web theme engine | P2 | M | — | TODO |
-| 006 | Harden project-root containment against symlink escape | P2 | M | — | TODO |
-| 007 | Resolve the `ws` advisory + triage `pnpm audit` | P2 | S | — | TODO |
-| 008 | Fix stale "not publishing" claim and package author | P3 | S | — | TODO |
-| 009 | Investigate dynamic `className` silent-loss (spike) | P3 | M | — | TODO |
+| 001 | Bind proxy + WS to loopback; reject cross-origin WS | P1 | S | — | DONE |
+| 002 | Enable DNS-rebinding protection on the MCP server | P1 | S | — | DONE |
+| 003 | Give the `reorder` batch op an error boundary | P2 | S | — | DONE (downgraded — see note) |
+| 004 | Wire web **typecheck** into root scripts and CI (lint deferred → 010) | P1 | S | — | DONE |
+| 005 | Test runner + characterization tests for the web theme engine | P2 | M | — | DONE |
+| 006 | Harden project-root containment against symlink escape | P2 | M | — | DONE |
+| 007 | Resolve the `ws` advisory + triage `pnpm audit` | P2 | S | — | DONE |
+| 008 | Fix stale "not publishing" claim and package author | P3 | S | — | DONE |
+| 009 | Investigate dynamic `className` silent-loss (spike) | P3 | M | — | DONE (found 3 gaps → 011) |
 | 010 | Clean up web eslint errors + enable lint gate | P3 | M | 004 | TODO |
+| 011 | Fail loud on unresolvable cn()/clsx() args (fix 009 gaps) | P3 | S | 009 | TODO |
+
+## Implementation session — 2026-06-18
+
+Plans 001–009 were implemented by dispatched executor subagents (one per plan,
+isolated review per the `execute` flow), each diff reviewed and re-verified by
+the advisor, then committed to branch `advisor/implement-plans` and merged to
+`main`. Outcomes:
+
+- **001, 002, 005, 006, 007, 008** — landed as specified; all done criteria
+  re-verified (gates green).
+- **003** — DOWNGRADED during execution. The premise (a reorder throw poisons
+  the whole batch) did **not** reproduce: `executeBatch` Phase 4 already wraps
+  `applyOp` in a per-op try/catch, and `mutateReorder` throws *before* mutating
+  the AST. The change was kept as harmless defense-in-depth (every structural op
+  self-contains its errors) plus a characterization test, but it is **not** a
+  bug fix. (Advisor vetting miss — recorded honestly.)
+- **004** — rescoped to **typecheck-only** in CI (web has 31 pre-existing lint
+  errors); lint gate deferred to **010**.
+- **009** — the spike **found 3 real silent-loss gaps** in `mutateClassName`
+  (object / identifier / spread `cn()`·`clsx()` args fall through
+  `checkConflictingConditional` to the `firstStr` append fallback with no error
+  → silent duplicate or wrong-target edit). Characterization tests committed;
+  fix tracked in **011**.
+
+Follow-ups still open: **010** (web lint cleanup + gate) and **011** (fix the
+className gaps 009 found).
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 

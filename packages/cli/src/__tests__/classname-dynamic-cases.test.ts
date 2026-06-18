@@ -97,16 +97,13 @@ describe("cn() with ternary conditional arg (cond ? 'a' : 'b')", () => {
 
 // ---------------------------------------------------------------------------
 // Shape 3: clsx() with object-expression arg  → { "gap-4": cond }
-// GAP: ObjectExpression is not a LogicalExpression or ConditionalExpression,
-//      so checkConflictingConditional returns false. The code then looks for a
-//      StringLiteral arg to mutate. "flex" is found but doesn't match "gap",
-//      so found=false and the new class is APPENDED TO "flex" silently — the
-//      object entry is untouched and no error is raised.
+// FIXED: ObjectExpression keys are now inspected by checkConflictingConditional.
+//        When the edited prefix matches an object key, CONFLICTING_CLASS is thrown
+//        instead of silently appending a duplicate class.
 // ---------------------------------------------------------------------------
-describe("clsx() with object-expression arg ({ 'gap-4': cond }) — GAP", () => {
-  it("does NOT throw even though gap lives in an object expression", () => {
+describe("clsx() with object-expression arg ({ 'gap-4': cond })", () => {
+  it("throws CONFLICTING_CLASS when editing a prefix that matches an object key", () => {
     const { line, col } = findElement("classname-cn-object.tsx", "div");
-    // Should throw CONFLICTING_CLASS or DYNAMIC_CLASSNAME, but currently does not.
     expect(() =>
       updateClassName(
         path.join(fixturesDir, "classname-cn-object.tsx"),
@@ -114,35 +111,35 @@ describe("clsx() with object-expression arg ({ 'gap-4': cond }) — GAP", () => 
         col,
         [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
       )
-    ).not.toThrow();
+    ).toThrow(/CONFLICTING_CLASS/);
   });
 
-  it("silently appends the new gap class to the first StringLiteral arg instead of erroring", () => {
+  it("does NOT throw and appends when adding a prefix that does NOT match any object key", () => {
     const { line, col } = findElement("classname-cn-object.tsx", "div");
+    // "p" prefix is not a key in the object — safe to append to the literal
     const result = updateClassName(
       path.join(fixturesDir, "classname-cn-object.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+      [{ tailwindPrefix: "p", tailwindToken: "4", value: "16px", relatedPrefixes: [] }]
     );
-    // The new class is appended to the "flex" literal, NOT replacing the object entry
-    expect(result).toContain("flex gap-6");
-    // The object form { "gap-4": isMobile } is still present in the output
+    // New class is appended to the "flex" literal
+    expect(result).toContain("flex p-4");
+    // The object form is still present and untouched
     expect(result).toContain('"gap-4": isMobile');
-    // Both gap-4 (in object) and gap-6 (newly appended) now coexist — silent duplication
-    expect(result).toContain("gap-4");
-    expect(result).toContain("gap-6");
   });
 });
 
 // ---------------------------------------------------------------------------
 // Shape 4: cn() with identifier arg  → cn(base, "flex")
-// GAP: The identifier `base` is not a StringLiteral, so the prefix check skips
-//      it. If the target prefix isn't in the literal "flex" arg either, the
-//      code appends to the first StringLiteral it finds ("flex"), bypassing
-//      `base` entirely. No error is raised.
+// ACCEPTED RESIDUAL: Identifier args are opaque at build time — we cannot
+//      statically determine what classes they contribute. The correct behavior
+//      (per plan 011) is to append the new class to the nearest StringLiteral
+//      arg without throwing. Adding a brand-new class to such an element is
+//      the correct user intent, and is safe when the class is not present in
+//      any inspectable arg.
 // ---------------------------------------------------------------------------
-describe("cn() with identifier arg (cn(base, 'flex')) — GAP", () => {
+describe("cn() with identifier arg (cn(base, 'flex')) — accepted residual (opaque arg — appends)", () => {
   it("does NOT throw when editing a prefix that might be in the identifier arg", () => {
     const { line, col } = findElement("classname-cn-identifier.tsx", "div");
     expect(() =>
@@ -155,7 +152,7 @@ describe("cn() with identifier arg (cn(base, 'flex')) — GAP", () => {
     ).not.toThrow();
   });
 
-  it("silently appends new class to the first StringLiteral arg rather than updating the identifier", () => {
+  it("appends new class to the first StringLiteral arg (opaque identifier arg is bypassed)", () => {
     const { line, col } = findElement("classname-cn-identifier.tsx", "div");
     const result = updateClassName(
       path.join(fixturesDir, "classname-cn-identifier.tsx"),
@@ -172,11 +169,12 @@ describe("cn() with identifier arg (cn(base, 'flex')) — GAP", () => {
 
 // ---------------------------------------------------------------------------
 // Shape 5: cn() with spread element arg  → cn("flex", ...extraClasses)
-// GAP: SpreadElement is not handled by checkConflictingConditional and is not
-//      a StringLiteral, so it is silently skipped. The new class is appended
-//      to the first StringLiteral arg ("flex") if no literal matches the prefix.
+// ACCEPTED RESIDUAL: Spread args are opaque at build time — we cannot
+//      statically determine what classes they contribute. The correct behavior
+//      (per plan 011) is to append the new class to the nearest StringLiteral
+//      arg without throwing. This is the same accepted residual as identifier args.
 // ---------------------------------------------------------------------------
-describe("cn() with spread element arg (cn('flex', ...extraClasses)) — GAP", () => {
+describe("cn() with spread element arg (cn('flex', ...extraClasses)) — accepted residual (opaque arg — appends)", () => {
   it("does NOT throw when editing a prefix that might be in the spread", () => {
     const { line, col } = findElement("classname-cn-spread.tsx", "div");
     expect(() =>
@@ -189,7 +187,7 @@ describe("cn() with spread element arg (cn('flex', ...extraClasses)) — GAP", (
     ).not.toThrow();
   });
 
-  it("silently appends new class to the first StringLiteral arg rather than erroring", () => {
+  it("appends new class to the first StringLiteral arg (opaque spread arg is bypassed)", () => {
     const { line, col } = findElement("classname-cn-spread.tsx", "div");
     const result = updateClassName(
       path.join(fixturesDir, "classname-cn-spread.tsx"),
@@ -285,5 +283,52 @@ describe("cn() with logical-AND in existing fixture (coverage confirmation)", ()
         [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "#ef4444", relatedPrefixes: [] }]
       )
     ).toThrow(/CONFLICTING_CLASS/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REGRESSION GUARD: cn("flex items-center", className) — dominant shadcn pattern
+// Adding a brand-new class to a cn() with a literal + identifier arg must
+// append to the literal and NOT throw (plan 011 §"Critical constraint").
+// ---------------------------------------------------------------------------
+describe("cn('flex items-center', className) — regression guard for dominant shadcn pattern", () => {
+  it("does NOT throw when adding a new prefix to cn(<literal>, <identifier>)", () => {
+    const { line, col } = findElement("classname-cn-literal-then-identifier.tsx", "button");
+    expect(() =>
+      updateClassName(
+        path.join(fixturesDir, "classname-cn-literal-then-identifier.tsx"),
+        line,
+        col,
+        [{ tailwindPrefix: "p", tailwindToken: "4", value: "16px", relatedPrefixes: [] }]
+      )
+    ).not.toThrow();
+  });
+
+  it("appends the new class to the literal arg, leaving the identifier arg untouched", () => {
+    const { line, col } = findElement("classname-cn-literal-then-identifier.tsx", "button");
+    const result = updateClassName(
+      path.join(fixturesDir, "classname-cn-literal-then-identifier.tsx"),
+      line,
+      col,
+      [{ tailwindPrefix: "p", tailwindToken: "4", value: "16px", relatedPrefixes: [] }]
+    );
+    // New class is appended to the literal "flex items-center"
+    expect(result).toContain("flex items-center p-4");
+    // The identifier `className` is still present and unchanged
+    expect(result).toContain("className");
+  });
+
+  it("replaces an existing class in the literal arg without throwing", () => {
+    const { line, col } = findElement("classname-cn-literal-then-identifier.tsx", "button");
+    const result = updateClassName(
+      path.join(fixturesDir, "classname-cn-literal-then-identifier.tsx"),
+      line,
+      col,
+      [{ tailwindPrefix: "flex", tailwindToken: "1", value: "flex-1", relatedPrefixes: [] }]
+    );
+    expect(result).toContain("flex-1 items-center");
+    expect(result).not.toContain('"flex "');
+    // The identifier `className` is still present
+    expect(result).toContain("className");
   });
 });

@@ -572,6 +572,19 @@ function checkConflictingConditional(
         }
       }
     }
+    // ObjectExpression: `clsx({ "gap-4": cond })` — keys are the class names
+    if (arg.type === "ObjectExpression") {
+      for (const prop of arg.properties ?? []) {
+        if (prop.computed) continue;
+        const key = prop.key;
+        const keyStr =
+          key?.type === "StringLiteral" ? key.value :
+          key?.type === "Identifier" ? key.name : null;
+        if (keyStr && keyStr.split(/\s+/).some((c: string) => classMatchesPrefix(c, prefix))) {
+          return true;
+        }
+      }
+    }
   }
   return false;
 }

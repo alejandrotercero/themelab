@@ -22,6 +22,14 @@
 
 `apps/web` is the public-facing theme studio (deployed to Vercel), but **nothing in CI or the root scripts type-checks or lints it**. The root `typecheck` script only covers `themelab-cli` and `@themelab/overlay`; CI runs that root script plus the package builds/tests. So the web app can accumulate TypeScript errors or lint violations and CI stays green — a false "the repo is valid" signal on the one package users actually see. The web app already *has* `typecheck` and `lint` scripts; they just aren't invoked. This plan wires them in.
 
+> **Scope decision (2026-06-18):** the web app currently has **31 pre-existing
+> eslint errors** (`react-hooks/refs`, `react-hooks/set-state-in-effect`,
+> `react/no-unescaped-entities`), some of which are in the documented kibo
+> color-picker intentional patch. Per operator decision, **this plan wires the
+> TYPECHECK gate only** (typecheck passes today). The lint gate is deferred to
+> **plan 010** (web lint cleanup), which fixes the errors and then adds lint to
+> this same `check:web`/CI wiring.
+
 ## Current state
 
 - Root `package.json` — `typecheck` deliberately filters to cli + overlay only:
@@ -88,26 +96,30 @@
 
 ### Step 1: Establish the current web baseline (read-only)
 
-Before wiring anything, find out whether the web app already passes its own checks:
+Before wiring anything, confirm the web typecheck passes (it should — the lint
+errors are handled by the separate plan 010):
 
 ```
 pnpm install
 pnpm --filter @themelab/web typecheck
-pnpm --filter @themelab/web lint
 ```
 
-- If **both pass** (exit 0): proceed to Step 2 — the gate can be added cleanly.
-- If **either fails**: STOP and report the failures. Do not fix web source in this plan, and do not add a gate that will immediately turn CI red. The operator decides whether to fix the web app first or scope this plan differently. (Record the failing output in your report.)
+- If typecheck **passes** (exit 0): proceed to Step 2.
+- If typecheck **fails**: STOP and report. (If it fails with `Cannot find module
+  '@vercel/analytics/next'`, the fix is just `pnpm install` to sync node_modules
+  with the lockfile — that dep is in the lockfile but may be uninstalled.)
 
-### Step 2: Add a root script for the web checks
+### Step 2: Add a root script for the web typecheck
 
-In root `package.json`, add a script (do not modify the existing `typecheck`):
+In root `package.json`, add (do not modify the existing `typecheck`):
 
 ```json
 "typecheck:web": "pnpm --filter @themelab/web typecheck",
-"lint:web": "pnpm --filter @themelab/web lint",
-"check:web": "pnpm typecheck:web && pnpm lint:web"
+"check:web": "pnpm typecheck:web"
 ```
+
+(`check:web` is intentionally typecheck-only for now; plan 010 will extend it to
+`pnpm typecheck:web && pnpm lint:web` once the lint errors are fixed.)
 
 **Verify**: `pnpm check:web` → exit 0.
 
@@ -116,7 +128,7 @@ In root `package.json`, add a script (do not modify the existing `typecheck`):
 In `.github/workflows/ci.yml`, add a step to the existing `typecheck` job (after `pnpm install --frozen-lockfile`), so it runs on the same Node-22 runner:
 
 ```yaml
-      - name: Typecheck + lint web
+      - name: Typecheck web
         run: pnpm check:web
 ```
 
@@ -133,7 +145,7 @@ Match the existing indentation and YAML style in the file exactly.
 
 ALL must hold:
 
-- [ ] `pnpm check:web` exists in root `package.json` and exits 0
+- [ ] `pnpm check:web` exists in root `package.json` (typecheck-only) and exits 0
 - [ ] `.github/workflows/ci.yml` contains a step running `pnpm check:web` in the `typecheck` job
 - [ ] `ci.yml` is valid YAML
 - [ ] The existing root `typecheck` script is unchanged

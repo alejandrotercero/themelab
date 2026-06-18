@@ -12,12 +12,13 @@ update your row when done.
 | 001 | Bind proxy + WS to loopback; reject cross-origin WS | P1 | S | — | TODO |
 | 002 | Enable DNS-rebinding protection on the MCP server | P1 | S | — | TODO |
 | 003 | Give the `reorder` batch op an error boundary | P2 | S | — | TODO |
-| 004 | Wire web typecheck + lint into root scripts and CI | P1 | S | — | TODO |
+| 004 | Wire web **typecheck** into root scripts and CI (lint deferred → 010) | P1 | S | — | TODO |
 | 005 | Test runner + characterization tests for the web theme engine | P2 | M | — | TODO |
 | 006 | Harden project-root containment against symlink escape | P2 | M | — | TODO |
 | 007 | Resolve the `ws` advisory + triage `pnpm audit` | P2 | S | — | TODO |
 | 008 | Fix stale "not publishing" claim and package author | P3 | S | — | TODO |
 | 009 | Investigate dynamic `className` silent-loss (spike) | P3 | M | — | TODO |
+| 010 | Clean up web eslint errors + enable lint gate | P3 | M | 004 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 
@@ -33,8 +34,13 @@ follow-up plan).
 
 ## Dependency notes
 
-- No hard ordering dependencies between plans — all nine touch disjoint files and can be done
-  in any order. The ordering above is by leverage/risk, not requirement.
+- **2026-06-18 update:** plan 004 was scoped to **typecheck-only** in CI because the web app
+  has 31 pre-existing eslint errors (some in the documented kibo intentional patch). The lint
+  gate is deferred to plan **010**, which fixes the errors and extends 004's `check:web` to
+  include lint. 010 depends on 004. Also note: the current `node_modules` was stale — `pnpm
+  install` is required so `@vercel/analytics/next` resolves for the web typecheck.
+- Aside from 004→010, no hard ordering dependencies between plans — they touch largely disjoint
+  files and can be done in any order. The ordering above is by leverage/risk, not requirement.
 - **Soft couplings to watch:**
   - **004 ↔ 005**: 004 wires web typecheck/lint into CI; 005 adds the web test runner. If both
     land, fold `pnpm --filter @themelab/web test` into 004's `check:web`/CI step (005's

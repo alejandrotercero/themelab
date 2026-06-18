@@ -37,7 +37,7 @@ export function SwatchPopover({ value, onChange, title, className }: SwatchPopov
           className,
         )}
       />
-      <PopoverContent align="start" className="tl-overlay w-64 gap-3 p-3">
+      <PopoverContent align="start" className="tl-overlay w-72 gap-3 p-3">
         <ColorPicker
           defaultValue={value}
           onChange={(next) => {

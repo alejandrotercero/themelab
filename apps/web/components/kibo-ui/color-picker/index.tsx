@@ -143,21 +143,16 @@ export const ColorPickerSelection = memo(
   ({ className, ...props }: ColorPickerSelectionProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const [positionX, setPositionX] = useState(0);
-    const [positionY, setPositionY] = useState(0);
     const { hue, saturation, lightness, setSaturation, setLightness } = useColorPicker();
 
-    // Place the thumb to match the seeded color on mount — Kibo otherwise leaves
-    // it at (0,0) until the first drag, so the square wouldn't reflect the value.
-    useEffect(() => {
-      const x = saturation / 100;
-      const topLightness = x < 0.01 ? 100 : 50 + 50 * (1 - x);
-      const y = topLightness === 0 ? 0 : 1 - lightness / topLightness;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount-only thumb placement patch, see apps/web/CLAUDE.md
-      setPositionX(Math.min(1, Math.max(0, x)));
-      setPositionY(Math.min(1, Math.max(0, y)));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    // Derive the thumb position from the live saturation/lightness every render so
+    // it tracks ANY change to the color — drag, eyedropper, or a typed hex — not
+    // just the initial mount. (Replaces Kibo's mount-only placement hack.)
+    const x = saturation / 100;
+    const topLightness = x < 0.01 ? 100 : 50 + 50 * (1 - x);
+    const yRaw = topLightness === 0 ? 0 : 1 - lightness / topLightness;
+    const positionX = Math.min(1, Math.max(0, x));
+    const positionY = Math.min(1, Math.max(0, yRaw));
 
     const backgroundGradient = useMemo(() => {
       return `linear-gradient(0deg, rgba(0,0,0,1), rgba(0,0,0,0)),
@@ -179,8 +174,6 @@ export const ColorPickerSelection = memo(
           0,
           Math.min(1, (event.clientY - rect.top) / rect.height)
         );
-        setPositionX(x);
-        setPositionY(y);
         setSaturation(x * 100);
         const topLightness = x < 0.01 ? 100 : 50 + 50 * (1 - x);
         const lightness = topLightness * (1 - y);
@@ -349,24 +342,90 @@ export const ColorPickerOutput = ({
   );
 };
 
-type PercentageInputProps = ComponentProps<typeof Input>;
+// Editable hex field: type a #rrggbb (or #rgb) and it drives the picker. Kibo's
+// original field is readOnly; this lets users paste/enter exact colors. While the
+// field is focused we show the raw text so partial input isn't clobbered; on blur
+// we fall back to the live color (any valid keystroke is applied immediately).
+const HexInput = ({ className, ...props }: HTMLAttributes<HTMLDivElement>) => {
+  const { hue, saturation, lightness, setHue, setSaturation, setLightness } =
+    useColorPicker();
+  const live = Color.hsl(hue, saturation, lightness).hex();
+  const [text, setText] = useState(live);
+  const [editing, setEditing] = useState(false);
 
-const PercentageInput = ({ className, ...props }: PercentageInputProps) => {
+  const apply = (raw: string) => {
+    const norm = `#${raw.trim().replace(/^#/, "")}`;
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(norm)) {
+      const [h, s, l] = Color(norm).hsl().array();
+      setHue(h || 0);
+      setSaturation(s);
+      setLightness(l);
+    }
+  };
+
   return (
-    <div className="relative">
+    <div className={cn("w-full", className)} {...props}>
       <Input
-        readOnly
+        autoComplete="off"
+        className="h-8 w-full bg-secondary px-2 text-xs shadow-none"
+        onBlur={() => setEditing(false)}
+        onChange={(event) => {
+          setText(event.target.value);
+          apply(event.target.value);
+        }}
+        onFocus={() => {
+          setEditing(true);
+          setText(live);
+        }}
+        spellCheck={false}
         type="text"
-        {...props}
-        className={cn(
-          "h-8 w-[3.25rem] rounded-l-none bg-secondary px-2 text-xs shadow-none",
-          className
-        )}
+        value={editing ? text : live}
       />
-      <span className="-translate-y-1/2 absolute top-1/2 right-2 text-muted-foreground text-xs">
-        %
-      </span>
     </div>
+  );
+};
+
+// One editable numeric channel (R/G/B or H/S/L). Keeps raw text while focused so
+// partial input isn't clobbered; commits clamped to [0, max] on each keystroke.
+const ChannelInput = ({
+  value,
+  max,
+  onCommit,
+  first,
+  last,
+}: {
+  value: number;
+  max: number;
+  onCommit: (n: number) => void;
+  first?: boolean;
+  last?: boolean;
+}) => {
+  const [text, setText] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <Input
+      className={cn(
+        "h-8 min-w-0 flex-1 bg-secondary px-1.5 text-center text-xs shadow-none",
+        !first && "rounded-l-none",
+        !last && "rounded-r-none"
+      )}
+      inputMode="numeric"
+      onBlur={() => setEditing(false)}
+      onChange={(event) => {
+        setText(event.target.value);
+        const n = Number(event.target.value);
+        if (event.target.value.trim() !== "" && Number.isFinite(n)) {
+          onCommit(Math.min(max, Math.max(0, n)));
+        }
+      }}
+      onFocus={() => {
+        setEditing(true);
+        setText(String(value));
+      }}
+      type="text"
+      value={editing ? text : String(value)}
+    />
   );
 };
 
@@ -376,59 +435,44 @@ export const ColorPickerFormat = ({
   className,
   ...props
 }: ColorPickerFormatProps) => {
-  const { hue, saturation, lightness, alpha, mode } = useColorPicker();
+  const { hue, saturation, lightness, alpha, mode, setHue, setSaturation, setLightness } =
+    useColorPicker();
   const color = Color.hsl(hue, saturation, lightness, alpha / 100);
 
   if (mode === "hex") {
-    const hex = color.hex();
-
-    return (
-      <div
-        className={cn(
-          "-space-x-px relative flex w-full items-center rounded-md shadow-sm",
-          className
-        )}
-        {...props}
-      >
-        <Input
-          className="h-8 rounded-r-none bg-secondary px-2 text-xs shadow-none"
-          readOnly
-          type="text"
-          value={hex}
-        />
-        <PercentageInput value={alpha} />
-      </div>
-    );
+    return <HexInput className={className} {...props} />;
   }
 
   if (mode === "rgb") {
     const rgb = color
       .rgb()
       .array()
+      .slice(0, 3)
       .map((value) => Math.round(value));
+    const setChannel = (index: number, n: number) => {
+      const next = [...rgb];
+      next[index] = n;
+      const [h, s, l] = Color.rgb(next).hsl().array();
+      setHue(h || 0);
+      setSaturation(s);
+      setLightness(l);
+    };
 
     return (
       <div
-        className={cn(
-          "-space-x-px flex items-center rounded-md shadow-sm",
-          className
-        )}
+        className={cn("-space-x-px flex w-full items-center rounded-md shadow-sm", className)}
         {...props}
       >
         {rgb.map((value, index) => (
-          <Input
-            className={cn(
-              "h-8 rounded-r-none bg-secondary px-2 text-xs shadow-none",
-              index && "rounded-l-none",
-              className
-            )}
+          <ChannelInput
+            first={index === 0}
             key={index}
-            readOnly
-            type="text"
+            last={index === rgb.length - 1}
+            max={255}
+            onCommit={(n) => setChannel(index, n)}
             value={value}
           />
         ))}
-        <PercentageInput value={alpha} />
       </div>
     );
   }
@@ -437,6 +481,7 @@ export const ColorPickerFormat = ({
     const rgb = color
       .rgb()
       .array()
+      .slice(0, 3)
       .map((value) => Math.round(value));
 
     return (
@@ -445,8 +490,7 @@ export const ColorPickerFormat = ({
           className="h-8 w-full bg-secondary px-2 text-xs shadow-none"
           readOnly
           type="text"
-          value={`rgba(${rgb.join(", ")}, ${alpha}%)`}
-          {...props}
+          value={`rgb(${rgb.join(", ")})`}
         />
       </div>
     );
@@ -456,30 +500,30 @@ export const ColorPickerFormat = ({
     const hsl = color
       .hsl()
       .array()
+      .slice(0, 3)
       .map((value) => Math.round(value));
+    const maxes = [360, 100, 100];
+    const setChannel = (index: number, n: number) => {
+      if (index === 0) setHue(n);
+      else if (index === 1) setSaturation(n);
+      else setLightness(n);
+    };
 
     return (
       <div
-        className={cn(
-          "-space-x-px flex items-center rounded-md shadow-sm",
-          className
-        )}
+        className={cn("-space-x-px flex w-full items-center rounded-md shadow-sm", className)}
         {...props}
       >
         {hsl.map((value, index) => (
-          <Input
-            className={cn(
-              "h-8 rounded-r-none bg-secondary px-2 text-xs shadow-none",
-              index && "rounded-l-none",
-              className
-            )}
+          <ChannelInput
+            first={index === 0}
             key={index}
-            readOnly
-            type="text"
+            last={index === hsl.length - 1}
+            max={maxes[index]}
+            onCommit={(n) => setChannel(index, n)}
             value={value}
           />
         ))}
-        <PercentageInput value={alpha} />
       </div>
     );
   }

@@ -131,7 +131,12 @@ export function createMcpHttpServer(deps: McpServerDeps, port: number): HttpServ
     }
     // Fresh server + transport per request (stateless).
     const server = buildMcpServer(deps);
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+      enableDnsRebindingProtection: true,
+      allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
+    });
     res.on("close", () => {
       void transport.close();
       void server.close();

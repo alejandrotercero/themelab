@@ -5,7 +5,7 @@
 > STOP condition occurs, stop and report. When done, update the status row in
 > `plans/README.md`.
 >
-> **Drift check (run first)**: `git diff --stat <planned-at SHA>..HEAD -- packages/cli/src/transform.ts`
+> **Drift check (run first)**: `git diff --stat c590dac..HEAD -- packages/cli/src/transform.ts`
 > If `transform.ts` changed since this plan was written, compare the "Current
 > state" excerpts against live code; on a mismatch, STOP.
 
@@ -16,7 +16,7 @@
 - **Risk**: MED (changes behavior of class edits on dynamic className — from silent to a typed error)
 - **Depends on**: plan 009 (its characterization tests document the gaps and must be updated here)
 - **Category**: bug
-- **Planned at**: commit `<fill with git rev-parse --short HEAD>`, 2026-06-18
+- **Planned at**: commit `c590dac`, 2026-06-18
 
 ## Why this matters
 

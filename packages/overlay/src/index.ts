@@ -1,7 +1,7 @@
 // packages/overlay/src/index.ts
 import { connect, disconnect, send, onMessage } from "./bridge.js";
 import { mountToolbar, destroyToolbar, setOnGenerate, setOnGenerateAi, setOnCanvasUndo, updateGenerateButton, showToast, getShadowRoot } from "./toolbar.js";
-import { initSelection, deactivateSelection, clearSelection, setEnabled } from "./selection.js";
+import { initSelection, deactivateSelection, clearSelection, setEnabled, clearResolutionCache } from "./selection.js";
 import { initHighlightCanvas, destroyHighlightCanvas } from "./highlight-canvas.js";
 import { initDrag, deactivateDrag } from "./drag.js";
 import { initAnnotationLayer, destroyAnnotationLayer, clearAnnotationLayer, removeAnnotationElement } from "./annotation-layer.js";
@@ -165,6 +165,7 @@ function resetOverlayState(): void {
   resetCanvasTransform();
   clearElementCache();
   clearVisibilityCache();
+  clearResolutionCache();
 
   if (getActiveTool() !== "select") {
     setActiveTool("select");
@@ -285,6 +286,7 @@ function init(): void {
     // Clear caches on tool switch
     clearElementCache();
     clearVisibilityCache();
+    clearResolutionCache();
 
     // Enable/disable selection capture-phase listeners based on tool
     setEnabled(tool === "select");
@@ -429,6 +431,7 @@ function init(): void {
 function close(): void {
   clearElementCache();
   clearVisibilityCache();
+  clearResolutionCache();
   deactivateSelection();
   destroyHighlightCanvas();
   deactivateDrag();

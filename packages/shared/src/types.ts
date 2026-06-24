@@ -432,6 +432,12 @@ export interface ComponentInfo {
     lineNumber: number;
     columnNumber: number;
     componentName: string;
+    // Source origin of this frame, when classified. The array order is the raw
+    // owner chain (nearest-first) — consumers that depend on structure (e.g.
+    // drag's stack[1] parent) read it directly; these fields are additive hints
+    // for presentation only.
+    origin?: "app" | "package" | "unknown";
+    packageName?: string | null;
   }>;
   boundingRect: {
     top: number;
@@ -439,6 +445,10 @@ export interface ComponentInfo {
     width: number;
     height: number;
   };
+  // Compact, signal-aware ancestor trace derived from `stack` (app frames with
+  // locations, dependency/shared-UI frames as free name-only context). Surfaced
+  // to agents via the MCP get_selection tool.
+  trace?: string;
   jsxPath?: JSXStructuralPath;
   // Staleness baseline captured at selection time — file mtime (ms) and size.
   // Sent with edits so the CLI can reject mutations against a file that changed

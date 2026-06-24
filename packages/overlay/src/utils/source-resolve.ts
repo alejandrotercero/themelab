@@ -144,12 +144,17 @@ export function resolveFrameFilePath(rawFileName: string | undefined | null): st
 
   // Last resort: if it has a source file extension, use it even if isSourceFile rejects
   // (isSourceFile may reject valid paths that happen to match a filter pattern)
-  // Reject paths that are clearly library/external code
+  // Reject paths that are clearly library/external code.
+  //
+  // Note: we intentionally do NOT reject leading "../" here. In a monorepo a
+  // first-party file legitimately resolves to "../../packages/ui/Button.tsx",
+  // which is editable app source. Library-vs-app is now decided by
+  // classify-source-path.ts (positive package detection), not by a path-shape
+  // denylist, so the only hard rejects left are bundler output and node_modules.
   if (
     extracted &&
     /\.(tsx?|jsx?|mjs|mdx?)$/.test(extracted) &&
     !extracted.includes("node_modules") &&
-    !extracted.startsWith("../") &&            // traverses outside project
     !extracted.includes("/dist/") &&           // built library output
     !extracted.includes("/build/") &&          // built library output
     !isBundlerChunkName(extracted)             // bundler output chunk, not real source

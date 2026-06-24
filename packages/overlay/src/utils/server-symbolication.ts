@@ -188,9 +188,16 @@ function enrichServerFrameLocations(rootFiber: Fiber, frames: StackFrame[]): Sta
  * Drop-in replacement for bippy/source's getOwnerStack that additionally
  * resolves Next.js server-component frames to real source locations.
  * On non-Next.js apps this is exactly getOwnerStack.
+ *
+ * `fetchFn` is bippy's bundle/source-map fetch hook (see source-fetch-queue.ts):
+ * passing the queue's abort signal lets a stuck resolution be cancelled rather
+ * than hang behind a saturated connection pool.
  */
-export async function getResolvedOwnerStack(fiber: Fiber): Promise<StackFrame[]> {
-  const frames = await getOwnerStack(fiber);
+export async function getResolvedOwnerStack(
+  fiber: Fiber,
+  fetchFn?: (url: string) => Promise<Response>,
+): Promise<StackFrame[]> {
+  const frames = await getOwnerStack(fiber, true, fetchFn);
   if (!frames || frames.length === 0 || !isNextProjectRuntime()) return frames;
 
   const enrichedFrames = enrichServerFrameLocations(fiber, frames);

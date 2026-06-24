@@ -16,12 +16,18 @@
 // Therefore, no viewportToPage/pageToViewport mapping is needed in this module.
 //
 import { getFiberFromHostInstance, getDisplayName, isCompositeFiber, isInstrumentationActive, instrument } from "bippy";
+import { getSource } from "bippy/source";
 import { resolveFrameFilePath } from "./utils/source-resolve.js";
+import { classifySourcePath, type SourceOrigin } from "./utils/classify-source-path.js";
 import { getResolvedOwnerStack } from "./utils/server-symbolication.js";
+import { runQueuedSourceFetch, createSourceFetch } from "./utils/source-fetch-queue.js";
+import { formatComponentTrace } from "./utils/component-trace.js";
 import type { ComponentInfo, JSXStructuralPath } from "@themelab/shared";
 import { getShadowRoot, updateComponentDetail, showToast } from "./toolbar.js";
 import { isInternalName, isMdxFilePath, isValidElement } from "./utils/component-filter.js";
 import { buildJSXPath } from "./utils/jsx-path.js";
+import { freezeAnimations } from "./utils/freeze-animations.js";
+import { freezeUpdates } from "./utils/freeze-updates.js";
 import { getElementsInArea } from "./utils/area-selection.js";
 import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
 import { setHoverTarget, setSelectionTarget, setMultiSelectionTargets, clearMultiSelection, isMultiSelectActive, getHandleAtPoint, getSelectionGeometry, type CornerHandle } from "./highlight-canvas.js";
@@ -47,19 +53,163 @@ if (!isInstrumentationActive()) {
   });
 }
 
+type StackEntry = {
+  componentName: string;
+  filePath: string;
+  lineNumber: number;
+  columnNumber: number;
+  // Optional to match the shared ComponentInfo.stack shape (clone-ancestry
+  // entries predate classification); the resolve paths always populate them.
+  origin?: SourceOrigin;
+  packageName?: string | null;
+};
+
 type ResolvedComponent = {
   tagName: string;
   componentName: string;
   filePath: string;
   lineNumber: number;
   columnNumber: number;
-  stack: Array<{ componentName: string; filePath: string; lineNumber: number; columnNumber: number }>;
+  stack: StackEntry[];
+  trace?: string;
   jsxPath?: JSXStructuralPath;
 };
 
+/** A composite component name worth surfacing: PascalCase and not a framework
+ *  internal (MDX synthetic names are accepted since the file carries the signal). */
+function isAcceptableComponentName(name: string | undefined | null, filePath: string): boolean {
+  if (!name || name[0] !== name[0].toUpperCase()) return false;
+  if (filePath && isMdxFilePath(filePath)) return true;
+  return !isInternalName(name);
+}
+
+/** Build a classified stack entry from a raw (still bundler-wrapped) fileName.
+ *  Classification runs on the raw name so a dependency frame is distinguished
+ *  from one that merely failed to resolve to an on-disk path. */
+function makeStackEntry(
+  name: string,
+  rawFileName: string | undefined | null,
+  lineNumber: number,
+  columnNumber: number,
+): StackEntry {
+  const classification = classifySourcePath(rawFileName);
+  return {
+    componentName: name,
+    filePath: resolveFrameFilePath(rawFileName),
+    lineNumber,
+    columnNumber,
+    origin: classification.origin,
+    packageName: classification.packageName,
+  };
+}
+
 /**
- * Resolve component info from a DOM element using bippy's owner stack.
- * Handles both React 18 (_debugSource) and React 19 (owner stacks + source maps).
+ * Pick the primary frame by source origin, mirroring react-grab's
+ * selectResolvedSource: prefer the nearest app-owned frame with a resolved path,
+ * then any app-owned frame, then any frame with a path, then the first frame.
+ * A dependency (node_modules / Vite-dep / CDN) path never wins over the user's
+ * own component.
+ */
+function pickPrimaryFrame(frames: StackEntry[]): StackEntry | undefined {
+  return (
+    frames.find((f) => f.origin === "app" && f.filePath) ||
+    frames.find((f) => f.origin === "app") ||
+    frames.find((f) => f.filePath) ||
+    frames[0]
+  );
+}
+
+/** Assemble the final ResolvedComponent: primary location, the (structural)
+ *  owner-chain stack, a fresh JSX path, and a signal-aware trace string. */
+function buildResolved(el: HTMLElement, primary: StackEntry, stack: StackEntry[]): ResolvedComponent {
+  const result: ResolvedComponent = {
+    tagName: el.tagName.toLowerCase(),
+    componentName: primary.componentName,
+    filePath: primary.filePath,
+    lineNumber: primary.lineNumber,
+    columnNumber: primary.columnNumber,
+    stack,
+    trace: formatComponentTrace(stack) || undefined,
+  };
+  result.jsxPath = buildJSXPath(el, primary.filePath, primary.componentName) ?? undefined;
+  return result;
+}
+
+type AsyncSource = { frames: StackEntry[]; fiberSource: StackEntry | null };
+
+// Per-element cache for the expensive async resolution (owner-stack + source-map
+// fetches). Keyed by the host element so an HMR DOM swap naturally evicts (new
+// node = new key, old GC'd); a successful edit triggers a full reload which
+// drops this module state entirely. Failed (null) resolutions are evicted so a
+// later selection can retry once the fiber's source data is attached. Held
+// values feed buildResolved, which rebuilds the JSX path from the live DOM, so a
+// cache hit never returns a stale structural anchor.
+let asyncSourceCache = new WeakMap<Element, Promise<AsyncSource | null>>();
+
+export function clearResolutionCache(): void {
+  // WeakMap has no clear(); reassign to drop all entries. Called from the same
+  // invalidation points as the other caches (reconnect / HMR-ish transitions).
+  asyncSourceCache = new WeakMap<Element, Promise<AsyncSource | null>>();
+}
+
+/** React's own dev source for the fiber (works without owner stacks — the
+ *  React 18 / no-owner-stack path). Routed through the fetch queue's signal. */
+async function resolveFiberSource(
+  fiber: any,
+  fetchFn: (url: string) => Promise<Response>,
+): Promise<StackEntry | null> {
+  const source = await getSource(fiber, true, fetchFn);
+  if (!source?.fileName) return null;
+  const filePath = resolveFrameFilePath(source.fileName);
+  const name =
+    source.functionName && isAcceptableComponentName(source.functionName, filePath)
+      ? source.functionName
+      : (isCompositeFiber(fiber) ? getDisplayName(fiber.type) : null);
+  if (!isAcceptableComponentName(name, filePath)) return null;
+  return makeStackEntry(name as string, source.fileName, source.lineNumber ?? 0, source.columnNumber ?? 0);
+}
+
+/** Run the owner-stack + fiber-source resolution under the concurrency cap with
+ *  an abort-on-timeout, so a saturated connection pool can't hang selection. */
+function fetchAsyncSource(fiber: any): Promise<AsyncSource | null> {
+  return runQueuedSourceFetch(async (signal) => {
+    const fetchFn = createSourceFetch(signal);
+    const [ownerFrames, fiberSource] = await Promise.all([
+      getResolvedOwnerStack(fiber, fetchFn).catch(() => [] as Awaited<ReturnType<typeof getResolvedOwnerStack>>),
+      resolveFiberSource(fiber, fetchFn).catch(() => null),
+    ]);
+
+    const frames: StackEntry[] = [];
+    for (const frame of ownerFrames ?? []) {
+      const filePath = resolveFrameFilePath(frame.fileName);
+      if (!isAcceptableComponentName(frame.functionName, filePath)) continue;
+      frames.push(
+        makeStackEntry(frame.functionName as string, frame.fileName, frame.lineNumber ?? 0, frame.columnNumber ?? 0),
+      );
+    }
+
+    if (frames.length === 0 && !fiberSource) return null;
+    return { frames, fiberSource };
+  }, null);
+}
+
+function resolveAsyncSource(el: HTMLElement, fiber: any): Promise<AsyncSource | null> {
+  const cache = asyncSourceCache;
+  const cached = cache.get(el);
+  if (cached) return cached;
+  const pending = fetchAsyncSource(fiber).then((result) => {
+    if (result === null) cache.delete(el); // evict failures so a retry is possible
+    return result;
+  });
+  cache.set(el, pending);
+  return pending;
+}
+
+/**
+ * Resolve component info from a DOM element. Runs React 19 owner stacks (with
+ * source-map symbolication + Next.js RSC resolution) and React's own fiber
+ * source in parallel, then prefers the nearest app-owned location. Falls back to
+ * a synchronous fiber walk when the async path yields nothing.
  */
 async function resolveComponentFromElement(el: HTMLElement): Promise<ResolvedComponent | null> {
   const fiber = getFiberFromHostInstance(el);
@@ -80,47 +230,26 @@ async function resolveComponentFromElement(el: HTMLElement): Promise<ResolvedCom
     return null;
   }
 
-  // Try owner stacks first — React 19 owner stacks with source map symbolication,
-  // plus Next.js RSC frame resolution via the dev server endpoint
   try {
-    const frames = await getResolvedOwnerStack(fiber);
-    if (frames && frames.length > 0) {
-      const stack: ResolvedComponent["stack"] = [];
-      for (const frame of frames) {
-        if (!frame.functionName) continue;
-        const name = frame.functionName;
-        if (name[0] !== name[0].toUpperCase()) continue;
-
-        const filePath = resolveFrameFilePath(frame.fileName);
-
-        // MDX content files: accept immediately — component name is synthetic
-        if (!(filePath && isMdxFilePath(filePath)) && isInternalName(name)) continue;
-
-        stack.push({
-          componentName: name,
-          filePath,
-          lineNumber: frame.lineNumber ?? 0,
-          columnNumber: frame.columnNumber ?? 0,
-        });
-      }
-
-      if (stack.length > 0) {
-        // Prefer the first frame with a resolved file path (skip library wrappers)
-        const primary = stack.find(f => f.filePath) || stack[0];
-        const result: ResolvedComponent = {
-          tagName: el.tagName.toLowerCase(),
-          componentName: primary.componentName,
-          filePath: primary.filePath,
-          lineNumber: primary.lineNumber,
-          columnNumber: primary.columnNumber,
-          stack,
-        };
-        result.jsxPath = buildJSXPath(el, primary.filePath, primary.componentName) ?? undefined;
-        return result;
+    const asyncSource = await resolveAsyncSource(el, fiber);
+    if (asyncSource) {
+      const { frames, fiberSource } = asyncSource;
+      // Dual-signal preference (react-grab's resolveSource): trust React's own
+      // app-owned fiber source first, otherwise the nearest app-owned owner frame.
+      const primary =
+        (fiberSource && fiberSource.origin === "app" && fiberSource.filePath ? fiberSource : undefined) ??
+        pickPrimaryFrame(frames) ??
+        fiberSource ??
+        frames[0];
+      if (primary) {
+        // Keep the owner chain as the reported stack (drag/re-find depend on its
+        // order); if only the fiber source resolved, surface it as the lone frame.
+        const stack = frames.length > 0 ? frames : fiberSource ? [fiberSource] : [];
+        return buildResolved(el, primary, stack);
       }
     }
   } catch (err) {
-    console.warn("[ThemeLab] getOwnerStack failed, falling back to fiber walk:", err);
+    console.warn("[ThemeLab] async source resolution failed, falling back to fiber walk:", err);
   }
 
   // Fallback: synchronous fiber walk (works when owner stacks aren't available)
@@ -129,47 +258,33 @@ async function resolveComponentFromElement(el: HTMLElement): Promise<ResolvedCom
 
 /** Synchronous fallback — walks fiber.return chain for component names */
 function resolveComponentFromFiberWalk(el: HTMLElement, fiber: any): ResolvedComponent | null {
-  const stack: ResolvedComponent["stack"] = [];
+  const frames: StackEntry[] = [];
   let current = fiber;
 
   while (current) {
     if (isCompositeFiber(current)) {
       const name = getDisplayName(current.type);
       const debugSource = current._debugSource || current._debugOwner?._debugSource;
+      // resolveFrameFilePath strips bundler URL wrappers and rejects chunk names
+      // (e.g. Turbopack's src_*._.js); makeStackEntry classifies on the raw name.
+      const filePath = debugSource ? resolveFrameFilePath(debugSource.fileName) : "";
 
-      let filePath = "";
-      let lineNumber = 0;
-      let columnNumber = 0;
-
-      if (debugSource) {
-        // Normalize the same way the getOwnerStack path does — strips bundler
-        // URL wrappers and rejects chunk names (e.g. Turbopack's src_*._.js),
-        // returning "" when there's no real source path. Sending a raw chunk
-        // name here is what caused ENOENT writes on React 18 + Next 15 Turbopack.
-        filePath = resolveFrameFilePath(debugSource.fileName);
-        lineNumber = debugSource.lineNumber || 0;
-        columnNumber = debugSource.columnNumber || 0;
-      }
-
-      if (name && name[0] === name[0].toUpperCase() && (isMdxFilePath(filePath) || !isInternalName(name))) {
-        stack.push({ componentName: name, filePath, lineNumber, columnNumber });
+      if (name && isAcceptableComponentName(name, filePath)) {
+        frames.push(
+          debugSource
+            ? makeStackEntry(name, debugSource.fileName, debugSource.lineNumber || 0, debugSource.columnNumber || 0)
+            : { componentName: name, filePath: "", lineNumber: 0, columnNumber: 0, origin: "unknown", packageName: null },
+        );
       }
     }
     current = current.return;
   }
 
-  if (stack.length === 0) return null;
+  if (frames.length === 0) return null;
 
-  const result: ResolvedComponent = {
-    tagName: el.tagName.toLowerCase(),
-    componentName: stack[0].componentName,
-    filePath: stack[0].filePath,
-    lineNumber: stack[0].lineNumber,
-    columnNumber: stack[0].columnNumber,
-    stack,
-  };
-  result.jsxPath = buildJSXPath(el, stack[0].filePath, stack[0].componentName) ?? undefined;
-  return result;
+  // Prefer the nearest app-owned frame, same as the async path.
+  const primary = pickPrimaryFrame(frames) ?? frames[0];
+  return buildResolved(el, primary, frames);
 }
 
 /** Synchronous-only resolve for hover labels and marquee (fast path) */
@@ -487,6 +602,38 @@ let currentSelection: ComponentInfo | null = null;
 let selectedElement: HTMLElement | null = null;
 let isActive = false;
 let listenersAttached = false;
+
+// Phase B2 — pause React state updates for the whole page while an element is
+// selected, so the target can't re-render/unmount out from under an edit.
+// OFF by default: freezeUpdates() patches React's internal dispatcher globally
+// (see freeze-updates.ts) and must be validated across React 18/19, Next.js
+// (Webpack + Turbopack) and Vite before enabling. Flip to true (or gate on a
+// runtime flag) once verified.
+const SELECTION_UPDATE_FREEZE_ENABLED = false;
+
+// Animation freeze for the selected subtree (see freeze-animations.ts). While an
+// element is selected we pause its animations/transitions so it can't move out
+// from under the highlight or a subsequent edit. Held here so a new selection or
+// a deselect releases the prior freeze. When B2 is enabled, a second release for
+// the global update freeze is tracked alongside it.
+let releaseSelectionFreeze: (() => void) | null = null;
+let releaseUpdateFreeze: (() => void) | null = null;
+
+function freezeSelected(el: HTMLElement): void {
+  releaseSelectionFreeze?.();
+  releaseSelectionFreeze = freezeAnimations([el]);
+  if (SELECTION_UPDATE_FREEZE_ENABLED) {
+    releaseUpdateFreeze?.();
+    releaseUpdateFreeze = freezeUpdates();
+  }
+}
+
+function unfreezeSelected(): void {
+  releaseSelectionFreeze?.();
+  releaseSelectionFreeze = null;
+  releaseUpdateFreeze?.();
+  releaseUpdateFreeze = null;
+}
 
 // Mirror the current selection to the CLI (for MCP). Deduped by component
 // identity so re-renders/HMR don't spam the socket. Call after any change to
@@ -963,6 +1110,7 @@ export async function selectElement(el: HTMLElement, options?: { skipSidebar?: b
 
     // Show selection overlay with loading dots immediately, before async resolve
     selectedElement = el;
+    freezeSelected(el);
     showSelectionOverlay(displayRect, null);
     hideHoverOverlay();
 
@@ -1012,6 +1160,7 @@ export async function selectElement(el: HTMLElement, options?: { skipSidebar?: b
         width: displayRect.width,
         height: displayRect.height,
       },
+      trace: resolved.trace,
       jsxPath: resolved.jsxPath,
     };
 
@@ -1516,6 +1665,7 @@ function hideHoverOverlay(): void {
 
 export function clearSelection(): void {
   deselectProperty();
+  unfreezeSelected();
   currentSelection = null;
   reportSelectionToCli();
   selectedElement = null;
@@ -1538,6 +1688,7 @@ export function getSelection(): ComponentInfo | null {
 
 export function deactivateSelection(): void {
   isActive = false;
+  unfreezeSelected();
   document.removeEventListener("mousedown", handleMouseDown, true);
   document.removeEventListener("mousemove", handleMouseMove, true);
   document.removeEventListener("mouseup", handleMouseUp, true);

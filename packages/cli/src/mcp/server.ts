@@ -47,7 +47,7 @@ function buildMcpServer(deps: McpServerDeps): McpServer {
     {
       title: "Get selected component",
       description:
-        "Returns the component the user has currently selected in the ThemeLab browser overlay: its name, source file path, line/column, the ancestor component stack, and a structural JSX path. Use this to learn exactly which file and line the user is pointing at instead of guessing.",
+        "Returns the component the user has currently selected in the ThemeLab browser overlay: its name, source file path, line/column, a compact signal-aware ancestor trace, the raw ancestor component stack, and a structural JSX path. Use this to learn exactly which file and line the user is pointing at instead of guessing.",
     },
     async () => {
       if (!deps.isOverlayConnected()) return textResult(NOT_CONNECTED);
@@ -59,6 +59,9 @@ function buildMcpServer(deps: McpServerDeps): McpServer {
         filePath: sel.filePath,
         lineNumber: sel.lineNumber,
         columnNumber: sel.columnNumber,
+        // Compact ancestor trace: app frames with locations, dependency/shared-UI
+        // frames as free name-only context. Prefer this over `stack` for context.
+        trace: sel.trace,
         stack: sel.stack,
         jsxPath: sel.jsxPath,
       });

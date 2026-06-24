@@ -420,7 +420,61 @@ const SHORTHAND_SPLITS: Record<
 };
 
 /**
- * Build the target class string from an update descriptor.
+ * Tailwind responsive breakpoint variants — used only to give stacked variants a
+ * stable written order (dark first, then breakpoint, then anything else).
+ */
+const RESPONSIVE_VARIANTS = new Set(["sm", "md", "lg", "xl", "2xl"]);
+
+/**
+ * Split a class into its leading variant tokens and the bare utility, ignoring
+ * any ":" inside an arbitrary value (`bg-[url(a:b)]`). The last colon-delimited
+ * segment outside brackets is the utility; everything before it is a variant.
+ *   "dark:md:bg-red-500" → { variants: ["dark","md"], utility: "bg-red-500" }
+ *   "bg-[url(http://x)]"  → { variants: [],            utility: "bg-[url(http://x)]" }
+ */
+function decomposeClass(cls: string): { variants: string[]; utility: string } {
+  const segments: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < cls.length; i++) {
+    const ch = cls[i];
+    if (ch === "[") depth++;
+    else if (ch === "]") depth = Math.max(0, depth - 1);
+    else if (ch === ":" && depth === 0) {
+      segments.push(cls.slice(start, i));
+      start = i + 1;
+    }
+  }
+  segments.push(cls.slice(start));
+  const utility = segments.pop() ?? "";
+  return { variants: segments, utility };
+}
+
+/** Parse an update's `variant` string ("dark:md") into its token list. */
+function parseVariantTokens(variant?: string): string[] {
+  return variant ? variant.split(":").filter(Boolean) : [];
+}
+
+/** Canonical variant prefix for a token set: dark, then breakpoints, then rest. */
+function canonicalVariantPrefix(tokens: string[]): string {
+  if (tokens.length === 0) return "";
+  const rank = (t: string) => (t === "dark" ? 0 : RESPONSIVE_VARIANTS.has(t) ? 1 : 2);
+  return [...tokens]
+    .sort((a, b) => rank(a) - rank(b))
+    .map((t) => `${t}:`)
+    .join("");
+}
+
+/** Order-independent set equality for variant tokens ("dark:md" ≡ "md:dark"). */
+function sameVariantSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const setB = new Set(b);
+  return a.every((t) => setB.has(t));
+}
+
+/**
+ * Build the target class string from an update descriptor, writing any variant
+ * tokens in canonical order (e.g. "dark:md:bg-red-500").
  */
 function buildClass(update: ClassNameUpdate): string {
   const base = update.standalone
@@ -428,46 +482,41 @@ function buildClass(update: ClassNameUpdate): string {
     : update.tailwindToken
       ? `${update.tailwindPrefix}-${update.tailwindToken}`
       : `${update.tailwindPrefix}-[${update.value}]`;
-  return update.variant ? `${update.variant}:${base}` : base;
+  return canonicalVariantPrefix(parseVariantTokens(update.variant)) + base;
+}
+
+/** Match a *bare* utility (no variants) against a prefix: "p" matches "p-4", "p". */
+function utilityMatchesPrefix(utility: string, prefix: string): boolean {
+  if (utility === prefix) return true;
+  return utility.startsWith(`${prefix}-`);
 }
 
 /**
- * Check whether a class string matches a given Tailwind prefix.
- * E.g. prefix "p" matches "p-4", "p-[13px]", but not "px-4" or "pl-2".
+ * Check whether a class matches a given Tailwind prefix at the *base* layer
+ * (no variant tokens). E.g. "p" matches "p-4" but never "md:p-4" or "dark:p-4".
  */
 function classMatchesPrefix(cls: string, prefix: string): boolean {
-  // Skip variant-prefixed classes (e.g. hover:bg-blue-700, dark:bg-gray-900).
-  // These are intentional state/responsive overrides and should not be
-  // matched when replacing the base utility class.
-  if (cls.includes(":")) return false;
-  // Exact match for standalone classes like "rounded"
-  if (cls === prefix) return true;
-  // prefix- followed by something
-  return cls.startsWith(`${prefix}-`);
+  const { variants, utility } = decomposeClass(cls);
+  if (variants.length > 0) return false;
+  return utilityMatchesPrefix(utility, prefix);
 }
 
 /**
- * Variant-aware prefix match. When `variant` is set (e.g. "md"), matches only
- * classes carrying exactly that responsive prefix (`md:mb-6`); when omitted,
- * matches base classes (delegates to classMatchesPrefix, which skips `:` classes).
+ * Variant-aware prefix match. Matches a class iff its variant-token *set* equals
+ * the update's (order-independent, so "dark:md:" ≡ "md:dark:") and the bare
+ * utility matches `prefix`. With no variant, matches base classes only.
  */
 function classMatchesPrefixVariant(cls: string, prefix: string, variant?: string): boolean {
-  if (!variant) return classMatchesPrefix(cls, prefix);
-  const want = `${variant}:`;
-  if (!cls.startsWith(want)) return false;
-  return classMatchesPrefix(cls.slice(want.length), prefix);
+  const { variants, utility } = decomposeClass(cls);
+  if (!sameVariantSet(variants, parseVariantTokens(variant))) return false;
+  return utilityMatchesPrefix(utility, prefix);
 }
 
-/** Test a classPattern against a class, honoring the update's variant prefix. */
+/** Test a classPattern against a class, honoring the update's variant set. */
 function classMatchesPattern(cls: string, pattern: string, variant?: string): boolean {
-  if (variant) {
-    const want = `${variant}:`;
-    if (!cls.startsWith(want)) return false;
-    return new RegExp(pattern).test(cls.slice(want.length));
-  }
-  // Base edit: never match a variant-prefixed class.
-  if (cls.includes(":")) return false;
-  return new RegExp(pattern).test(cls);
+  const { variants, utility } = decomposeClass(cls);
+  if (!sameVariantSet(variants, parseVariantTokens(variant))) return false;
+  return new RegExp(pattern).test(utility);
 }
 
 /**
@@ -478,7 +527,7 @@ function applyUpdate(classes: string[], update: ClassNameUpdate): string[] {
   const newClass = buildClass(update);
   const result = [...classes];
 
-  const variantPrefix = update.variant ? `${update.variant}:` : "";
+  const variantPrefix = canonicalVariantPrefix(parseVariantTokens(update.variant));
 
   // 1. Check relatedPrefixes for shorthand splitting
   for (const relatedPrefix of update.relatedPrefixes ?? []) {
@@ -492,7 +541,8 @@ function applyUpdate(classes: string[], update: ClassNameUpdate): string[] {
     if (!split) continue;
 
     // Extract the token from the (de-variant-ed) shorthand class, e.g. md:p-4 → 4.
-    const bareExisting = update.variant ? existingCls.slice(variantPrefix.length) : existingCls;
+    // Decompose so the variant order in the existing class doesn't matter.
+    const bareExisting = decomposeClass(existingCls).utility;
     const token = split.extractToken(bareExisting);
     // Remove the shorthand class
     result.splice(existingIdx, 1);
@@ -716,6 +766,65 @@ export function mutateClassName(j: any, target: any, updates: ClassNameUpdate[])
 
     throw new Error(
       `DYNAMIC_CLASSNAME: className is a dynamic expression that cannot be statically modified`
+    );
+  }
+
+  throw new Error(`Unsupported className value type: ${attrValue.type}`);
+}
+
+/**
+ * Replace a JSX element's entire className value with `newClassName`. Used by the
+ * "Optimize for mobile" AI flow, which regenerates a full className string and
+ * applies it at a located node on confirm. Mirrors mutateClassName's handling of
+ * the same value shapes, but writes the whole string instead of per-token edits.
+ * Throws DYNAMIC_CLASSNAME for shapes we can't safely overwrite wholesale.
+ */
+export function mutateClassNameReplace(j: any, target: any, newClassName: string): void {
+  const openingElement = target.node.openingElement;
+  const attrs = openingElement.attributes ?? [];
+
+  const classNameAttr = attrs.find(
+    (a: any) =>
+      a.type === "JSXAttribute" &&
+      a.name?.type === "JSXIdentifier" &&
+      a.name.name === "className"
+  );
+
+  if (!classNameAttr) {
+    openingElement.attributes.push(
+      j.jsxAttribute(
+        j.jsxIdentifier("className"),
+        j.stringLiteral(newClassName)
+      )
+    );
+    return;
+  }
+
+  const attrValue = classNameAttr.value;
+
+  if (attrValue.type === "StringLiteral" || attrValue.type === "Literal") {
+    attrValue.value = newClassName;
+    return;
+  }
+
+  if (attrValue.type === "JSXExpressionContainer") {
+    const expr = attrValue.expression;
+
+    // A single-static-quasi template literal: overwrite that quasi's content.
+    if (expr.type === "TemplateLiteral" && expr.quasis.length === 1 && expr.expressions.length === 0) {
+      const quasi = expr.quasis[0];
+      quasi.value = { raw: newClassName, cooked: newClassName };
+      return;
+    }
+
+    // A cn()/clsx() call with a single StringLiteral argument: overwrite it.
+    if (expr.type === "CallExpression" && expr.arguments.length === 1 && expr.arguments[0].type === "StringLiteral") {
+      expr.arguments[0].value = newClassName;
+      return;
+    }
+
+    throw new Error(
+      `DYNAMIC_CLASSNAME: cannot replace a dynamic className expression wholesale`
     );
   }
 

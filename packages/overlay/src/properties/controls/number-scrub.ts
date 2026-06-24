@@ -1,6 +1,7 @@
 import type { PropertyDescriptor } from "@themelab/shared";
 import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
 import { getSnapPoints } from "../tailwind-resolver.js";
+import { createScaleShortcutButton } from "./scale-shortcut.js";
 import { PANEL, FONT_MONO } from "../../design-tokens.js";
 
 const VALID_KEYWORDS = new Set(["auto", "none", "normal", "inherit", "initial"]);
@@ -26,6 +27,14 @@ export function createNumberScrub(
   tokenLabel.style.cssText = `font-size:11px; color:${PANEL.accent}; font-family:${FONT_MONO}; white-space:nowrap; flex-shrink:0;`;
 
   container.appendChild(input);
+  // Font-size (and other scalable utilities) get a one-click scale picker beside the
+  // token label; gated to fontSize for now per the spec.
+  let scaleShortcut: { destroy: () => void } | null = null;
+  if (descriptor.tailwindScale === "fontSize") {
+    const shortcut = createScaleShortcutButton(descriptor, onPreview, onCommit);
+    scaleShortcut = shortcut;
+    container.appendChild(shortcut.button);
+  }
   container.appendChild(tokenLabel);
 
   // State
@@ -95,6 +104,7 @@ export function createNumberScrub(
       updateDisplay(cssValue);
     },
     destroy(): void {
+      scaleShortcut?.destroy();
       // No document-level listeners
     },
   };

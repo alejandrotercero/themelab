@@ -1,6 +1,7 @@
 // packages/overlay/src/bridge.ts
 import type { ClientMessage, ServerMessage } from "@themelab/shared";
 import { setCliTokens } from "./properties/tailwind-resolver.js";
+import { setTailwindMeta } from "./properties/variant-target.js";
 import { setTheme, onCommitSuccess as onThemeCommitSuccess } from "./theme-state.js";
 type MessageHandler = (msg: ServerMessage) => void;
 
@@ -41,6 +42,8 @@ export function connect(port: number): void {
       // Handle Tailwind token messages from CLI
       if (msg.type === "tailwindTokens") {
         setCliTokens(msg.tokens);
+        // Feed the resolver's breakpoints + dark-mode strategy to the variant target.
+        setTailwindMeta(msg.tokens);
       }
       // Theme mode: receive the project's design tokens, and confirm writes
       if (msg.type === "themeStyles") {

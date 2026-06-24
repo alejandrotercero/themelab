@@ -3,6 +3,8 @@ import {
   classMatchesPrefix,
   splitResponsiveVariant,
   pickWinningVariant,
+  decomposeClass,
+  findClassForVariant,
 } from "../class-matches-prefix.js";
 
 describe("splitResponsiveVariant", () => {
@@ -51,5 +53,48 @@ describe("pickWinningVariant", () => {
     expect(pickWinningVariant(classes, matchesMb, 1280)).toBe("xl"); // >= xl
     expect(pickWinningVariant(classes, matchesMb, 800)).toBe("md");  // md <= 800 < lg
     expect(pickWinningVariant(classes, matchesMb, 700)).toBe("sm");  // sm <= 700 < md
+  });
+});
+
+describe("decomposeClass", () => {
+  it("splits variant tokens from the bare utility", () => {
+    expect(decomposeClass("md:bg-red-500")).toEqual({ variants: ["md"], utility: "bg-red-500" });
+    expect(decomposeClass("dark:md:bg-red-500")).toEqual({ variants: ["dark", "md"], utility: "bg-red-500" });
+  });
+
+  it("returns no variants for a base class", () => {
+    expect(decomposeClass("bg-red-500")).toEqual({ variants: [], utility: "bg-red-500" });
+  });
+
+  it("ignores colons inside arbitrary values", () => {
+    expect(decomposeClass("bg-[url(http://x/y)]")).toEqual({ variants: [], utility: "bg-[url(http://x/y)]" });
+    expect(decomposeClass("dark:bg-[url(http://x)]")).toEqual({ variants: ["dark"], utility: "bg-[url(http://x)]" });
+  });
+});
+
+describe("findClassForVariant", () => {
+  const matchesBg = (bare: string) => classMatchesPrefix(bare, "bg");
+
+  it("finds the class for an exact single-variant target", () => {
+    const classes = ["bg-white", "dark:bg-black", "md:bg-red-500"];
+    expect(findClassForVariant(classes, matchesBg, ["dark"])).toBe("dark:bg-black");
+    expect(findClassForVariant(classes, matchesBg, ["md"])).toBe("md:bg-red-500");
+    expect(findClassForVariant(classes, matchesBg, [])).toBe("bg-white");
+  });
+
+  it("matches a stacked variant regardless of token order (order-independent)", () => {
+    const classes = ["md:dark:bg-slate-800"];
+    expect(findClassForVariant(classes, matchesBg, ["dark", "md"])).toBe("md:dark:bg-slate-800");
+    expect(findClassForVariant(classes, matchesBg, ["md", "dark"])).toBe("md:dark:bg-slate-800");
+  });
+
+  it("does not match a partial variant set", () => {
+    const classes = ["dark:md:bg-slate-800"];
+    expect(findClassForVariant(classes, matchesBg, ["dark"])).toBe("");
+    expect(findClassForVariant(classes, matchesBg, ["md"])).toBe("");
+  });
+
+  it("returns empty when no class is declared for the target", () => {
+    expect(findClassForVariant(["bg-white", "md:bg-red-500"], matchesBg, ["xl"])).toBe("");
   });
 });

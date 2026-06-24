@@ -720,6 +720,105 @@ export function buildTokenMap(theme: typeof DEFAULT_V4_THEME): TailwindTokenMap 
 }
 
 // ---------------------------------------------------------------------------
+// Tailwind metadata (breakpoints + dark-mode strategy)
+// ---------------------------------------------------------------------------
+
+type TailwindMeta = Pick<TailwindTokenMap, "screens" | "darkMode">;
+
+const DEFAULT_SCREENS_V3: Record<string, string> = {
+  sm: "640px", md: "768px", lg: "1024px", xl: "1280px", "2xl": "1536px",
+};
+const DEFAULT_SCREENS_V4: Record<string, string> = {
+  sm: "40rem", md: "48rem", lg: "64rem", xl: "80rem", "2xl": "96rem",
+};
+
+/** A breakpoint value may be a plain string or a v3 `{ min, max }` object — use the min. */
+function normalizeScreenValue(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object" && typeof (v as { min?: unknown }).min === "string") {
+    return (v as { min: string }).min;
+  }
+  return null;
+}
+
+/** Map a Tailwind v3 `darkMode` config value to {strategy, selector}. */
+function parseDarkModeConfig(dm: unknown): { strategy: "class" | "media"; selector: string } {
+  if (Array.isArray(dm)) {
+    // ["class", ".my-dark"] | ["selector", "[data-theme=dark]"] | ["variant", ...]
+    const selector = typeof dm[1] === "string" ? dm[1] : ".dark";
+    return { strategy: "class", selector };
+  }
+  if (dm === "class" || dm === "selector") return { strategy: "class", selector: ".dark" };
+  // undefined / "media" — v3 default is prefers-color-scheme.
+  return { strategy: "media", selector: ".dark" };
+}
+
+function resolveV3Meta(projectRoot: string): TailwindMeta {
+  const meta: TailwindMeta = {
+    screens: { ...DEFAULT_SCREENS_V3 },
+    darkMode: { strategy: "media", selector: ".dark" },
+  };
+  try {
+    const resolveConfigPath = path.join(projectRoot, "node_modules", "tailwindcss", "resolveConfig");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const resolveConfig = require(resolveConfigPath) as (config: unknown) => { theme: Record<string, unknown> };
+    let userConfig: Record<string, unknown> = {};
+    for (const candidate of ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs", "tailwind.config.mjs"]) {
+      const configPath = path.join(projectRoot, candidate);
+      if (fs.existsSync(configPath)) {
+        try { userConfig = require(configPath) as Record<string, unknown>; } catch { /* empty */ }
+        break;
+      }
+    }
+    const resolved = resolveConfig(userConfig);
+    const screens = (resolved.theme as Record<string, unknown>)?.screens;
+    if (screens && typeof screens === "object") {
+      const out: Record<string, string> = {};
+      for (const [name, value] of Object.entries(screens as Record<string, unknown>)) {
+        const nv = normalizeScreenValue(value);
+        if (nv) out[name] = nv;
+      }
+      if (Object.keys(out).length) meta.screens = out;
+    }
+    meta.darkMode = parseDarkModeConfig((userConfig as { darkMode?: unknown }).darkMode);
+  } catch {
+    // keep defaults
+  }
+  return meta;
+}
+
+function resolveV4Meta(projectRoot: string): TailwindMeta {
+  const screens: Record<string, string> = { ...DEFAULT_SCREENS_V4 };
+  let darkMode: { strategy: "class" | "media"; selector: string } = { strategy: "media", selector: ".dark" };
+
+  for (const cssFile of findCssFiles(projectRoot)) {
+    try {
+      const css = fs.readFileSync(cssFile, "utf-8");
+      if (css.includes("@theme")) {
+        for (const [prop, value] of Object.entries(parseThemeBlock(css))) {
+          const bm = prop.match(/^--breakpoint-(.+)$/);
+          if (bm) screens[bm[1]] = value;
+        }
+      }
+      // A `@custom-variant dark (...)` declaration switches v4 to a class strategy.
+      const cv = css.match(/@custom-variant\s+dark\s+\(([^)]*)\)/);
+      if (cv) {
+        const sel = cv[1].match(/\.[A-Za-z0-9_-]+/);
+        darkMode = { strategy: "class", selector: sel ? sel[0] : ".dark" };
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+  return { screens, darkMode };
+}
+
+function resolveTailwindMeta(projectRoot: string, version: string | null): TailwindMeta {
+  if (version === "3") return resolveV3Meta(projectRoot);
+  return resolveV4Meta(projectRoot);
+}
+
+// ---------------------------------------------------------------------------
 // resolveTailwindConfig
 // ---------------------------------------------------------------------------
 
@@ -732,21 +831,18 @@ export function resolveTailwindConfig(projectRoot: string): {
   tokens: TailwindTokenMap;
 } {
   const version = detectTailwindVersion(projectRoot);
+  const meta = resolveTailwindMeta(projectRoot, version);
 
   if (version === "3") {
     const v3Theme = resolveV3Config(projectRoot);
-    if (v3Theme) {
-      return { version: "3", tokens: buildTokenMap(v3Theme) };
-    }
-    // Fall back to v4 defaults if resolveConfig fails
-    return { version: "3", tokens: buildTokenMap(DEFAULT_V4_THEME) };
+    return { version: "3", tokens: { ...buildTokenMap(v3Theme ?? DEFAULT_V4_THEME), ...meta } };
   }
 
   if (version === "4") {
     const v4Theme = resolveV4Config(projectRoot);
-    return { version: "4", tokens: buildTokenMap(v4Theme) };
+    return { version: "4", tokens: { ...buildTokenMap(v4Theme), ...meta } };
   }
 
   // No tailwindcss detected — return defaults
-  return { version: version ?? "unknown", tokens: buildTokenMap(DEFAULT_V4_THEME) };
+  return { version: version ?? "unknown", tokens: { ...buildTokenMap(DEFAULT_V4_THEME), ...meta } };
 }

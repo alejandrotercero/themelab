@@ -1,4 +1,4 @@
-import type { ComponentInfo, ElementIdentity, PropertyGroup } from "@themelab/shared";
+import type { ComponentInfo, ElementIdentity, PropertyGroup, PropertyDescriptor } from "@themelab/shared";
 import { ALL_DESCRIPTORS } from "./property-descriptors.js";
 const DESCRIPTOR_MAP = new Map(ALL_DESCRIPTORS.map(d => [d.key, d]));
 import { renderSections, isGroupCollapsed, onSectionExpand } from "./section-renderer.js";
@@ -9,6 +9,7 @@ import { send, onMessage, requestFileDiscovery, requestFileStat } from "../bridg
 import { getElementVisibleText } from "../text-model.js";
 import { getCachedFilePath, setCachedFilePath } from "../file-discovery-cache.js";
 import { addChangeEntry } from "../changelog.js";
+import { maybeShowOptimizeAction, hideOptimizeAction } from "../settings-panel.js";
 import { showToast } from "../toolbar.js";
 import type { PropertyControl, ControlContext } from "./controls/types.js";
 import { addPendingPropertyOperation, pushUndoAction, type PropertyChangeRuntime } from "../canvas-state.js";
@@ -17,7 +18,9 @@ import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bipp
 import { resolveFrameFilePath } from "../utils/source-resolve.js";
 import { getResolvedOwnerStack } from "../utils/server-symbolication.js";
 import { computeNthOfType } from "../utils/nth-of-type.js";
-import { classMatchesPrefix, pickWinningVariant } from "../utils/class-matches-prefix.js";
+import { classMatchesPrefix, pickWinningVariant, findClassForVariant, decomposeClass, countDistinctBreakpoints } from "../utils/class-matches-prefix.js";
+import * as variantTargetModule from "./variant-target.js";
+const { getVariantString, getVariantTokens, resetVariantTargetOnSelect, resetVariantTargetOnDeselect, onVariantTargetChange } = variantTargetModule;
 import { setStyle, clearStyle } from "../utils/style-access.js";
 import { navigate, getNavAvailability, moveSelectedSibling } from "../selection.js";
 import { getValue as getThemeValue, getColorTokenNames } from "../theme-state.js";
@@ -130,6 +133,7 @@ let cleanupExpandListener: (() => void) | null = null;
 // Cleanup for changelog onMessage listener
 let cleanupChangelogListener: (() => void) | null = null;
 let cleanupCommitListener: (() => void) | null = null;
+let cleanupVariantListener: (() => void) | null = null;
 
 // ---------------------------------------------------------------------------
 // HMR survival observer
@@ -317,6 +321,45 @@ async function resolveFreshComponentInfo(
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolve the CSS value a property *would* display under the active variant target,
+ * when that target is an off-viewport breakpoint (so computed style shows the base).
+ *
+ * Strategy: if the element declares a class for the active variant set (e.g. `xl:p-8`),
+ * look up that token's resolved CSS value from the Tailwind token map. Returns null
+ * when there's no explicit off-viewport target, no declared class for it, or the token
+ * can't be resolved — callers then fall back to computed style.
+ *
+ * Note: dark is handled by the preview toggle flipping `.dark`, so computed style
+ * already reflects it; only breakpoint targets need this synthetic read.
+ */
+function valueForActiveVariant(
+  element: HTMLElement,
+  desc: PropertyDescriptor,
+): string | null {
+  const tokens = getVariantTokens();
+  // Only synthetic-read off-viewport breakpoints; base/dark fall through to computed.
+  if (tokens.length === 0 || (tokens.length === 1 && tokens[0] === "dark")) return null;
+  const classes = (element.getAttribute("class") || "").split(/\s+/).filter(Boolean);
+  const pattern = desc.classPattern;
+  const matchesBare = pattern
+    ? (bare: string) => new RegExp(pattern).test(bare)
+    : (bare: string) => classMatchesPrefix(bare, desc.tailwindPrefix);
+  const declared = findClassForVariant(classes, matchesBare, tokens);
+  if (!declared) return null;
+  const utility = decomposeClass(declared).utility;
+  // Extract the token portion (after `prefix-`) — e.g. "p-8" → "8", "text-lg" → "lg".
+  const token = utility.startsWith(`${desc.tailwindPrefix}-`)
+    ? utility.slice(desc.tailwindPrefix.length + 1)
+    : null;
+  if (!token) return null;
+  const map = getTokenMap();
+  const scale = desc.tailwindScale
+    ? (map as unknown as Record<string, Record<string, string>>)[desc.tailwindScale]
+    : undefined;
+  return scale?.[token] ?? null;
+}
+
+/**
  * Reads computed CSS values for the given element.
  * When `onlyGroups` is provided, only reads properties belonging to those groups.
  * This avoids unnecessary getPropertyValue calls for collapsed sections on initial inspect.
@@ -334,8 +377,9 @@ function readComputedValues(
       values.set(desc.key, desc.defaultValue);
       continue;
     }
-    const value = computed.getPropertyValue(desc.cssProperty).trim();
-    values.set(desc.key, value || desc.defaultValue);
+    const computedValue = computed.getPropertyValue(desc.cssProperty).trim();
+    const variantValue = valueForActiveVariant(element, desc);
+    values.set(desc.key, variantValue ?? (computedValue || desc.defaultValue));
   }
 
   return values;
@@ -354,7 +398,8 @@ function readDeferredGroup(group: string): void {
     if (state.activeOverrides.has(desc.key)) continue;
 
     const value = computed.getPropertyValue(desc.cssProperty).trim();
-    const resolved = value || desc.defaultValue;
+    const variantValue = valueForActiveVariant(state.selectedElement, desc);
+    const resolved = variantValue ?? (value || desc.defaultValue);
     state.currentValues.set(desc.key, resolved);
 
     // Also update originalValues if this group hasn't been read yet
@@ -437,16 +482,27 @@ function addPendingFromCurrentState(): void {
   for (const [cssProperty, entry] of state.pendingBatch) {
     const desc = DESCRIPTOR_MAP.get(entry.property);
 
-    // Layer 1: Use classPattern if available (disambiguates shared prefixes like "text")
+    // Variant-aware lookup: when an explicit target (Base+dark toggle) is active,
+    // read the class declared for *that* variant set first (e.g. the `dark:bg-*`
+    // value while Dark is on). Falls back to the base class when none is declared
+    // for the target yet. This makes the sidebar reflect the variant being edited.
+    const variantTokens = getVariantTokens();
+    const pattern = desc?.classPattern;
+    const matchesBare = pattern
+      ? (bare: string) => new RegExp(pattern).test(bare)
+      : (bare: string) => classMatchesPrefix(bare, entry.tailwindPrefix);
+
     let oldClass = "";
-    if (desc?.classPattern) {
-      const pattern = new RegExp(desc.classPattern);
-      oldClass = classes.find((c) => !c.includes(":") && pattern.test(c)) || "";
-    } else {
+    if (variantTokens.length > 0) {
+      // Explicit target active: find the class for this exact variant set.
+      oldClass = findClassForVariant(classes, matchesBare, variantTokens);
+    }
+    if (!oldClass) {
+      // Base fallback: match only declared base classes (skip any `:` variant).
       oldClass = classes.find((c) => classMatchesPrefix(c, entry.tailwindPrefix)) || "";
     }
 
-    // Layer 2: Find related shorthand classes (e.g. p-4 when changing pt)
+    // Layer 2: Find related shorthand classes (e.g. p-4 when changing pt), base layer.
     const relatedOldClasses: string[] = [];
     for (const rp of entry.relatedPrefixes ?? []) {
       const found = classes.find((c) => classMatchesPrefix(c, rp));
@@ -495,13 +551,15 @@ function addPendingFromCurrentState(): void {
       fileSize: state.componentInfo?.fileSize,
       updates: [...state.pendingBatch.values()].map((entry) => {
         const desc = DESCRIPTOR_MAP.get(entry.property);
-        // Pick the responsive variant winning at the current viewport so the edit
-        // targets the class actually in effect (e.g. md:mb-6) instead of a base
-        // class (mb-0) that a breakpoint variant silently overrides.
         const matchesBare = desc?.classPattern
           ? (bare: string) => new RegExp(desc.classPattern!).test(bare)
           : (bare: string) => classMatchesPrefix(bare, entry.tailwindPrefix);
-        const variant = pickWinningVariant(classes, matchesBare, window.innerWidth);
+        // Honor the explicit variant target (breakpoint + dark toggle) from the
+        // sidebar header. Falls back to the viewport-winning breakpoint only when the
+        // user left the target at Base + dark off — preserving the pre-feature default.
+        const explicitVariant = getVariantString();
+        const fallback = pickWinningVariant(classes, matchesBare, window.innerWidth);
+        const variant = explicitVariant ?? (fallback || undefined);
         return {
           tailwindPrefix: entry.tailwindPrefix,
           tailwindToken: entry.tailwindToken,
@@ -575,6 +633,30 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
 
       if (success) {
         inflightCommit = null;
+        // Surface "Optimize for mobile" when the edited element spans 2+ breakpoints.
+        if (state.selectedElement && state.componentInfo) {
+          const classes = (state.selectedElement.getAttribute("class") || "").split(/\s+/).filter(Boolean);
+          const breakpointCount = countDistinctBreakpoints(classes);
+          const parentEl = state.selectedElement.parentElement;
+          maybeShowOptimizeAction(
+            {
+              filePath: state.componentInfo.filePath,
+              lineNumber: state.componentInfo.lineNumber,
+              columnNumber: state.componentInfo.columnNumber,
+              componentName: state.componentInfo.componentName,
+              tagName: state.selectedElement.tagName.toLowerCase(),
+              className: state.selectedElement.className || undefined,
+              parentTagName: parentEl?.tagName.toLowerCase(),
+              parentClassName: parentEl?.className || undefined,
+              nthOfType: computeNthOfType(state.selectedElement),
+              id: state.selectedElement.id || undefined,
+              jsxPath: state.componentInfo.jsxPath,
+              fileMtime: state.componentInfo.fileMtime,
+              fileSize: state.componentInfo.fileSize,
+            },
+            breakpointCount,
+          );
+        }
       } else {
         const { batch, previousOriginals } = inflightCommit;
         inflightCommit = null;
@@ -681,6 +763,21 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
       lastCommitSnapshot = null;
     }
   });
+
+  // When the active variant target (breakpoint / Dark toggle) changes, re-read the
+  // selected element's values so controls reflect the variant being edited rather
+  // than the rendered base. Dark also re-renders via the preview toggle.
+  cleanupVariantListener = onVariantTargetChange(() => {
+    if (!state.selectedElement) return;
+    const el = state.selectedElement;
+    const groups = new Set<PropertyGroup>(ESSENTIAL_GROUPS);
+    for (const g of DEFERRED_GROUPS) if (!isGroupCollapsed(g)) groups.add(g);
+    const refreshed = readComputedValues(el, groups);
+    for (const [key, value] of refreshed) {
+      state.currentValues.set(key, value);
+      for (const ctrl of controls) ctrl.setValue(key, value);
+    }
+  });
 }
 
 /**
@@ -774,6 +871,11 @@ export function inspect(element: HTMLElement, info: ComponentInfo): void {
   for (const g of DEFERRED_GROUPS) {
     if (!isGroupCollapsed(g)) groupsToRead.add(g);
   }
+  // Seed the variant target to the viewport-winning breakpoint + current dark state.
+  resetVariantTargetOnSelect(
+    (element.getAttribute("class") || "").split(/\s+/).filter(Boolean),
+    () => true,
+  );
   const values = readComputedValues(element, groupsToRead);
   state.currentValues = values;
   state.originalValues = new Map(values);
@@ -1072,6 +1174,8 @@ export function deselect(): void {
   if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
   observer?.disconnect();
   cancel();
+  resetVariantTargetOnDeselect();
+  hideOptimizeAction();
   destroyControls();
   if (sidebar) {
     sidebar.hide();
@@ -1087,6 +1191,8 @@ export function commitAndDeselect(): void {
   if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
   observer?.disconnect();
   commit();
+  resetVariantTargetOnDeselect();
+  hideOptimizeAction();
   destroyControls();
   if (sidebar) {
     sidebar.hide();
@@ -1119,6 +1225,10 @@ export function destroyPropertyController(): void {
   if (cleanupChangelogListener) {
     cleanupChangelogListener();
     cleanupChangelogListener = null;
+  }
+  if (cleanupVariantListener) {
+    cleanupVariantListener();
+    cleanupVariantListener = null;
   }
   lastCommitSnapshot = null;
   deselect();

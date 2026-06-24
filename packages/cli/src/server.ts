@@ -25,6 +25,7 @@ import { isProjectFilePathSafe, resolveProjectFilePath } from "./path-resolver.j
 import { discoverFile } from "./file-discovery.js";
 import { executeBatch } from "./batch-transform.js";
 import { executeBatchWithAi, invalidateLocateCache, type AiOptions, type AiProposal } from "./ai-locate.js";
+import { generateMobileFirstClassName, type OptimizeInput, type OptimizeProposal } from "./ai-optimize.js";
 import { resolveAiConfig, updateAiConfig } from "./config.js";
 
 /** Allow only same-machine browser origins. Missing Origin (non-browser
@@ -116,6 +117,8 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
   });
   // Pending AI proposals (structural / cross-file) awaiting user confirmation.
   const pendingProposals = new Map<string, AiProposal>();
+  // Pending "Optimize for mobile" proposals awaiting user confirmation.
+  const pendingOptimize = new Map<string, OptimizeProposal & { filePath: string; line: number; col: number }>();
   if (aiOptions.enableAi) logger.info("[ThemeLab] AI locator enabled");
   const undoStack: UndoEntry[] = [];
   let activeClient: WebSocket | null = null;
@@ -143,6 +146,8 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
     "revertChanges",
     "commitBatch",
     "confirmResolution",
+    "confirmOptimize",
+    "optimizeResponsive",
     "saveSettings",
   ]);
 
@@ -537,6 +542,109 @@ export function createSketchServer(portOrOptions: number | SketchServerOptions):
           } else {
             invalidateLocateCache(op); // apply failed — drop cache so a retry re-resolves
             send(ws, { type: "aiProposalComplete", id: msg.id, success: false, error: rr?.error || "Could not apply at resolved location" });
+          }
+          break;
+        }
+
+        case "optimizeResponsive": {
+          // Gate on a configured key — mirror the locator. No key → toast, no call.
+          if (!aiOptions.enableAi || !aiOptions.apiKey) {
+            send(ws, {
+              type: "optimizeProposalComplete",
+              id: "",
+              success: false,
+              error: "Set ANTHROPIC_API_KEY to use Optimize for mobile.",
+            });
+            break;
+          }
+          try {
+            const resolved = resolveProjectFilePath(msg.filePath, projectRoot);
+            if (!resolved || !isProjectFilePathSafe(msg.filePath, projectRoot)) {
+              send(ws, { type: "optimizeProposalComplete", id: "", success: false, error: "Could not resolve source file" });
+              break;
+            }
+            const src = fs.readFileSync(resolved, "utf-8");
+            const lines = src.split("\n");
+            const snippet = lines[Math.max(0, msg.lineNumber - 1)]?.slice(0, 400) ?? "";
+            const screens: Record<string, string> = {};
+            for (const [name, minWidth] of Object.entries(currentTokens?.screens ?? {})) {
+              screens[name] = String(minWidth);
+            }
+
+            const input: OptimizeInput = {
+              filePath: msg.filePath,
+              line: msg.lineNumber,
+              col: msg.columnNumber - 1,
+              oldClassName: msg.className ?? "",
+              snippet,
+              screens,
+              viewportWidth: msg.viewportWidth,
+              projectRoot,
+            };
+            const outcome = await generateMobileFirstClassName(input, {
+              apiKey: aiOptions.apiKey!,
+              baseURL: aiOptions.baseURL,
+              model: aiOptions.model,
+              escalation: aiOptions.escalation?.enabled ? { enabled: true, model: aiOptions.escalation.model } : { enabled: false },
+              onEscalate: (tier) => send(ws, { type: "aiResolving", tier }),
+            });
+            if (!outcome || !("newClassName" in outcome)) {
+              const reason = outcome && "cannotGenerate" in outcome ? outcome.cannotGenerate : "couldn't generate a mobile-first className.";
+              send(ws, { type: "optimizeProposalComplete", id: "", success: false, error: reason });
+              break;
+            }
+            const id = randomUUID();
+            pendingOptimize.set(id, {
+              ...outcome,
+              filePath: msg.filePath,
+              line: msg.lineNumber,
+              col: msg.columnNumber - 1,
+            });
+            send(ws, {
+              type: "optimizeProposal",
+              id,
+              filePath: msg.filePath,
+              line: msg.lineNumber,
+              oldClassName: msg.className ?? "",
+              newClassName: outcome.newClassName,
+              reasoning: outcome.reasoning,
+            });
+          } catch (err) {
+            send(ws, { type: "optimizeProposalComplete", id: "", success: false, error: err instanceof Error ? err.message : String(err) });
+          }
+          break;
+        }
+
+        case "confirmOptimize": {
+          const proposal = pendingOptimize.get(msg.id);
+          pendingOptimize.delete(msg.id);
+          if (!proposal) {
+            send(ws, { type: "optimizeProposalComplete", id: msg.id, success: false, error: "Proposal expired" });
+            break;
+          }
+          if (!msg.accept) {
+            send(ws, { type: "optimizeProposalComplete", id: msg.id, success: false, error: "Declined" });
+            break;
+          }
+          // Apply the confirmed className via the location-locked replaceClassName
+          // op — no second AI call.
+          const op: BatchOperation = {
+            op: "replaceClassName",
+            file: proposal.filePath,
+            line: proposal.line,
+            col: proposal.col,
+            className: proposal.newClassName,
+          };
+          const rerun = executeBatch([op], projectRoot);
+          const rr = rerun.results[0];
+          if (rr?.success) {
+            const undoId = randomUUID();
+            for (const entry of rerun.undoEntries) {
+              undoStack.push({ id: undoId, filePath: entry.filePath, content: entry.content, afterContent: entry.afterContent, timestamp: Date.now() });
+            }
+            send(ws, { type: "optimizeProposalComplete", id: msg.id, success: true, undoId });
+          } else {
+            send(ws, { type: "optimizeProposalComplete", id: msg.id, success: false, error: rr?.error || "Could not apply the optimized className" });
           }
           break;
         }

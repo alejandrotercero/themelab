@@ -23,7 +23,7 @@ const BREAKPOINTS: ReadonlyArray<readonly [string, number]> = [
   ["sm", 640],
 ];
 
-const BREAKPOINT_WIDTHS = new Map<string, number>(BREAKPOINTS);
+let BREAKPOINT_WIDTHS = new Map<string, number>(BREAKPOINTS);
 
 /**
  * Split a class into its responsive breakpoint variant and the bare utility.
@@ -69,4 +69,82 @@ export function pickWinningVariant(
     }
   }
   return bestVariant;
+}
+
+// ── Order-independent variant set matching (mirrors packages/cli/src/transform.ts) ─
+
+/**
+ * Allow the CLI to override the hardcoded breakpoints with the project's actual
+ * `screens`. Called from variant-target.ts when metadata arrives. Values are
+ * already pixel min-widths.
+ */
+export function setProjectScreens(screens: Array<{ name: string; minWidth: number }>): void {
+  BREAKPOINT_WIDTHS = new Map(screens.map((s) => [s.name, s.minWidth]));
+}
+
+/**
+ * Split a class into variant tokens + bare utility, ignoring `:` inside
+ * arbitrary values (`bg-[url(http://x)]`). The last colon-segment is the utility.
+ *   "dark:md:bg-red-500" → { variants: ["dark","md"], utility: "bg-red-500" }
+ *   "bg-[url(http://x)]"  → { variants: [],            utility: "bg-[url(http://x)]" }
+ */
+export function decomposeClass(cls: string): { variants: string[]; utility: string } {
+  const segments: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < cls.length; i++) {
+    const ch = cls[i];
+    if (ch === "[") depth++;
+    else if (ch === "]") depth = Math.max(0, depth - 1);
+    else if (ch === ":" && depth === 0) {
+      segments.push(cls.slice(start, i));
+      start = i + 1;
+    }
+  }
+  segments.push(cls.slice(start));
+  const utility = segments.pop() ?? "";
+  return { variants: segments, utility };
+}
+
+function sameVariantSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const setB = new Set(b);
+  return a.every((t) => setB.has(t));
+}
+
+/**
+ * Find the declared class for a specific variant-token set + bare-utility predicate.
+ * Order-independent: `dark:md:bg-x` matches variant tokens ["md","dark"].
+ * Returns the full matching class string, or "" if none is declared.
+ *
+ * Used to read the *displayed* value for the active target (e.g. show the
+ * `dark:bg-*` value while Dark is active), even when off-viewport.
+ */
+export function findClassForVariant(
+  classes: string[],
+  matchesBare: (bare: string) => boolean,
+  variantTokens: string[],
+): string {
+  for (const cls of classes) {
+    const { variants, utility } = decomposeClass(cls);
+    if (!sameVariantSet(variants, variantTokens)) continue;
+    if (matchesBare(utility)) return cls;
+  }
+  return "";
+}
+
+/**
+ * Count distinct responsive breakpoints the element declares classes for, across
+ * all its utilities. Used to decide whether to surface "Optimize for mobile"
+ * (only meaningful when ≥2 breakpoints are present).
+ */
+export function countDistinctBreakpoints(classes: string[]): number {
+  const found = new Set<string>();
+  for (const cls of classes) {
+    const { variants } = decomposeClass(cls);
+    for (const v of variants) {
+      if (BREAKPOINT_WIDTHS.has(v)) found.add(v);
+    }
+  }
+  return found.size;
 }

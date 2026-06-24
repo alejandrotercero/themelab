@@ -10,6 +10,7 @@ import {
   findJSXElementAt,
   findJSXElementAtLine,
   mutateClassName,
+  mutateClassNameReplace,
   mutateTextContent,
   mutateReorder,
   swapWithAdjacentSibling,
@@ -374,6 +375,19 @@ function resolveNodes(
       continue;
     }
 
+    // replaceClassName is an AI-generated, location-locked op (like reorderArrayItem)
+    // applied on user confirm — it carries only file/line/col, not the full identity
+    // + staleness fields, so resolve its node by line/col and skip the gates below.
+    if (op.op === "replaceClassName") {
+      const tnode = findJSXElementAtLine(j, root, op.line, op.col);
+      resolved.push(
+        tnode
+          ? { index, op, node: tnode, priority: 0 }
+          : { index, op, node: null, priority: 0, error: `No JSX element found near ${op.line}:${op.col}` },
+      );
+      continue;
+    }
+
     // ── AI-resolved location: trust it ───────────────────────────────
     // The locator already decided identity (the source tag may differ from the
     // DOM tag, e.g. <Link> → <a>), so resolve purely by line/col and skip the
@@ -685,6 +699,11 @@ function applyOp(j: any, root: any, rop: ResolvedOp, source: string): string | u
         variant: u.variant,
       }));
       mutateClassName(j, node, updates);
+      return undefined;
+    }
+
+    case "replaceClassName": {
+      mutateClassNameReplace(j, node, op.className);
       return undefined;
     }
 

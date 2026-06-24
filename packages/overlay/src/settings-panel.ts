@@ -79,6 +79,20 @@ const STYLES = `
 .rr-confirm-title { font-size: 11px; color: ${COLORS.accent}; text-transform: uppercase; letter-spacing: 0.04em; }
 .rr-confirm-body { font-size: 12px; line-height: 1.4; }
 .rr-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.rr-optimize-action {
+  position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(8px);
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 12px;
+  background: ${COLORS.bgPrimary}; border: 1px solid ${COLORS.border};
+  border-radius: 999px; box-shadow: ${SHADOWS.md}; z-index: 2147483647;
+  font: 500 12px ${FONT_FAMILY}; color: ${COLORS.textPrimary};
+  opacity: 0; transition: opacity ${TRANSITIONS.medium}, transform ${TRANSITIONS.medium};
+}
+.rr-optimize-action.visible, .rr-optimize-action { opacity: 1; transform: translateX(-50%) translateY(0); }
+.rr-diff-row { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0; font-family: ui-monospace, ${FONT_FAMILY}; font-size: 11px; }
+.rr-diff-tag { flex-shrink: 0; font-weight: 700; width: 12px; }
+.rr-diff-row .rr-diff-tag, .rr-diff-old { color: ${COLORS.danger}; }
+.rr-diff-new, .rr-diff-row:has(.rr-diff-new) .rr-diff-tag { color: #34d399; }
+.rr-diff-old, .rr-diff-new { word-break: break-all; }
 
 .rr-ai-ind {
   position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(8px);
@@ -238,6 +252,8 @@ export function initSettingsPanel(shadowRoot: ShadowRoot): void {
     else if (msg.type === "aiResolving") indResolving(msg.tier);
     else if (msg.type === "aiProposal") { indFound("Located it — confirm below"); showProposal(msg); }
     else if (msg.type === "aiProposalComplete") onProposalComplete(msg);
+    else if (msg.type === "optimizeProposal") { indFound("Generated — confirm below"); showOptimizeProposal(msg); }
+    else if (msg.type === "optimizeProposalComplete") onOptimizeComplete(msg);
     else if (msg.type === "commitBatchComplete") {
       if (msg.success || msg.results.some((r) => r.resolvedBy === "ai")) indFound("Found it");
       else indMaybeNotFound();
@@ -418,6 +434,139 @@ function onProposalComplete(msg: Extract<import("@themelab/shared").ServerMessag
   } else {
     showToast(msg.error ?? "AI resolution failed", "error");
   }
+}
+
+function showOptimizeProposal(msg: Extract<import("@themelab/shared").ServerMessage, { type: "optimizeProposal" }>): void {
+  if (!panelEl?.parentNode) return;
+  confirmEl?.remove();
+  const root = panelEl.parentNode;
+  confirmEl = document.createElement("div");
+  confirmEl.className = "rr-confirm";
+  confirmEl.innerHTML =
+    `<div class="rr-confirm-title">Optimize for mobile</div>` +
+    `<div class="rr-confirm-body">` +
+      `<span class="rr-hint">${escapeHtml(msg.filePath)}:${msg.line}</span><br>` +
+      `<div class="rr-diff-row"><span class="rr-diff-tag">−</span><code class="rr-diff-old">${escapeHtml(msg.oldClassName)}</code></div>` +
+      `<div class="rr-diff-row"><span class="rr-diff-tag">+</span><code class="rr-diff-new">${escapeHtml(msg.newClassName)}</code></div>` +
+      `<span class="rr-hint">${escapeHtml(msg.reasoning)}</span>` +
+    `</div>`;
+  const actions = document.createElement("div");
+  actions.className = "rr-confirm-actions";
+  const dismiss = document.createElement("button");
+  dismiss.className = "rr-btn ghost";
+  dismiss.textContent = "Dismiss";
+  dismiss.addEventListener("click", () => { send({ type: "confirmOptimize", id: msg.id, accept: false }); hideConfirm(); });
+  const apply = document.createElement("button");
+  apply.className = "rr-btn primary";
+  apply.textContent = "Apply";
+  apply.addEventListener("click", () => { send({ type: "confirmOptimize", id: msg.id, accept: true }); hideConfirm(); });
+  actions.append(dismiss, apply);
+  confirmEl.appendChild(actions);
+  root.appendChild(confirmEl);
+  requestAnimationFrame(() => confirmEl?.classList.add("visible"));
+}
+
+function onOptimizeComplete(msg: Extract<import("@themelab/shared").ServerMessage, { type: "optimizeProposalComplete" }>): void {
+  if (msg.success) {
+    showToast("Applied mobile-first className", "success");
+    addChangeEntry({
+      type: "commitBatch",
+      componentName: "AI Optimize",
+      filePath: "",
+      summary: "Optimized for mobile (mobile-first className)",
+      state: "active",
+      revertData: { type: "batchApplyUndo", undoIds: msg.undoId ? [msg.undoId] : [] },
+    });
+  } else {
+    showToast(msg.error ?? "Optimization failed", "error");
+  }
+}
+
+let optimizeActionEl: HTMLDivElement | null = null;
+
+/** Hide any showing "Optimize for mobile" action pill. */
+export function hideOptimizeAction(): void {
+  if (optimizeActionEl) {
+    optimizeActionEl.remove();
+    optimizeActionEl = null;
+  }
+}
+
+/**
+ * After a successful edit, if the element declares classes at 2+ breakpoints,
+ * surface an "Optimize for mobile" action pill. Clicking sends `optimizeResponsive`
+ * with the element's identity + viewport width so the CLI can regenerate a
+ * mobile-first className (built-in AI) and return a proposal to confirm.
+ */
+export function maybeShowOptimizeAction(
+  identity: {
+    filePath: string;
+    lineNumber: number;
+    columnNumber: number;
+    componentName?: string;
+    tagName?: string;
+    className?: string;
+    parentTagName?: string;
+    parentClassName?: string;
+    nthOfType?: number;
+    id?: string;
+    jsxKey?: string;
+    text?: string;
+    contextText?: string;
+    jsxPath?: unknown;
+    fileMtime?: number;
+    fileSize?: number;
+  },
+  breakpointCount: number,
+): void {
+  hideOptimizeAction();
+  if (breakpointCount < 2) return;
+  if (!panelEl?.parentNode) return;
+  const root = panelEl.parentNode;
+
+  const el = document.createElement("div");
+  el.className = "rr-optimize-action";
+  el.innerHTML = `<span>📱 Responsive across ${breakpointCount} breakpoints</span>`;
+  const btn = document.createElement("button");
+  btn.className = "rr-btn primary";
+  btn.textContent = "Optimize for mobile";
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    btn.textContent = "Generating…";
+    send({
+      type: "optimizeResponsive",
+      filePath: identity.filePath,
+      lineNumber: identity.lineNumber,
+      columnNumber: identity.columnNumber,
+      componentName: identity.componentName,
+      tagName: identity.tagName,
+      className: identity.className,
+      parentTagName: identity.parentTagName,
+      parentClassName: identity.parentClassName,
+      nthOfType: identity.nthOfType,
+      id: identity.id,
+      jsxKey: identity.jsxKey,
+      text: identity.text,
+      contextText: identity.contextText,
+      jsxPath: identity.jsxPath as never,
+      fileMtime: identity.fileMtime,
+      fileSize: identity.fileSize,
+      viewportWidth: window.innerWidth,
+    });
+  });
+  const dismiss = document.createElement("button");
+  dismiss.className = "rr-btn ghost";
+  dismiss.textContent = "×";
+  dismiss.title = "Dismiss";
+  dismiss.addEventListener("click", hideOptimizeAction);
+  el.appendChild(btn);
+  el.appendChild(dismiss);
+  root.appendChild(el);
+  optimizeActionEl = el;
+  // Auto-dismiss after a while if not acted on.
+  setTimeout(() => {
+    if (optimizeActionEl === el) hideOptimizeAction();
+  }, 20000);
 }
 
 function escapeHtml(s: string): string {

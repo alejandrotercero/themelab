@@ -1,12 +1,18 @@
 import { COLORS, SHADOWS, RADII, TRANSITIONS, PANEL, FONT_MONO, ensurePanelFont } from "../design-tokens.js";
+import {
+  getVariantTarget,
+  setVariantTarget,
+  getMeta,
+  onVariantTargetChange,
+} from "./variant-target.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const MIN_WIDTH = 260;
-const MAX_WIDTH = 380;
-const DEFAULT_WIDTH = MAX_WIDTH; // open at full width by default
+const MIN_WIDTH = 300;
+const MAX_WIDTH = 460;
+const DEFAULT_WIDTH = 420; // open near full width so all controls fit without wrapping
 const STORAGE_KEY = "themelab-sidebar-width";
 const RESIZE_HANDLE_WIDTH = 4;
 
@@ -148,6 +154,73 @@ const SIDEBAR_STYLES = `
     background: ${COLORS.danger};
     color: #ffffff;
   }
+  .prop-variant-target {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px 10px;
+    border-bottom: 1px solid ${PANEL.surface};
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .prop-variant-seg {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    background: ${PANEL.surface};
+    border: 1px solid ${PANEL.border};
+    border-radius: ${RADII.xs};
+    padding: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+  .prop-variant-seg-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 0;
+    border: none;
+    border-radius: ${RADII.xs};
+    font-family: ${FONT_MONO};
+    font-size: 11px;
+    cursor: pointer;
+    background: transparent;
+    color: ${PANEL.textDim};
+    min-width: 0;
+    transition: background 100ms ease, color 100ms ease;
+  }
+  .prop-variant-seg-btn[data-active="true"] {
+    background: ${PANEL.btnBg};
+    color: #ffffff;
+  }
+  .prop-variant-dark {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid ${PANEL.border};
+    border-radius: ${RADII.xs};
+    background: ${PANEL.surface};
+    font-family: ${FONT_MONO};
+    font-size: 11px;
+    color: ${PANEL.textDim};
+    cursor: pointer;
+    transition: background 100ms ease, color 100ms ease;
+    white-space: nowrap;
+  }
+  .prop-variant-dark[data-active="true"] {
+    background: ${PANEL.btnBg};
+    color: #ffffff;
+    border-color: transparent;
+  }
+  .prop-variant-note {
+    flex: 1 0 100%;
+    font-size: 10px;
+    color: ${PANEL.textDim};
+    line-height: 1.3;
+    margin-top: 2px;
+  }
   .prop-sidebar-nav {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -242,8 +315,10 @@ function loadWidth(): number {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = parseInt(stored, 10);
-      if (!isNaN(parsed) && parsed >= MIN_WIDTH && parsed <= MAX_WIDTH) {
-        return parsed;
+      // Clamp a stored width into the current range so a value saved under older,
+      // narrower bounds migrates up to the new minimum instead of being discarded.
+      if (!isNaN(parsed)) {
+        return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parsed));
       }
     }
   } catch {
@@ -330,6 +405,80 @@ export function createSidebar(
   header.appendChild(headerInfo);
   header.appendChild(closeBtn);
   sidebar.appendChild(header);
+
+  // Variant target row: explicit breakpoint selector + Dark toggle. Drives which
+  // variant every property edit writes (base / sm / md / lg / xl / 2xl / dark:).
+  const variantRow = document.createElement("div");
+  variantRow.className = "prop-variant-target";
+
+  const seg = document.createElement("div");
+  seg.className = "prop-variant-seg";
+
+  const segButtons = new Map<string, HTMLButtonElement>();
+
+  function rebuildSegments(): void {
+    seg.innerHTML = "";
+    segButtons.clear();
+    const baseBtn = document.createElement("button");
+    baseBtn.className = "prop-variant-seg-btn";
+    baseBtn.textContent = "Base";
+    baseBtn.title = "Edit the base (mobile-first) utility";
+    baseBtn.addEventListener("click", () => setVariantTarget({ breakpoint: "" }));
+    seg.appendChild(baseBtn);
+    segButtons.set("", baseBtn);
+    for (const screen of getMeta().screens) {
+      const btn = document.createElement("button");
+      btn.className = "prop-variant-seg-btn";
+      btn.textContent = screen.name;
+      btn.title = `Edit the ${screen.name}: breakpoint (≥ ${screen.minWidth}px)`;
+      btn.addEventListener("click", () => setVariantTarget({ breakpoint: screen.name }));
+      seg.appendChild(btn);
+      segButtons.set(screen.name, btn);
+    }
+    syncActive();
+  }
+
+  const darkBtn = document.createElement("button");
+  darkBtn.className = "prop-variant-dark";
+  darkBtn.innerHTML = `◐ <span>Dark</span>`;
+  darkBtn.title = "Toggle editing the dark: variant";
+  darkBtn.addEventListener("click", () => {
+    const cur = getVariantTarget();
+    setVariantTarget({ dark: !cur.dark });
+  });
+
+  // Note line: surfaces when dark uses prefers-color-scheme (can't live-preview) or
+  // when an off-viewport breakpoint is the active target (sidebar shows declared value).
+  const note = document.createElement("div");
+  note.className = "prop-variant-note";
+
+  function syncActive(): void {
+    const t = getVariantTarget();
+    for (const [name, btn] of segButtons) {
+      btn.dataset.active = String(name === t.breakpoint);
+    }
+    darkBtn.dataset.active = String(t.dark);
+    const dm = getMeta().darkMode;
+    const parts: string[] = [];
+    if (t.dark && dm.strategy === "media") {
+      parts.push("Dark uses prefers-color-scheme — preview unavailable; dark: still written.");
+    }
+    if (t.breakpoint && !parts.length) {
+      parts.push(`Showing declared ${t.breakpoint}: value (may differ from rendered).`);
+    }
+    note.textContent = parts.join(" ");
+    note.style.display = parts.length ? "block" : "none";
+  }
+
+  variantRow.appendChild(seg);
+  variantRow.appendChild(darkBtn);
+  variantRow.appendChild(note);
+  rebuildSegments();
+  onVariantTargetChange(() => {
+    // The breakpoint set may have changed (metadata arrived) — rebuild segments.
+    rebuildSegments();
+  });
+  sidebar.appendChild(variantRow);
 
   // Hierarchy navigation row (↑ parent, ↓ child, ←/→ siblings)
   const nav = document.createElement("div");

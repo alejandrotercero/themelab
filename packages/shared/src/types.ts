@@ -200,6 +200,17 @@ export type BatchOperation =
       line: number;
       col: number;
       direction: "up" | "down";
+    }
+  | {
+      // Replace an element's entire className attribute value with `className`.
+      // Internal: produced by the AI "optimize for mobile" generator after the user
+      // confirms a regenerated, mobile-first className. Location-locked like the
+      // AI locator's proposals.
+      op: "replaceClassName";
+      file: string;
+      line: number;
+      col: number;
+      className: string;
     };
 
 export type ClientMessage =
@@ -323,7 +334,35 @@ export type ClientMessage =
   // Reports the overlay's current component selection to the CLI so it can be
   // surfaced to external agents over MCP. Read-only (not a mutation): the CLI
   // just stores the latest value. `null` clears it (deselect / disconnect).
-  | { type: "setSelection"; selection: ComponentInfo | null };
+  | { type: "setSelection"; selection: ComponentInfo | null }
+  // Ask the CLI's built-in AI to regenerate a JSX element's className to be
+  // mobile-first responsive, keeping desktop values behind their breakpoints.
+  // Carries the same DOM identity the AI locator uses to resolve the source node.
+  | {
+      type: "optimizeResponsive";
+      filePath: string;
+      lineNumber: number;
+      columnNumber: number;
+      componentName?: string;
+      tagName?: string;
+      className?: string;
+      parentTagName?: string;
+      parentClassName?: string;
+      nthOfType?: number;
+      id?: string;
+      jsxKey?: string;
+      text?: string;
+      contextText?: string;
+      jsxPath?: JSXStructuralPath;
+      fileMtime?: number;
+      fileSize?: number;
+      /** Current viewport width — the regenerated className must not change the
+       *  rendered result at this width. */
+      viewportWidth: number;
+    }
+  // Apply or dismiss an "Optimize for mobile" proposal. `accept` applies the
+  // generated className via a location-locked replaceClassName op.
+  | { type: "confirmOptimize"; id: string; accept: boolean };
 
 export type ServerMessage =
   | { type: "reorderComplete"; success: boolean; error?: string }
@@ -391,6 +430,27 @@ export type ServerMessage =
       undoId?: string;
       kind?: string;
       filePath?: string;
+    }
+  // "Optimize for mobile" — the AI regenerated an element's className to be
+  // mobile-first responsive. Awaits confirm before being applied.
+  | {
+      type: "optimizeProposal";
+      id: string;
+      filePath: string;
+      line: number;
+      /** Current className string on the element (the "before"). */
+      oldClassName: string;
+      /** Regenerated mobile-first className (the "after"). */
+      newClassName: string;
+      /** One-sentence rationale from the model. */
+      reasoning: string;
+    }
+  | {
+      type: "optimizeProposalComplete";
+      id: string;
+      success: boolean;
+      error?: string;
+      undoId?: string;
     };
 
 /** Settings patch sent from the overlay (apiKey omitted = unchanged, "" = clear). */
@@ -526,6 +586,20 @@ export interface TailwindTokenMap {
   opacityReverse: Record<string, string>;
   letterSpacingReverse: Record<string, string>;
   lineHeightReverse: Record<string, string>;
+  /**
+   * Responsive breakpoint name → min-width (raw Tailwind value, e.g. "768px" or
+   * "48rem"). Lets the overlay's breakpoint selector and variant-targeting honor
+   * the project's actual `screens` instead of hardcoded defaults. Optional for
+   * back-compat with payloads built before this field existed.
+   */
+  screens?: Record<string, string>;
+  /**
+   * How the project toggles dark mode. `strategy: "class"` means a selector
+   * (default `.dark`) on an ancestor; `"media"` means `prefers-color-scheme`
+   * (which the overlay can't toggle to preview). `selector` is the raw configured
+   * selector for the class strategy.
+   */
+  darkMode?: { strategy: "class" | "media"; selector: string };
 }
 
 /**

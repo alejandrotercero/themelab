@@ -99,6 +99,54 @@ describe("executeBatch", () => {
     expect(updated).not.toContain("bg-white");
   });
 
+  it("replaces an element's entire className via the replaceClassName op", () => {
+    const { filePath, original } = setup("classname-variants.tsx");
+    const pos = findPosition(original, "section");
+
+    const result = executeBatch(
+      [{
+        op: "replaceClassName",
+        file: filePath,
+        line: pos.line,
+        col: pos.col,
+        className: "bg-white text-black md:dark:bg-slate-700",
+      }],
+      path.dirname(filePath),
+    );
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].success).toBe(true);
+
+    const updated = fs.readFileSync(filePath, "utf-8");
+    // Whole-string replacement: the new className replaces the old entirely.
+    expect(updated).toContain('className="bg-white text-black md:dark:bg-slate-700"');
+    // Old stacked/breakpoint classes are gone.
+    expect(updated).not.toContain("dark:bg-black");
+    expect(updated).not.toContain("dark:md:p-6");
+  });
+
+  it("replaceClassName overwrites an existing StringLiteral className wholesale", () => {
+    // classname-string.tsx's h2 already has className="text-lg font-bold".
+    const { filePath, original } = setup("classname-string.tsx");
+    const pos = findPosition(original, "h2");
+
+    const result = executeBatch(
+      [{
+        op: "replaceClassName",
+        file: filePath,
+        line: pos.line,
+        col: pos.col,
+        className: "text-xl font-bold",
+      }],
+      path.dirname(filePath),
+    );
+
+    expect(result.results[0].success).toBe(true);
+    const updated = fs.readFileSync(filePath, "utf-8");
+    expect(updated).toContain('className="text-xl font-bold"');
+    expect(updated).not.toContain("text-lg font-bold");
+  });
+
   it("applies a single updateText operation", () => {
     const { filePath, original } = setup("classname-string.tsx");
     const pos = findPosition(original, "h2");

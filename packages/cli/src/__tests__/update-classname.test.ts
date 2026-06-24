@@ -174,6 +174,59 @@ describe("updateClassName", () => {
     });
   });
 
+  describe("editing a specific variant target", () => {
+    it("edits the dark: variant in place, leaving base + other variants intact", () => {
+      const fixture = path.join(fixturesDir, "classname-variants.tsx");
+      const { line, col } = findElement("classname-variants.tsx", "div");
+      const result = updateClassName(fixture, line, col, [{
+        tailwindPrefix: "bg",
+        tailwindToken: "gray-800",
+        value: "#1f2937",
+        relatedPrefixes: [],
+        variant: "dark",
+      }]);
+      expect(result).toContain("dark:bg-gray-800");
+      expect(result).not.toContain("dark:bg-gray-900");
+      expect(result).toContain("bg-blue-500"); // base untouched
+      expect(result).toContain("hover:bg-blue-700");
+      expect(result).toContain("md:bg-red-500");
+    });
+
+    it("matches a stacked variant regardless of token order (md:dark ≡ dark:md)", () => {
+      const fixture = path.join(fixturesDir, "classname-variants.tsx");
+      const { line, col } = findElement("classname-variants.tsx", "section");
+      // Source declares `md:dark:bg-slate-800`; we target it as `dark:md`.
+      const result = updateClassName(fixture, line, col, [{
+        tailwindPrefix: "bg",
+        tailwindToken: "slate-700",
+        value: "#334155",
+        relatedPrefixes: [],
+        variant: "dark:md",
+      }]);
+      // Replaced in place (no duplicate appended), written in canonical order.
+      expect(result).toContain("dark:md:bg-slate-700");
+      expect(result).not.toContain("slate-800");
+      expect(result).not.toContain("md:dark:bg-slate-700");
+      expect(result).toContain("bg-white"); // base untouched
+      expect(result).toContain("dark:bg-black"); // single-variant dark untouched
+    });
+
+    it("writes stacked variants in canonical order (dark first) when given md:dark", () => {
+      const fixture = path.join(fixturesDir, "classname-variants.tsx");
+      const { line, col } = findElement("classname-variants.tsx", "section");
+      const result = updateClassName(fixture, line, col, [{
+        tailwindPrefix: "p",
+        tailwindToken: "8",
+        value: "32px",
+        relatedPrefixes: [],
+        variant: "md:dark",
+      }]);
+      // Existing `dark:md:p-6` is matched order-independently and rewritten canonically.
+      expect(result).toContain("dark:md:p-8");
+      expect(result).not.toContain("p-6");
+    });
+  });
+
   describe("responsive variant preserved", () => {
     it("replaces base p class but preserves md:p and lg:p variants", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");

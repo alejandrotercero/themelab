@@ -20,7 +20,7 @@ import { getResolvedOwnerStack } from "../utils/server-symbolication.js";
 import { computeNthOfType } from "../utils/nth-of-type.js";
 import { classMatchesPrefix, pickWinningVariant, findClassForVariant, decomposeClass, countDistinctBreakpoints } from "../utils/class-matches-prefix.js";
 import * as variantTargetModule from "./variant-target.js";
-const { getVariantString, getVariantTokens, resetVariantTargetOnSelect, resetVariantTargetOnDeselect, onVariantTargetChange } = variantTargetModule;
+const { getVariantString, getVariantTokens, resetVariantTargetOnSelect, resetVariantTargetOnDeselect, onVariantTargetChange, setActiveElementClasses } = variantTargetModule;
 import { setStyle, clearStyle } from "../utils/style-access.js";
 import { navigate, getNavAvailability, moveSelectedSibling } from "../selection.js";
 import { getValue as getThemeValue, getColorTokenNames } from "../theme-state.js";
@@ -636,6 +636,8 @@ export function initPropertyController(shadowRoot: ShadowRoot): void {
         // Surface "Optimize for mobile" when the edited element spans 2+ breakpoints.
         if (state.selectedElement && state.componentInfo) {
           const classes = (state.selectedElement.getAttribute("class") || "").split(/\s+/).filter(Boolean);
+          // Refresh the breakpoint-override markers — an edit may add a new variant.
+          setActiveElementClasses(classes);
           const breakpointCount = countDistinctBreakpoints(classes);
           const parentEl = state.selectedElement.parentElement;
           maybeShowOptimizeAction(
@@ -871,11 +873,11 @@ export function inspect(element: HTMLElement, info: ComponentInfo): void {
   for (const g of DEFERRED_GROUPS) {
     if (!isGroupCollapsed(g)) groupsToRead.add(g);
   }
-  // Seed the variant target to the viewport-winning breakpoint + current dark state.
-  resetVariantTargetOnSelect(
-    (element.getAttribute("class") || "").split(/\s+/).filter(Boolean),
-    () => true,
-  );
+  // Seed the variant target to the viewport-winning breakpoint + current dark state,
+  // and record the element's classes so the selector can mark its breakpoint overrides.
+  const elementClasses = (element.getAttribute("class") || "").split(/\s+/).filter(Boolean);
+  resetVariantTargetOnSelect(elementClasses, () => true);
+  setActiveElementClasses(elementClasses);
   const values = readComputedValues(element, groupsToRead);
   state.currentValues = values;
   state.originalValues = new Map(values);

@@ -13,6 +13,16 @@
 - [x] **C** Wider sidebar (300 / 460 / 420 px)
 - [x] **D** Font-size token shortcuts (scale picker)
 
+### Post-feedback fixes & enhancements (from live testing on careerforge)
+
+- [x] **F1** Dark toggle stopped working after a few uses → idempotent `applyDarkPreview`
+- [x] **F2** Variable/color picker showed light colors while Dark active → sync `theme-state` mode to the Dark toggle
+- [x] **F3** Hover highlight pierced the overlay's own sidebar → guard the idle hover path with the `#themelab-root` composedPath check
+- [x] **F4** Tailwind v3 `darkMode: ['class']` lost for TypeScript configs (`require()` can't load `.ts`) → execution-free text-scan of the config source (+tests)
+- [x] **F5** Font-size scale dropdown lost the selection → mount the popover in the shadow root, dismiss via composedPath
+- [x] **F6** Font-size (and all number-scrub) controls now read the **declared Tailwind token** off the element's class (`text-lg`) for the active variant — reliable across rem↔px — with a pixel-normalized reverse lookup as fallback
+- [x] **F7** Breakpoint selector marks a **dot** on `sm/md/lg/xl/2xl` when the selected element declares any override there (refreshes on select + after edits)
+
 ---
 
 ## Context
@@ -161,12 +171,17 @@ Font size is a `number-scrub` today (`property-descriptors.ts:119`, `controls/nu
 - `packages/shared/src/types.ts` — `screens`/`darkMode` on tokens msg; `optimizeResponsive` message
 
 **Overlay**
-- **New** `packages/overlay/src/properties/variant-target.ts` — variant state (A2)
-- `packages/overlay/src/properties/property-sidebar.ts` — selector + Dark toggle (A2); width (C)
-- `packages/overlay/src/properties/property-controller.ts` — apply variant on commit, per-variant read (A3)
+- **New** `packages/overlay/src/properties/variant-target.ts` — variant state (A2); dark preview ownership (F1); theme-mode sync (F2); `getBreakpointsWithOverrides` (F7)
+- `packages/overlay/src/properties/property-sidebar.ts` — selector + Dark toggle (A2); width (C); breakpoint-override dots (F7)
+- `packages/overlay/src/properties/property-controller.ts` — apply variant on commit, per-variant read (A3); push active classes (F7)
+- `packages/overlay/src/properties/controls/number-scrub.ts` — read declared token off the class + px-normalized reverse lookup (F6)
 - `packages/overlay/src/utils/class-matches-prefix.ts` — honor `screens`; set-based match (A1/A4)
-- **New** `packages/overlay/src/properties/controls/scale-shortcut.ts` — font-size picker (D)
+- **New** `packages/overlay/src/properties/controls/scale-shortcut.ts` — font-size picker (D); shadow-root mount (F5)
+- `packages/overlay/src/selection.ts` — hover guard over overlay UI (F3)
 - `packages/overlay/src/toolbar.ts` — Optimize-for-mobile action (B1)
+
+**CLI (post-feedback)**
+- `packages/cli/src/tailwind-resolver.ts` — `darkMode` text-scan fallback for `.ts` configs (F4)
 
 ---
 

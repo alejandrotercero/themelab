@@ -1,19 +1,51 @@
 import type { PropertyDescriptor } from "@themelab/shared";
-import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
+import type { PropertyControl, OnPreview, OnCommit, ControlContext } from "./types.js";
 import { getSnapPoints } from "../tailwind-resolver.js";
 import { createScaleShortcutButton } from "./scale-shortcut.js";
+import { classMatchesPrefix, findClassForVariant, decomposeClass } from "../../utils/class-matches-prefix.js";
+import { getVariantTokens } from "../variant-target.js";
 import { PANEL, FONT_MONO } from "../../design-tokens.js";
 
 const VALID_KEYWORDS = new Set(["auto", "none", "normal", "inherit", "initial"]);
+
+/** Normalize a CSS length to pixels for tolerant comparison (rem/em ≈ ×16). */
+function toPx(value: string): number | null {
+  const n = parseFloat(value);
+  if (isNaN(n)) return null;
+  return /r?em\s*$/i.test(value.trim()) ? n * 16 : n;
+}
 
 export function createNumberScrub(
   descriptors: PropertyDescriptor[],
   values: Map<string, string>,
   onPreview: OnPreview,
   onCommit: OnCommit,
+  ctx?: ControlContext,
 ): PropertyControl {
   const descriptor = descriptors[0];
   const scaleName = descriptor.tailwindScale as Parameters<typeof getSnapPoints>[0];
+
+  /**
+   * The Tailwind token the element actually declares for this property at the
+   * active variant — e.g. `lg` from `text-lg` (or `md:text-lg` when md is the
+   * target). Reading the class is more reliable than reverse-resolving the
+   * computed pixel value, since the scale is stored in rem (`text-lg` = 1.125rem)
+   * and getComputedStyle returns px, so an exact value match usually fails.
+   */
+  function declaredToken(): string | null {
+    const className = ctx?.selectedClassName;
+    if (!className) return null;
+    const classes = className.split(/\s+/).filter(Boolean);
+    const pattern = descriptor.classPattern;
+    const matchesBare = pattern
+      ? (bare: string) => new RegExp(pattern).test(bare)
+      : (bare: string) => classMatchesPrefix(bare, descriptor.tailwindPrefix);
+    const cls = findClassForVariant(classes, matchesBare, getVariantTokens());
+    if (!cls) return null;
+    const utility = decomposeClass(cls).utility;
+    const lead = `${descriptor.tailwindPrefix}-`;
+    return utility.startsWith(lead) ? utility.slice(lead.length) : null;
+  }
 
   const container = document.createElement("div");
   container.style.cssText = `display:flex; align-items:center; gap:6px;`;
@@ -48,15 +80,34 @@ export function createNumberScrub(
     const num = parseFloat(cssValue);
     input.value = isNaN(num) ? cssValue : String(num);
 
-    // Look up token
     try {
       const snapPoints = getSnapPoints(scaleName, cssValue);
-      const match = snapPoints.find((p) => p.cssValue === cssValue);
-      if (match?.token) {
-        tokenLabel.textContent = `${descriptor.tailwindPrefix}-${match.token}`;
-      } else {
-        tokenLabel.textContent = "";
+
+      // 1. Prefer the token the element literally declares (e.g. `text-lg`), as
+      //    long as the value we're showing still matches it — so a live edit that
+      //    moves off the declared size falls through to the reverse lookup below.
+      const declared = declaredToken();
+      if (declared) {
+        const declaredCss = snapPoints.find((p) => p.token === declared)?.cssValue;
+        const cur = toPx(cssValue);
+        const dec = declaredCss != null ? toPx(declaredCss) : null;
+        const matches = declaredCss == null || cur == null || dec == null || Math.abs(cur - dec) < 0.5;
+        if (matches) {
+          tokenLabel.textContent = `${descriptor.tailwindPrefix}-${declared}`;
+          return;
+        }
       }
+
+      // 2. Reverse-resolve the current value to a scale token. Match by exact
+      //    string first, else by pixel value (the scale is rem, computed is px).
+      const cur = toPx(cssValue);
+      const byPx = (p: { token: string | null; cssValue: string }): boolean => {
+        if (p.token == null || cur == null) return false;
+        const v = toPx(p.cssValue);
+        return v != null && Math.abs(v - cur) < 0.5;
+      };
+      const match = snapPoints.find((p) => p.cssValue === cssValue) ?? snapPoints.find(byPx);
+      tokenLabel.textContent = match?.token ? `${descriptor.tailwindPrefix}-${match.token}` : "";
     } catch {
       tokenLabel.textContent = "";
     }

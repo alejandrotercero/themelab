@@ -4,6 +4,7 @@ import {
   setVariantTarget,
   getMeta,
   onVariantTargetChange,
+  getBreakpointsWithOverrides,
 } from "./variant-target.js";
 
 // ---------------------------------------------------------------------------
@@ -175,6 +176,7 @@ const SIDEBAR_STYLES = `
     min-width: 0;
   }
   .prop-variant-seg-btn {
+    position: relative;
     flex: 1;
     display: flex;
     align-items: center;
@@ -193,6 +195,20 @@ const SIDEBAR_STYLES = `
   .prop-variant-seg-btn[data-active="true"] {
     background: ${PANEL.btnBg};
     color: #ffffff;
+  }
+  /* Dot: this breakpoint has a declared override on the selected element. */
+  .prop-variant-seg-btn[data-override="true"]::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: ${PANEL.accent};
+  }
+  .prop-variant-seg-btn[data-active="true"][data-override="true"]::after {
+    background: #ffffff;
   }
   .prop-variant-dark {
     display: flex;
@@ -454,8 +470,11 @@ export function createSidebar(
 
   function syncActive(): void {
     const t = getVariantTarget();
+    const overrides = getBreakpointsWithOverrides();
     for (const [name, btn] of segButtons) {
       btn.dataset.active = String(name === t.breakpoint);
+      // Dot marks breakpoints where the selected element declares any override.
+      btn.dataset.override = String(name !== "" && overrides.has(name));
     }
     darkBtn.dataset.active = String(t.dark);
     const dm = getMeta().darkMode;

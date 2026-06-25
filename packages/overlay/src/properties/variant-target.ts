@@ -10,7 +10,7 @@
 // transform in packages/cli/src/transform.ts (canonicalVariantPrefix).
 
 import type { TailwindTokenMap } from "@themelab/shared";
-import { setProjectScreens, pickWinningVariant } from "../utils/class-matches-prefix.js";
+import { setProjectScreens, pickWinningVariant, decomposeClass } from "../utils/class-matches-prefix.js";
 import { setMode as setThemePickerMode, canEditDark } from "../theme-state.js";
 
 export interface TailwindMeta {
@@ -134,6 +134,32 @@ export function onVariantTargetChange(fn: VariantTargetListener): () => void {
   };
 }
 
+// --- Selected element's responsive footprint --------------------------------
+
+// The selected element's current class list, so the breakpoint selector can mark
+// which breakpoints the element actually declares overrides at.
+let activeClasses: string[] = [];
+
+/** Set the selected element's classes (drives the breakpoint-override markers). */
+export function setActiveElementClasses(classes: string[]): void {
+  activeClasses = classes;
+  notify();
+}
+
+/** Breakpoint names the selected element declares at least one class at (any
+ *  property) — e.g. {"md","xl"} for `md:p-8 xl:text-2xl`. Honors stacked variants
+ *  (`dark:md:…` counts md). */
+export function getBreakpointsWithOverrides(): Set<string> {
+  const names = new Set(meta.screens.map((s) => s.name));
+  const found = new Set<string>();
+  for (const cls of activeClasses) {
+    for (const v of decomposeClass(cls).variants) {
+      if (names.has(v)) found.add(v);
+    }
+  }
+  return found;
+}
+
 /**
  * Ordered variant tokens for the active target, e.g. ["dark", "md"]. This is the
  * canonical form joined with ":" to produce the `variant` string the CLI expects
@@ -174,11 +200,12 @@ export function resetVariantTargetOnSelect(
 
 /** Called on deselect / overlay teardown to leave the page as we found it. */
 export function resetVariantTargetOnDeselect(): void {
+  activeClasses = [];
   if (target.breakpoint !== "" || target.dark !== false) {
     target = { breakpoint: "", dark: false };
     applyDarkState();
-    notify();
   }
+  notify();
 }
 
 // --- Dark preview -----------------------------------------------------------

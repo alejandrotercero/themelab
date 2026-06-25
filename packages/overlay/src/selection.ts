@@ -1004,6 +1004,17 @@ function handleMouseMove(e: MouseEvent): void {
 
   // Hover highlight (only when idle — no mouse button down)
   if (mode === "idle") {
+    // Cursor is over the overlay's own UI (sidebar, toolbar, panels) — don't
+    // pierce through to highlight the page element behind it. The selection
+    // highlights/labels are pointer-events:none, so they never trigger this;
+    // only the interactive chrome does. Mirrors the click guard above.
+    const path = e.composedPath();
+    if (path.some((el) => el instanceof HTMLElement && el.id === "themelab-root")) {
+      setHoverTarget(null);
+      document.body.style.cursor = "";
+      return;
+    }
+
     // Interact key (`) held: drop the selection highlight so the pointer reads as
     // "interacting with the app". The vanishing outline is the signal that the
     // next click will hit the app, not select an element.

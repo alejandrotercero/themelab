@@ -52,7 +52,7 @@ export function createScaleShortcutButton(
       popover = null;
     }
     if (outsideClick) {
-      document.removeEventListener("mousedown", outsideClick);
+      document.removeEventListener("mousedown", outsideClick, true);
       outsideClick = null;
     }
   }
@@ -124,8 +124,13 @@ export function createScaleShortcutButton(
       popover.appendChild(row);
     }
 
-    // Anchor below-right of the button.
-    document.body.appendChild(popover);
+    // Mount INSIDE the overlay's shadow root (not document.body), so selection.ts's
+    // document-level mousedown handler sees `#themelab-root` in the event's
+    // composedPath and ignores the click — otherwise clicking a row reads as a
+    // page click and deselects the element / closes the sidebar.
+    const root = button.getRootNode();
+    const mount = (root instanceof ShadowRoot ? root : document.body) as ShadowRoot | HTMLElement;
+    mount.appendChild(popover);
     const rect = button.getBoundingClientRect();
     let top = rect.bottom + 4;
     let left = rect.right - popover.offsetWidth;
@@ -138,13 +143,18 @@ export function createScaleShortcutButton(
     popover.style.left = `${left}px`;
 
     outsideClick = (e: MouseEvent) => {
-      if (popover && !popover.contains(e.target as Node) && e.target !== button) {
+      // composedPath() pierces the shadow boundary — a document-level listener
+      // otherwise sees a retargeted target (the shadow host) and would always
+      // think the click was "outside", closing before a row click registers.
+      const path = e.composedPath();
+      if (popover && !path.includes(popover) && !path.includes(button)) {
         closePopover();
       }
     };
-    // Defer so the opening click doesn't immediately close it.
+    // Defer so the opening click doesn't immediately close it. Capture phase so we
+    // see the click even if a row stops propagation.
     setTimeout(() => {
-      if (outsideClick) document.addEventListener("mousedown", outsideClick);
+      if (outsideClick) document.addEventListener("mousedown", outsideClick, true);
     }, 0);
   }
 

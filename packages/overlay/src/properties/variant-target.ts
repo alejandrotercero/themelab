@@ -11,6 +11,7 @@
 
 import type { TailwindTokenMap } from "@themelab/shared";
 import { setProjectScreens, pickWinningVariant } from "../utils/class-matches-prefix.js";
+import { setMode as setThemePickerMode, canEditDark } from "../theme-state.js";
 
 export interface TailwindMeta {
   /** breakpoint name → raw min-width (e.g. "768px" or "48rem"); smallest-first. */
@@ -109,9 +110,21 @@ export function setVariantTarget(next: Partial<VariantTarget>): void {
   const prev = target;
   target = { ...target, ...next };
   if (target.breakpoint !== prev.breakpoint || target.dark !== prev.dark) {
-    applyDarkPreview();
+    applyDarkState();
     notify();
   }
+}
+
+/**
+ * Apply the dark target to BOTH the page preview (the `.dark` class) and the
+ * theme-variable picker's mode, so the variable picker shows the dark token
+ * colors while Dark is on instead of the light ones. The picker reads
+ * theme-state's `mode`, which is independent of the page class — keep them in sync.
+ */
+function applyDarkState(): void {
+  applyDarkPreview();
+  // setMode no-ops when the project has no dark theme block (canEditDark()).
+  if (canEditDark()) setThemePickerMode(target.dark ? "dark" : "light");
 }
 
 export function onVariantTargetChange(fn: VariantTargetListener): () => void {
@@ -154,7 +167,7 @@ export function resetVariantTargetOnSelect(
   const next: VariantTarget = { breakpoint: winning, dark: pageDark };
   if (next.breakpoint !== target.breakpoint || next.dark !== target.dark) {
     target = next;
-    applyDarkPreview();
+    applyDarkState();
     notify();
   }
 }
@@ -163,45 +176,43 @@ export function resetVariantTargetOnSelect(
 export function resetVariantTargetOnDeselect(): void {
   if (target.breakpoint !== "" || target.dark !== false) {
     target = { breakpoint: "", dark: false };
-    applyDarkPreview();
+    applyDarkState();
     notify();
   }
 }
 
 // --- Dark preview -----------------------------------------------------------
 
-// Tracks whether *we* added the dark class, so we only remove what we added and
-// never clobber a class the host app sets itself.
-let darkPreviewApplied = false;
-let hadDarkClassOriginally: boolean | null = null;
+// Whether we are currently previewing dark mode, and what the page's dark state
+// was BEFORE we touched it (so turning the preview off restores it — and we never
+// strip a `.dark` the host app owns).
+let darkPreviewActive = false;
+let pageHadDarkBeforePreview = false;
 
+// Idempotent: only acts on the off→on / on→off transition, so it's safe to call
+// on every target change (breakpoint clicks, selection changes) without flipping
+// ownership mid-preview — the bug that made the toggle stop working after a few
+// uses. The previous version released ownership whenever it re-ran while dark was
+// already on, leaving the class stuck on with no way to remove it.
 function applyDarkPreview(): void {
   const root = document.documentElement;
   const selector = meta.darkMode.selector.replace(/^\./, "");
   // Only the class strategy can be previewed; media strategy is read-only.
-  const canToggle = meta.darkMode.strategy === "class";
+  const wantDark = target.dark && meta.darkMode.strategy === "class";
 
-  if (target.dark && canToggle) {
-    if (hadDarkClassOriginally === null) {
-      hadDarkClassOriginally = root.classList.contains(selector);
-    }
-    if (!root.classList.contains(selector)) {
-      root.classList.add(selector);
-      darkPreviewApplied = true;
-    } else if (darkPreviewApplied) {
-      // Already dark — but we didn't add it, so don't claim ownership.
-      darkPreviewApplied = false;
-    }
-  } else if (darkPreviewApplied) {
-    root.classList.remove(selector);
-    darkPreviewApplied = false;
-    hadDarkClassOriginally = null;
-  } else {
-    hadDarkClassOriginally = null;
+  if (wantDark && !darkPreviewActive) {
+    pageHadDarkBeforePreview = root.classList.contains(selector);
+    root.classList.add(selector);
+    darkPreviewActive = true;
+  } else if (!wantDark && darkPreviewActive) {
+    // Restore the pre-preview state: only strip `.dark` if the app didn't own it.
+    if (!pageHadDarkBeforePreview) root.classList.remove(selector);
+    darkPreviewActive = false;
   }
+  // Same-state calls are no-ops (idempotent).
 }
 
-/** Whether the live dark preview is actually toggling the page. */
+/** Whether the live dark preview is currently engaged. */
 export function isDarkPreviewActive(): boolean {
-  return darkPreviewApplied;
+  return darkPreviewActive;
 }

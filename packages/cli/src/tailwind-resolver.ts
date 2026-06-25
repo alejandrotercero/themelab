@@ -742,7 +742,7 @@ function normalizeScreenValue(v: unknown): string | null {
 }
 
 /** Map a Tailwind v3 `darkMode` config value to {strategy, selector}. */
-function parseDarkModeConfig(dm: unknown): { strategy: "class" | "media"; selector: string } {
+export function parseDarkModeConfig(dm: unknown): { strategy: "class" | "media"; selector: string } {
   if (Array.isArray(dm)) {
     // ["class", ".my-dark"] | ["selector", "[data-theme=dark]"] | ["variant", ...]
     const selector = typeof dm[1] === "string" ? dm[1] : ".dark";
@@ -753,11 +753,43 @@ function parseDarkModeConfig(dm: unknown): { strategy: "class" | "media"; select
   return { strategy: "media", selector: ".dark" };
 }
 
+/**
+ * Recover the `darkMode` setting by scanning the config FILE as text. Needed
+ * because a `tailwind.config.ts` (or ESM) can't be require()d in plain Node, so
+ * the executed-config path silently falls back to "media" — wrong for the very
+ * common `darkMode: ['class']`. A text scan is execution-free and handles .ts/.js
+ * alike. Returns null when no darkMode is declared (caller keeps its default).
+ */
+export function readDarkModeFromConfigText(projectRoot: string): { strategy: "class" | "media"; selector: string } | null {
+  for (const candidate of ["tailwind.config.ts", "tailwind.config.js", "tailwind.config.cjs", "tailwind.config.mjs"]) {
+    const configPath = path.join(projectRoot, candidate);
+    if (!fs.existsSync(configPath)) continue;
+    try {
+      const text = fs.readFileSync(configPath, "utf-8");
+      // Match `darkMode: 'class'` | "media" | ['class', '.sel'] | ["selector", "[data-x]"].
+      const m = text.match(/darkMode\s*:\s*(\[[^\]]*\]|['"`][^'"`]*['"`])/);
+      if (!m) return null;
+      const raw = m[1].trim();
+      if (raw.startsWith("[")) {
+        const parts = [...raw.matchAll(/['"`]([^'"`]*)['"`]/g)].map((p) => p[1]);
+        if (parts.length === 0) return null;
+        return parseDarkModeConfig(parts);
+      }
+      const value = raw.replace(/^['"`]|['"`]$/g, "");
+      return parseDarkModeConfig(value);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function resolveV3Meta(projectRoot: string): TailwindMeta {
   const meta: TailwindMeta = {
     screens: { ...DEFAULT_SCREENS_V3 },
     darkMode: { strategy: "media", selector: ".dark" },
   };
+  let darkModeFromRequire = false;
   try {
     const resolveConfigPath = path.join(projectRoot, "node_modules", "tailwindcss", "resolveConfig");
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -766,7 +798,7 @@ function resolveV3Meta(projectRoot: string): TailwindMeta {
     for (const candidate of ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs", "tailwind.config.mjs"]) {
       const configPath = path.join(projectRoot, candidate);
       if (fs.existsSync(configPath)) {
-        try { userConfig = require(configPath) as Record<string, unknown>; } catch { /* empty */ }
+        try { userConfig = require(configPath) as Record<string, unknown>; } catch { /* require can't load .ts/ESM */ }
         break;
       }
     }
@@ -780,9 +812,19 @@ function resolveV3Meta(projectRoot: string): TailwindMeta {
       }
       if (Object.keys(out).length) meta.screens = out;
     }
-    meta.darkMode = parseDarkModeConfig((userConfig as { darkMode?: unknown }).darkMode);
+    if ((userConfig as { darkMode?: unknown }).darkMode !== undefined) {
+      meta.darkMode = parseDarkModeConfig((userConfig as { darkMode?: unknown }).darkMode);
+      darkModeFromRequire = true;
+    }
   } catch {
     // keep defaults
+  }
+  // The config couldn't be require()d (e.g. tailwind.config.ts) or declared no
+  // darkMode — recover it from the config source text so `darkMode: ['class']`
+  // isn't lost as "media".
+  if (!darkModeFromRequire) {
+    const fromText = readDarkModeFromConfigText(projectRoot);
+    if (fromText) meta.darkMode = fromText;
   }
   return meta;
 }

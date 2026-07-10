@@ -80,6 +80,7 @@ export function ThemeTranspiler() {
         <Toolbar
           theme={editor.theme}
           radius={editor.radius}
+          name={editor.source}
           onShowIntro={() => setIntroOpen(true)}
           extra={<LibraryControls editor={editor} />}
         />

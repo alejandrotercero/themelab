@@ -8,10 +8,15 @@ import {
   DotsThreeIcon,
   StarIcon,
   CopyIcon,
+  DownloadSimpleIcon,
   PencilSimpleIcon,
+  TerminalWindowIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import type { SavedTheme } from "@/lib/saved-themes";
+import { createInstallCommand, themeStylesToDesignMd } from "@/lib/theme-engine";
+import { downloadTextFile } from "@/lib/download";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +47,32 @@ export function SavedThemeCard({
   onToggleFavorite,
 }: SavedThemeCardProps) {
   const vars = theme.theme.dark && Object.keys(theme.theme.dark).length ? theme.theme.dark : theme.theme.light;
+
+  const copyInstallCommand = async () => {
+    try {
+      const command = createInstallCommand(
+        { name: theme.name, radius: theme.radius, theme: theme.theme },
+        window.location.origin,
+      );
+      await navigator.clipboard.writeText(command);
+      toast.success("Install command copied");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't copy this theme.");
+    }
+  };
+
+  const downloadDesignMd = () => {
+    downloadTextFile(
+      themeStylesToDesignMd(theme.theme, {
+        name: theme.name,
+        radius: theme.radius,
+        format: "oklch",
+      }),
+      "DESIGN.md",
+      "text/markdown",
+    );
+    toast.success("DESIGN.md downloaded");
+  };
 
   return (
     <div className="group/card flex flex-col overflow-hidden rounded-[var(--ov-radius-sm)] border border-[var(--ov-border)] bg-[var(--ov-surface-2)] text-left transition-colors hover:border-[var(--ov-accent)]">
@@ -95,6 +126,15 @@ export function SavedThemeCard({
             <DropdownMenuItem onClick={() => onDuplicate(theme)}>
               <CopyIcon className="size-4" />
               Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={copyInstallCommand}>
+              <TerminalWindowIcon className="size-4" />
+              Copy install command
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={downloadDesignMd}>
+              <DownloadSimpleIcon className="size-4" />
+              Download DESIGN.md
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(theme)}>

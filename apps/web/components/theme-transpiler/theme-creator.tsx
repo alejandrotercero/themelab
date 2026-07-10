@@ -127,6 +127,7 @@ export function ThemeCreator() {
         <Toolbar
           theme={editor.theme}
           radius={editor.radius}
+          name={editor.source}
           title="create"
           tailwindCss={tailwindCss}
           figmaSvg={figmaSvg}

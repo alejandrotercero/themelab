@@ -64,6 +64,7 @@ export function ThemeEditor() {
         <Toolbar
           theme={editor.theme}
           radius={editor.radius}
+          name={editor.source}
           title="edit"
           extra={
             <>

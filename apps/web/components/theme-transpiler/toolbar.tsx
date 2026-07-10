@@ -13,6 +13,8 @@ import { Logo } from "@/components/logo";
 interface ToolbarProps {
   theme: ThemeStyles;
   radius: string;
+  /** Current generated, imported, or saved-theme display name. */
+  name: string;
   title?: string;
   /** Tailwind-scale generator — when set, the Code dialog gains a second tab. */
   tailwindCss?: (format: ColorFormat) => string;
@@ -24,7 +26,7 @@ interface ToolbarProps {
   onShowIntro?: () => void;
 }
 
-export function Toolbar({ theme, radius, title = "100r → shadcn", tailwindCss, figmaSvg, extra, onShowIntro }: ToolbarProps) {
+export function Toolbar({ theme, radius, name, title = "100r → shadcn", tailwindCss, figmaSvg, extra, onShowIntro }: ToolbarProps) {
   return (
     <header className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--ov-border)] px-4 py-2.5">
       <div className="flex items-center gap-2.5 text-[var(--ov-text)]">
@@ -48,7 +50,13 @@ export function Toolbar({ theme, radius, title = "100r → shadcn", tailwindCss,
 
       <div className="ml-auto flex items-center gap-2">
         {extra}
-        <ExportDialog theme={theme} radius={radius} tailwindCss={tailwindCss} figmaSvg={figmaSvg} />
+        <ExportDialog
+          theme={theme}
+          radius={radius}
+          name={name}
+          tailwindCss={tailwindCss}
+          figmaSvg={figmaSvg}
+        />
       </div>
     </header>
   );

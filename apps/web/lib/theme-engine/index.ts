@@ -21,3 +21,22 @@ export { lStar, toOklch, oklchCss, oklchToHex, reformat, contrastRatio, COLOR_FO
 export { buildScale, scaleToCss, scalesToThemeStyles, TAILWIND_STOPS, type Scale, type ScaleStop } from "./scale";
 export { radixThemeStyles, radixScales, type RadixInputs, type RadixModeColors, type Appearance } from "./radix";
 export { scalesToFigmaSvg, type FigmaSvgOptions } from "./figma";
+export {
+  themeStylesToDesignMd,
+  sanitizeThemeName,
+  sanitizeThemeDescription,
+  type DesignMdOptions,
+} from "./design-md";
+export {
+  decodeInstallPayload,
+  encodeInstallPayload,
+  createInstallCommand,
+  createThemeRegistryUrl,
+  InstallPayloadError,
+  INSTALL_PAYLOAD_VERSION,
+  MAX_INSTALL_PAYLOAD_LENGTH,
+  type EncodeInstallPayloadInput,
+  type InstallPayloadErrorCode,
+  type InstallTheme,
+} from "./install-payload";
+export { createRegistryCatalog, installPayloadToRegistryItem } from "./registry";

@@ -39,9 +39,9 @@ export function MindfulCreator() {
   const [gen, setGen] = useState<MindfulColors>(DEFAULT_COLORS);
 
   const generate = useCallback(
-    (c: MindfulColors) => {
+    (c: MindfulColors, source = "Mindful palette") => {
       editor.loadBase(mindfulToThemeStyles(c), {
-        source: "Mindful palette",
+        source,
         swatches: sourceSwatches(c),
       });
       setGen(c);
@@ -63,7 +63,7 @@ export function MindfulCreator() {
     const preset = MINDFUL_PRESETS.find((p) => p.id === id);
     if (!preset) return;
     setColors(preset.colors);
-    generate(preset.colors);
+    generate(preset.colors, preset.name);
   };
 
   const report = useMemo(() => analyzeMindful(gen), [gen]);
@@ -75,6 +75,7 @@ export function MindfulCreator() {
         <Toolbar
           theme={editor.theme}
           radius={editor.radius}
+          name={editor.source}
           title="mindful → shadcn"
           extra={<LibraryControls editor={editor} />}
         />

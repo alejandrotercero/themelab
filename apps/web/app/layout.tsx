@@ -36,7 +36,7 @@ export default function RootLayout({
     >
       <head>
         {/* Geomanist — exposed via the `font-heading` utility (globals.css); not applied anywhere yet. */}
-        <link rel="stylesheet" href="https://cdn.nonx.dev/fonts/geomanist.full.css" />
+        <link rel="stylesheet" href="https://cdn.strast.dev/fonts/geomanist.full.css" />
       </head>
       <body>
         <ThemeProvider>

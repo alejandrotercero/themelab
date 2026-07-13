@@ -164,7 +164,7 @@ export function ExportDialog({ theme, name, radius, tailwindCss, figmaSvg }: Exp
               onValueChange={(v) => setTab(v as Tab)}
               className="min-w-0 max-w-full"
             >
-              <TabsList className="max-w-full justify-start overflow-x-auto">
+              <TabsList className="max-w-full flex-wrap justify-start">
                 <TabsTrigger value="shadcn">shadcn</TabsTrigger>
                 <TabsTrigger value="json">json</TabsTrigger>
                 {tailwindCss && <TabsTrigger value="tailwind">tailwind</TabsTrigger>}

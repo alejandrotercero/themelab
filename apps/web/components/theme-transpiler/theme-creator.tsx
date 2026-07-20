@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 // /create — generate a full shadcn theme + matching scales from a palette.
 // Two algorithms, toggled by the user:
@@ -7,8 +7,10 @@
 //     mode (set in a modal), 12-step scales mapped onto the tokens.
 // Each algorithm fills both the theme and the scales, kept in sync.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ThemeStyles } from "@themelab/shared";
+import type { ThemeStyles } from "@themelab/shared"
+import { useCallback, useEffect, useMemo, useState } from "react"
+
+import { Toaster } from "@/components/ui/sonner"
 import {
   oklchToHex,
   paletteToScales,
@@ -18,96 +20,112 @@ import {
   scaleToCss,
   scalesToFigmaSvg,
   toOklch,
-  type ColorFormat,
-  type RadixInputs,
-  type Scale,
-} from "@/lib/theme-engine";
-import { Toaster } from "@/components/ui/sonner";
-import { useThemeEditor } from "./use-theme-editor";
-import { EditorShell } from "./editor-shell";
-import { Toolbar } from "./toolbar";
-import { LibraryControls } from "./library-controls";
-import { PaletteInput } from "./palette-input";
-import { ScaleView } from "./scale-view";
-import { RadixConfigDialog } from "./radix-config-dialog";
+} from "@/lib/theme-engine"
+import type { ColorFormat, RadixInputs, Scale } from "@/lib/theme-engine"
 
-const DEFAULT_PRIMARY = "#3b82f6";
-const DEFAULT_NEUTRAL = "#71717a";
+import { EditorShell } from "./editor-shell"
+import { LibraryControls } from "./library-controls"
+import { PaletteInput } from "./palette-input"
+import { RadixConfigDialog } from "./radix-config-dialog"
+import { ScaleView } from "./scale-view"
+import { Toolbar } from "./toolbar"
+import { useThemeEditor } from "./use-theme-editor"
+
+const DEFAULT_PRIMARY = "#3b82f6"
+const DEFAULT_NEUTRAL = "#71717a"
 const DEFAULT_RADIX: RadixInputs = {
   light: { accent: "#3b82f6", gray: "#8b8d98", bg: "#ffffff" },
   dark: { accent: "#3b82f6", gray: "#8b8d98", bg: "#111111" },
-};
+}
 
-type Algo = "themelab" | "radix";
+type Algo = "themelab" | "radix"
 
 type Gen =
   | { algo: "themelab"; primary: string; neutral: string }
-  | ({ algo: "radix" } & RadixInputs);
+  | ({ algo: "radix" } & RadixInputs)
 
 const toHex = (value: string) => {
-  const o = toOklch(value);
-  return o ? oklchToHex(o) : value;
-};
+  const o = toOklch(value)
+  return o ? oklchToHex(o) : value
+}
 const scaleSwatches = (name: string, scale: Scale) =>
-  scale.map((s) => ({ slot: `${name}-${s.stop}`, hex: toHex(s.value) }));
+  scale.map((s) => ({ slot: `${name}-${s.stop}`, hex: toHex(s.value) }))
 
 export function ThemeCreator() {
-  const editor = useThemeEditor();
-  const [algo, setAlgo] = useState<Algo>("themelab");
-  const [primary, setPrimary] = useState(DEFAULT_PRIMARY);
-  const [neutral, setNeutral] = useState(DEFAULT_NEUTRAL);
-  const [radix, setRadix] = useState<RadixInputs>(DEFAULT_RADIX);
-  const [radixOpen, setRadixOpen] = useState(false);
-  const [gen, setGen] = useState<Gen>({ algo: "themelab", primary: DEFAULT_PRIMARY, neutral: DEFAULT_NEUTRAL });
+  const editor = useThemeEditor()
+  const [algo, setAlgo] = useState<Algo>("themelab")
+  const [primary, setPrimary] = useState(DEFAULT_PRIMARY)
+  const [neutral, setNeutral] = useState(DEFAULT_NEUTRAL)
+  const [radix, setRadix] = useState<RadixInputs>(DEFAULT_RADIX)
+  const [radixOpen, setRadixOpen] = useState(false)
+  const [gen, setGen] = useState<Gen>({
+    algo: "themelab",
+    primary: DEFAULT_PRIMARY,
+    neutral: DEFAULT_NEUTRAL,
+  })
 
   const generateThemeLab = useCallback(
     (p: string, n: string) => {
-      const theme: ThemeStyles = paletteToThemeStyles(p, n);
-      editor.loadBase(theme, { source: "ThemeLab palette", swatches: [] });
-      setGen({ algo: "themelab", primary: p, neutral: n });
+      const theme: ThemeStyles = paletteToThemeStyles(p, n)
+      editor.loadBase(theme, { source: "ThemeLab palette", swatches: [] })
+      setGen({ algo: "themelab", primary: p, neutral: n })
     },
-    [editor],
-  );
+    [editor]
+  )
 
   const generateRadix = useCallback(
     (rc: RadixInputs) => {
-      const theme = radixThemeStyles(rc);
-      editor.loadBase(theme, { source: "Radix palette", swatches: [] });
-      setGen({ algo: "radix", ...rc });
+      const theme = radixThemeStyles(rc)
+      editor.loadBase(theme, { source: "Radix palette", swatches: [] })
+      setGen({ algo: "radix", ...rc })
     },
-    [editor],
-  );
+    [editor]
+  )
 
   // Generate once on mount (default algorithm = ThemeLab).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time seed on mount; generateThemeLab calls editor.loadBase (dispatch), not setState directly
-    generateThemeLab(DEFAULT_PRIMARY, DEFAULT_NEUTRAL);
+    generateThemeLab(DEFAULT_PRIMARY, DEFAULT_NEUTRAL) // oxlint-disable-line react-compiler -- same intentional one-time mount seed as the eslint-disable above
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
   const changeAlgo = (a: Algo) => {
-    setAlgo(a);
-    if (a === "themelab") generateThemeLab(primary, neutral);
-    else generateRadix(radix);
-  };
+    setAlgo(a)
+    if (a === "themelab") {
+      generateThemeLab(primary, neutral)
+    } else {
+      generateRadix(radix)
+    }
+  }
 
   // Scales for the active mode (Radix scales are appearance-specific).
   const scales = useMemo(() => {
-    if (gen.algo === "themelab") return paletteToScales(gen.primary, gen.neutral);
-    const c = editor.mode === "light" ? gen.light : gen.dark;
-    return radixScales({ accent: c.accent, gray: c.gray, background: c.bg, appearance: editor.mode });
-  }, [gen, editor.mode]);
+    if (gen.algo === "themelab") {
+      return paletteToScales(gen.primary, gen.neutral)
+    }
+    const c = editor.mode === "light" ? gen.light : gen.dark
+    return radixScales({
+      accent: c.accent,
+      gray: c.gray,
+      background: c.bg,
+      appearance: editor.mode,
+    })
+  }, [gen, editor.mode])
 
   // Keep the token-override palette in sync with the shown scales.
   useEffect(() => {
-    editor.setSwatches([...scaleSwatches("primary", scales.primary), ...scaleSwatches("neutral", scales.neutral)]);
+    editor.setSwatches([
+      ...scaleSwatches("primary", scales.primary),
+      ...scaleSwatches("neutral", scales.neutral),
+    ])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scales]);
+  }, [scales])
 
   const tailwindCss = useCallback(
-    (format: ColorFormat) => scaleToCss({ primary: scales.primary, neutral: scales.neutral }, format),
-    [scales],
-  );
+    (format: ColorFormat) =>
+      scaleToCss({ primary: scales.primary, neutral: scales.neutral }, format),
+    [scales]
+  )
 
   const figmaSvg = useCallback(
     () =>
@@ -117,8 +135,8 @@ export function ThemeCreator() {
         mode: editor.mode,
         title: gen.algo === "radix" ? "Radix" : "ThemeLab",
       }),
-    [scales, editor.mode, gen.algo],
-  );
+    [scales, editor.mode, gen.algo]
+  )
 
   return (
     <EditorShell
@@ -146,29 +164,43 @@ export function ThemeCreator() {
             />
           ) : (
             <div className="flex flex-wrap items-center gap-3">
-              {([
-                ["accent", radix[editor.mode].accent],
-                ["neutral", radix[editor.mode].gray],
-                [`${editor.mode} bg`, radix[editor.mode].bg],
-              ] as const).map(([label, hex]) => (
+              {(
+                [
+                  ["accent", radix[editor.mode].accent],
+                  ["neutral", radix[editor.mode].gray],
+                  [`${editor.mode} bg`, radix[editor.mode].bg],
+                ] as const
+              ).map(([label, hex]) => (
                 <div key={label} className="flex items-center gap-1.5">
                   <span
                     className="size-[18px] shrink-0 rounded-[var(--ov-radius-xs)] border border-[var(--ov-border)]"
                     style={{ backgroundColor: hex }}
                     title={`${label}: ${hex}`}
                   />
-                  <span className="text-[11px] text-[var(--ov-text-dim)]">{label}</span>
+                  <span className="text-[11px] text-[var(--ov-text-dim)]">
+                    {label}
+                  </span>
                 </div>
               ))}
-              <button type="button" className="ov-btn" onClick={() => setRadixOpen(true)}>
+              <button
+                type="button"
+                className="ov-btn"
+                onClick={() => setRadixOpen(true)}
+              >
                 Edit colors
               </button>
             </div>
           )}
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[var(--ov-text-ghost)]">Algorithm</span>
-            <div className="ov-seg" role="tablist" aria-label="Generation algorithm">
+            <span className="text-[11px] text-[var(--ov-text-ghost)]">
+              Algorithm
+            </span>
+            <div
+              className="ov-seg"
+              role="tablist"
+              aria-label="Generation algorithm"
+            >
               <button
                 type="button"
                 role="tab"
@@ -214,5 +246,5 @@ export function ThemeCreator() {
       />
       <Toaster />
     </EditorShell>
-  );
+  )
 }

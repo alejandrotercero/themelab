@@ -1,17 +1,18 @@
+import * as fs from "node:fs";
 // packages/cli/src/inject.ts
 import * as http from "node:http";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import path from "node:path";
+
 // http-proxy-3: maintained TypeScript fork of http-proxy (same API). The
 // original calls the deprecated util._extend on every request, spamming
 // DEP0060 warnings on Node 22+.
 import httpProxy from "http-proxy-3";
 import { WebSocket } from "ws";
+
 import { OVERLAY_JS } from "./generated/overlay-bundle.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = import.meta.filename;
+const __dirname = import.meta.dirname;
 
 interface ProxyServerOptions {
   targetPort: number;
@@ -23,10 +24,16 @@ interface ProxyServerOptions {
   getActiveClient: () => WebSocket | null;
 }
 
-export function createProxyServer(
-  options: ProxyServerOptions
-): http.Server {
-  const { targetPort, targetHost, proxyPort, wsPort, studioUrl, getActiveClient } = options;
+export function createProxyServer(options: ProxyServerOptions): http.Server {
+  const {
+    targetPort,
+    targetHost,
+    // proxyPort is part of the public ProxyServerOptions shape but unused here.
+    proxyPort: _proxyPort,
+    wsPort,
+    studioUrl,
+    getActiveClient,
+  } = options;
 
   const proxy = httpProxy.createProxyServer({
     target: `http://${targetHost}:${targetPort}`,
@@ -38,13 +45,19 @@ export function createProxyServer(
   // reload in dev; the published package ships it next to this file), and fall
   // back to the constant embedded at build time when no file exists — the case
   // for a standalone compiled binary, where there is no overlay.js on disk.
-  const workspaceOverlayPath = path.resolve(__dirname, "../../overlay/dist/overlay.js");
+  const workspaceOverlayPath = path.resolve(
+    __dirname,
+    "../../overlay/dist/overlay.js"
+  );
   const bundledOverlayPath = path.join(__dirname, "overlay.js");
-  const overlayPath = fs.existsSync(workspaceOverlayPath)
-    ? workspaceOverlayPath
-    : fs.existsSync(bundledOverlayPath)
-      ? bundledOverlayPath
-      : null;
+  let overlayPath: string | null;
+  if (fs.existsSync(workspaceOverlayPath)) {
+    overlayPath = workspaceOverlayPath;
+  } else if (fs.existsSync(bundledOverlayPath)) {
+    overlayPath = bundledOverlayPath;
+  } else {
+    overlayPath = null;
+  }
   let upstreamDown = false;
 
   const server = http.createServer((req, res) => {
@@ -58,8 +71,8 @@ export function createProxyServer(
       res.writeHead(200, {
         "Content-Type": "application/javascript",
         "Cache-Control": "no-store, no-cache, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
+        Pragma: "no-cache",
+        Expires: "0",
       });
       // Disk copy when present (fresh on every reload in dev), else the embedded bundle.
       if (overlayPath) {
@@ -110,7 +123,6 @@ export function createProxyServer(
         body += injectedScript;
       }
 
-
       // We've buffered the whole body and are re-sending it with an explicit
       // length, so strip the streaming/encoding headers from upstream. Leaving
       // `transfer-encoding: chunked` alongside our `content-length` is a malformed
@@ -147,7 +159,9 @@ export function createProxyServer(
       // again throws ERR_HTTP_HEADERS_SENT and crashes the proxy, so only send a
       // 502 when nothing has been written yet; otherwise just terminate cleanly.
       if (errRes.headersSent) {
-        if (!errRes.writableEnded) errRes.end();
+        if (!errRes.writableEnded) {
+          errRes.end();
+        }
       } else {
         errRes.writeHead(502, { "Content-Type": "text/plain" });
         errRes.end("Dev server unavailable");
@@ -157,7 +171,9 @@ export function createProxyServer(
 
   // Periodically check if upstream recovered
   const recoveryInterval = setInterval(async () => {
-    if (!upstreamDown) return;
+    if (!upstreamDown) {
+      return;
+    }
     try {
       const resp = await fetch(`http://${targetHost}:${targetPort}`, {
         signal: AbortSignal.timeout(1000),

@@ -8,7 +8,8 @@
 
 import * as fs from "node:fs";
 import * as os from "node:os";
-import * as path from "node:path";
+import path from "node:path";
+
 import { logger } from "./logger.js";
 
 export interface AiConfig {
@@ -46,8 +47,22 @@ export interface ResolvedAiConfig {
   };
 }
 
+function valueSource(
+  envValue: string | undefined,
+  fileValue: string | undefined
+): "env" | "file" | "none" {
+  if (envValue) {
+    return "env";
+  }
+  if (fileValue) {
+    return "file";
+  }
+  return "none";
+}
+
 function configDir(): string {
-  const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+  const base =
+    process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
   return path.join(base, "themelab");
 }
 
@@ -66,18 +81,20 @@ export function loadConfig(): AppConfig {
 export function saveConfig(cfg: AppConfig): void {
   const dir = configDir();
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2) + "\n", { encoding: "utf-8", mode: 0o600 });
+  fs.writeFileSync(configPath(), `${JSON.stringify(cfg, null, 2)}\n`, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
   logger.debug(`[config] saved ${configPath()}`);
 }
 
 /** Merge a partial AI settings patch into the stored config and persist it. */
 export function updateAiConfig(patch: AiConfig): void {
   const cfg = loadConfig();
-  cfg.ai = { ...(cfg.ai ?? {}), ...patch };
   // Empty string clears a value.
-  for (const k of ["apiKey", "baseURL", "model", "escalationModel"] as const) {
-    if (cfg.ai[k] === "") delete cfg.ai[k];
-  }
+  cfg.ai = Object.fromEntries(
+    Object.entries({ ...cfg.ai, ...patch }).filter(([, v]) => v !== "")
+  ) as AiConfig;
   saveConfig(cfg);
 }
 
@@ -95,9 +112,10 @@ export function resolveAiConfig(): ResolvedAiConfig {
   const model = envModel || file.model;
   const enabled = (file.enabled ?? true) && !!apiKey;
   // THEMELAB_AI_ESCALATION=0/false disables the tier-2 retry; default on.
-  const escalationEnabled = envEscalation != null
-    ? !["0", "false", "off"].includes(envEscalation.toLowerCase())
-    : (file.escalationEnabled ?? true);
+  const escalationEnabled =
+    envEscalation === undefined
+      ? (file.escalationEnabled ?? true)
+      : !["0", "false", "off"].includes(envEscalation.toLowerCase());
   const escalationModel = envEscModel || file.escalationModel;
 
   return {
@@ -108,10 +126,10 @@ export function resolveAiConfig(): ResolvedAiConfig {
     escalationEnabled,
     escalationModel,
     source: {
-      apiKey: envKey ? "env" : file.apiKey ? "file" : "none",
-      baseURL: envBase ? "env" : file.baseURL ? "file" : "none",
-      model: envModel ? "env" : file.model ? "file" : "none",
-      escalationModel: envEscModel ? "env" : file.escalationModel ? "file" : "none",
+      apiKey: valueSource(envKey, file.apiKey),
+      baseURL: valueSource(envBase, file.baseURL),
+      model: valueSource(envModel, file.model),
+      escalationModel: valueSource(envEscModel, file.escalationModel),
     },
   };
 }

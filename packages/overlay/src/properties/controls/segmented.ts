@@ -1,14 +1,15 @@
 import type { PropertyDescriptor } from "@themelab/shared";
-import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
+
 import { PANEL, FONT_MONO, RADII } from "../../design-tokens.js";
+import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
 
 export function createSegmented(
   descriptors: PropertyDescriptor[],
   values: Map<string, string>,
   onPreview: OnPreview,
-  onCommit: OnCommit,
+  onCommit: OnCommit
 ): PropertyControl {
-  const descriptor = descriptors[0];
+  const [descriptor] = descriptors;
   const enumValues = descriptor.enumValues ?? [];
 
   const container = document.createElement("div");
@@ -21,11 +22,17 @@ export function createSegmented(
     border-radius:${RADII.xs};
     padding:2px;
     flex-wrap:wrap;
-  `.trim().replace(/\n\s*/g, " ");
+  `
+    .trim()
+    .replaceAll(/\n\s*/g, " ");
 
   let activeValue = values.get(descriptor.key) ?? descriptor.defaultValue;
 
-  const buttons: Array<{ btn: HTMLButtonElement; value: string; opt: typeof enumValues[number] }> = [];
+  const buttons: {
+    btn: HTMLButtonElement;
+    value: string;
+    opt: (typeof enumValues)[number];
+  }[] = [];
 
   function setActiveButton(cssValue: string): void {
     activeValue = cssValue;
@@ -34,9 +41,10 @@ export function createSegmented(
       btn.style.background = isActive ? PANEL.btnBg : "transparent";
       btn.style.color = isActive ? "#ffffff" : PANEL.textDim;
       // Show Tailwind class as tooltip on the active segment
-      btn.title = isActive && opt.tailwindValue
-        ? `${opt.label} (${opt.tailwindValue})`
-        : opt.label;
+      btn.title =
+        isActive && opt.tailwindValue
+          ? `${opt.label} (${opt.tailwindValue})`
+          : opt.label;
     }
   }
 
@@ -57,7 +65,9 @@ export function createSegmented(
       min-width:20px;
       transition:background 100ms ease, color 100ms ease;
       white-space:nowrap;
-    `.trim().replace(/\n\s*/g, " ");
+    `
+      .trim()
+      .replaceAll(/\n\s*/g, " ");
 
     btn.textContent = opt.icon ?? opt.label;
     btn.title = opt.label;
@@ -69,7 +79,7 @@ export function createSegmented(
     });
 
     buttons.push({ btn, value: opt.value, opt });
-    container.appendChild(btn);
+    container.append(btn);
   }
 
   setActiveButton(activeValue);
@@ -77,7 +87,9 @@ export function createSegmented(
   return {
     element: container,
     setValue(key: string, cssValue: string): void {
-      if (key !== descriptor.key) return;
+      if (key !== descriptor.key) {
+        return;
+      }
       setActiveButton(cssValue);
     },
     destroy(): void {

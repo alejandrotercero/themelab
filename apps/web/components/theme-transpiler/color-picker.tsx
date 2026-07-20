@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 // A single token color control in the overlay's theme-panel row style: swatch +
 // label + mono value input, plus a "source colors" popover (like the overlay's
@@ -8,43 +8,62 @@
 // components/editor/color-picker.tsx (de-coupled from its zustand store).
 // See apps/web/NOTICE.
 
-import { useState } from "react";
-import { DiamondsFourIcon } from "@phosphor-icons/react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { oklchToHex, toOklch, oklchCss } from "@/lib/theme-engine";
-import { SwatchPopover } from "./swatch-popover";
+import { DiamondsFourIcon } from "@phosphor-icons/react"
+import { useState } from "react"
+
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { oklchToHex, toOklch, oklchCss } from "@/lib/theme-engine"
+
+import { SwatchPopover } from "./swatch-popover"
 
 export interface SourceColor {
-  slot: string;
-  hex: string;
+  slot: string
+  hex: string
 }
 
 interface ColorPickerProps {
-  token: string;
+  token: string
   /** Current value as an `oklch(...)` string. */
-  value: string;
+  value: string
   /** Whether this token has been manually overridden (label shows accent). */
-  edited?: boolean;
+  edited?: boolean
   /** The 9 HR source colors, offered for one-click override. */
-  palette?: SourceColor[];
-  onChange: (next: string) => void;
+  palette?: SourceColor[]
+  onChange: (next: string) => void
 }
 
-export function ColorPicker({ token, value, edited, palette, onChange }: ColorPickerProps) {
-  const [open, setOpen] = useState(false);
-  const parsed = toOklch(value);
-  const hex = parsed ? oklchToHex(parsed) : "#000000";
+export function ColorPicker({
+  token,
+  value,
+  edited,
+  palette,
+  onChange,
+}: ColorPickerProps) {
+  const [open, setOpen] = useState(false)
+  const parsed = toOklch(value)
+  const hex = parsed ? oklchToHex(parsed) : "#000000"
   // Many swatches (e.g. a full Tailwind scale) → dense, label-less grid.
-  const dense = (palette?.length ?? 0) > 12;
+  const dense = (palette?.length ?? 0) > 12
 
   const commitHex = (nextHex: string) => {
-    const o = toOklch(nextHex);
-    if (o) onChange(oklchCss(o));
-  };
+    const o = toOklch(nextHex)
+    if (o) {
+      onChange(oklchCss(o))
+    }
+  }
 
   return (
     <div className="ov-row">
-      <SwatchPopover value={hex} onChange={commitHex} title={`${token}: ${hex}`} className="size-[18px]" />
+      <SwatchPopover
+        value={hex}
+        onChange={commitHex}
+        title={`${token}: ${hex}`}
+        className="size-[18px]"
+      />
       <span
         title={token}
         className="w-28 shrink-0 truncate text-[11px]"
@@ -68,19 +87,26 @@ export function ColorPicker({ token, value, edited, palette, onChange }: ColorPi
           >
             <DiamondsFourIcon weight="bold" className="size-3.5" />
           </PopoverTrigger>
-          <PopoverContent align="end" className="tl-overlay w-auto max-w-[19rem] gap-2 p-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ov-text-ghost)]">
+          <PopoverContent
+            align="end"
+            className="tl-overlay w-auto max-w-[19rem] gap-2 p-2"
+          >
+            <div className="text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
               Source colors
             </div>
-            <div className={dense ? "grid grid-cols-6 gap-1" : "grid grid-cols-3 gap-2"}>
+            <div
+              className={
+                dense ? "grid grid-cols-6 gap-1" : "grid grid-cols-3 gap-2"
+              }
+            >
               {palette.map((s) => (
                 <button
                   key={s.slot}
                   type="button"
                   title={`${s.slot} · ${s.hex}`}
                   onClick={() => {
-                    commitHex(s.hex);
-                    setOpen(false);
+                    commitHex(s.hex)
+                    setOpen(false)
                   }}
                   className="flex flex-col items-center gap-1"
                 >
@@ -89,7 +115,9 @@ export function ColorPicker({ token, value, edited, palette, onChange }: ColorPi
                     style={{ backgroundColor: s.hex }}
                   />
                   {!dense && (
-                    <span className="w-12 truncate text-center text-[9px] text-[var(--ov-text-dim)]">{s.slot}</span>
+                    <span className="w-12 truncate text-center text-[9px] text-[var(--ov-text-dim)]">
+                      {s.slot}
+                    </span>
                   )}
                 </button>
               ))}
@@ -98,5 +126,5 @@ export function ColorPicker({ token, value, edited, palette, onChange }: ColorPi
         </Popover>
       )}
     </div>
-  );
+  )
 }

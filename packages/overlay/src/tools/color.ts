@@ -1,12 +1,16 @@
+import { addColorBadge } from "../annotation-layer.js";
+import { addAnnotation, viewportToPage } from "../canvas-state.js";
+import type { ColorOverrideRuntime } from "../canvas-state.js";
+import { openColorPicker, closeColorPicker } from "../color-picker.js";
 // packages/overlay/src/tools/color.ts
 import type { ToolEventHandler } from "../interaction.js";
-import { getPageElementAtPoint, setInteractionPointerEvents } from "../interaction.js";
-import { addAnnotation, viewportToPage, type ColorOverrideRuntime } from "../canvas-state.js";
-import { addColorBadge } from "../annotation-layer.js";
-import { resolveComponentAtPoint } from "./resolve-helper.js";
-import { openColorPicker, closeColorPicker } from "../color-picker.js";
+import {
+  getPageElementAtPoint,
+  setInteractionPointerEvents,
+} from "../interaction.js";
 import { getProjectColors } from "../properties/tailwind-resolver.js";
 import { setStyle, getStyle } from "../utils/style-access.js";
+import { resolveComponentAtPoint } from "./resolve-helper.js";
 
 let targetEl: HTMLElement | null = null;
 let targetComp: Awaited<ReturnType<typeof resolveComponentAtPoint>> = null;
@@ -14,12 +18,25 @@ let selectedProperty: "backgroundColor" | "color" = "backgroundColor";
 let originalValues: { bg: string; color: string } = { bg: "", color: "" };
 let currentPickedToken: string | undefined;
 
+function rgbToHex(rgb: string): string {
+  const match = rgb.match(/\d+/g);
+  if (!match || match.length < 3) {
+    return "#000000";
+  }
+  return `#${match
+    .slice(0, 3)
+    .map((n) => Math.trunc(Number(n)).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 export const colorHandler: ToolEventHandler = {
   async onMouseDown(e: MouseEvent) {
     closeColorPicker();
 
     const el = getPageElementAtPoint(e.clientX, e.clientY);
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     targetEl = el;
     originalValues = {
@@ -28,7 +45,9 @@ export const colorHandler: ToolEventHandler = {
     };
 
     const comp = await resolveComponentAtPoint(e.clientX, e.clientY);
-    if (!comp) return;
+    if (!comp) {
+      return;
+    }
     targetComp = comp;
 
     const initialColor = rgbToHex(originalValues.bg);
@@ -55,8 +74,13 @@ export const colorHandler: ToolEventHandler = {
       onClose() {
         // Re-enable interaction layer
         setInteractionPointerEvents(true);
-        if (!targetEl || !targetComp) return;
-        const fromColor = selectedProperty === "backgroundColor" ? originalValues.bg : originalValues.color;
+        if (!targetEl || !targetComp) {
+          return;
+        }
+        const fromColor =
+          selectedProperty === "backgroundColor"
+            ? originalValues.bg
+            : originalValues.color;
         const toColor = getStyle(targetEl, selectedProperty);
         if (toColor && toColor !== fromColor) {
           const id = crypto.randomUUID();
@@ -81,15 +105,13 @@ export const colorHandler: ToolEventHandler = {
       },
     });
   },
-  onMouseMove() {},
-  onMouseUp() {},
+  onMouseMove() {
+    /* empty */
+  },
+  onMouseUp() {
+    /* empty */
+  },
 };
-
-function rgbToHex(rgb: string): string {
-  const match = rgb.match(/\d+/g);
-  if (!match || match.length < 3) return "#000000";
-  return "#" + match.slice(0, 3).map(n => parseInt(n).toString(16).padStart(2, "0")).join("");
-}
 
 export function cleanupColorTool(): void {
   closeColorPicker();

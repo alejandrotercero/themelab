@@ -1,17 +1,35 @@
 import type { PropertyDescriptor } from "@themelab/shared";
-import type { PropertyControl, OnPreview, OnCommit, ControlContext } from "./types.js";
-import { getSnapPoints } from "../tailwind-resolver.js";
-import { createScaleShortcutButton } from "./scale-shortcut.js";
-import { classMatchesPrefix, findClassForVariant, decomposeClass } from "../../utils/class-matches-prefix.js";
-import { getVariantTokens } from "../variant-target.js";
-import { PANEL, FONT_MONO } from "../../design-tokens.js";
 
-const VALID_KEYWORDS = new Set(["auto", "none", "normal", "inherit", "initial"]);
+import { PANEL, FONT_MONO } from "../../design-tokens.js";
+import {
+  classMatchesPrefix,
+  findClassForVariant,
+  decomposeClass,
+} from "../../utils/class-matches-prefix.js";
+import { getSnapPoints } from "../tailwind-resolver.js";
+import { getVariantTokens } from "../variant-target.js";
+import { createScaleShortcutButton } from "./scale-shortcut.js";
+import type {
+  PropertyControl,
+  OnPreview,
+  OnCommit,
+  ControlContext,
+} from "./types.js";
+
+const VALID_KEYWORDS = new Set([
+  "auto",
+  "none",
+  "normal",
+  "inherit",
+  "initial",
+]);
 
 /** Normalize a CSS length to pixels for tolerant comparison (rem/em ≈ ×16). */
 function toPx(value: string): number | null {
-  const n = parseFloat(value);
-  if (isNaN(n)) return null;
+  const n = Number(value);
+  if (Number.isNaN(n)) {
+    return null;
+  }
   return /r?em\s*$/i.test(value.trim()) ? n * 16 : n;
 }
 
@@ -20,10 +38,12 @@ export function createNumberScrub(
   values: Map<string, string>,
   onPreview: OnPreview,
   onCommit: OnCommit,
-  ctx?: ControlContext,
+  ctx?: ControlContext
 ): PropertyControl {
-  const descriptor = descriptors[0];
-  const scaleName = descriptor.tailwindScale as Parameters<typeof getSnapPoints>[0];
+  const [descriptor] = descriptors;
+  const scaleName = descriptor.tailwindScale as Parameters<
+    typeof getSnapPoints
+  >[0];
 
   /**
    * The Tailwind token the element actually declares for this property at the
@@ -34,15 +54,19 @@ export function createNumberScrub(
    */
   function declaredToken(): string | null {
     const className = ctx?.selectedClassName;
-    if (!className) return null;
+    if (!className) {
+      return null;
+    }
     const classes = className.split(/\s+/).filter(Boolean);
     const pattern = descriptor.classPattern;
     const matchesBare = pattern
       ? (bare: string) => new RegExp(pattern).test(bare)
       : (bare: string) => classMatchesPrefix(bare, descriptor.tailwindPrefix);
     const cls = findClassForVariant(classes, matchesBare, getVariantTokens());
-    if (!cls) return null;
-    const utility = decomposeClass(cls).utility;
+    if (!cls) {
+      return null;
+    }
+    const { utility } = decomposeClass(cls);
     const lead = `${descriptor.tailwindPrefix}-`;
     return utility.startsWith(lead) ? utility.slice(lead.length) : null;
   }
@@ -58,27 +82,27 @@ export function createNumberScrub(
   const tokenLabel = document.createElement("span");
   tokenLabel.style.cssText = `font-size:11px; color:${PANEL.accent}; font-family:${FONT_MONO}; white-space:nowrap; flex-shrink:0;`;
 
-  container.appendChild(input);
+  container.append(input);
   // Font-size (and other scalable utilities) get a one-click scale picker beside the
   // token label; gated to fontSize for now per the spec.
   let scaleShortcut: { destroy: () => void } | null = null;
   if (descriptor.tailwindScale === "fontSize") {
     const shortcut = createScaleShortcutButton(descriptor, onPreview, onCommit);
     scaleShortcut = shortcut;
-    container.appendChild(shortcut.button);
+    container.append(shortcut.button);
   }
-  container.appendChild(tokenLabel);
+  container.append(tokenLabel);
 
   // State
-  let currentValues = new Map(values);
+  const currentValues = new Map(values);
 
   function getCurrentCssValue(): string {
     return currentValues.get(descriptor.key) ?? descriptor.defaultValue;
   }
 
   function updateDisplay(cssValue: string): void {
-    const num = parseFloat(cssValue);
-    input.value = isNaN(num) ? cssValue : String(num);
+    const num = Number(cssValue);
+    input.value = Number.isNaN(num) ? cssValue : String(num);
 
     try {
       const snapPoints = getSnapPoints(scaleName, cssValue);
@@ -88,10 +112,16 @@ export function createNumberScrub(
       //    moves off the declared size falls through to the reverse lookup below.
       const declared = declaredToken();
       if (declared) {
-        const declaredCss = snapPoints.find((p) => p.token === declared)?.cssValue;
+        const declaredCss = snapPoints.find(
+          (p) => p.token === declared
+        )?.cssValue;
         const cur = toPx(cssValue);
-        const dec = declaredCss != null ? toPx(declaredCss) : null;
-        const matches = declaredCss == null || cur == null || dec == null || Math.abs(cur - dec) < 0.5;
+        const dec = declaredCss === undefined ? null : toPx(declaredCss);
+        const matches =
+          declaredCss === undefined ||
+          cur === null ||
+          dec === null ||
+          Math.abs(cur - dec) < 0.5;
         if (matches) {
           tokenLabel.textContent = `${descriptor.tailwindPrefix}-${declared}`;
           return;
@@ -102,12 +132,18 @@ export function createNumberScrub(
       //    string first, else by pixel value (the scale is rem, computed is px).
       const cur = toPx(cssValue);
       const byPx = (p: { token: string | null; cssValue: string }): boolean => {
-        if (p.token == null || cur == null) return false;
+        if (p.token === null || cur === null) {
+          return false;
+        }
         const v = toPx(p.cssValue);
-        return v != null && Math.abs(v - cur) < 0.5;
+        return v !== null && Math.abs(v - cur) < 0.5;
       };
-      const match = snapPoints.find((p) => p.cssValue === cssValue) ?? snapPoints.find(byPx);
-      tokenLabel.textContent = match?.token ? `${descriptor.tailwindPrefix}-${match.token}` : "";
+      const match =
+        snapPoints.find((p) => p.cssValue === cssValue) ??
+        snapPoints.find(byPx);
+      tokenLabel.textContent = match?.token
+        ? `${descriptor.tailwindPrefix}-${match.token}`
+        : "";
     } catch {
       tokenLabel.textContent = "";
     }
@@ -116,9 +152,9 @@ export function createNumberScrub(
   // Text input editing — commit on blur
   input.addEventListener("blur", () => {
     const raw = input.value.trim();
-    const num = parseFloat(raw);
-    if (!isNaN(num)) {
-      const unitMatch = raw.match(/(px|rem|em|%|vw|vh|ch)$/);
+    const num = Number(raw);
+    if (!Number.isNaN(num)) {
+      const unitMatch = raw.match(/(?<unit>px|rem|em|%|vw|vh|ch)$/);
       const cssValue = unitMatch ? raw : `${num}px`;
       currentValues.set(descriptor.key, cssValue);
       updateDisplay(cssValue);
@@ -150,7 +186,9 @@ export function createNumberScrub(
   return {
     element: container,
     setValue(key: string, cssValue: string): void {
-      if (key !== descriptor.key) return;
+      if (key !== descriptor.key) {
+        return;
+      }
       currentValues.set(key, cssValue);
       updateDisplay(cssValue);
     },

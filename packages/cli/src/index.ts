@@ -1,13 +1,14 @@
+import chalk from "chalk";
 // packages/cli/src/index.ts
 import { program } from "commander";
-import chalk from "chalk";
 import open from "open";
+
 import { detect, healthCheck } from "./detect.js";
 import { createProxyServer } from "./inject.js";
-import { createSketchServer } from "./server.js";
-import { createMcpHttpServer } from "./mcp/server.js";
-import { getAvailablePort } from "./utils.js";
 import { logger, setLogLevel } from "./logger.js";
+import { createMcpHttpServer } from "./mcp/server.js";
+import { createSketchServer } from "./server.js";
+import { getAvailablePort } from "./utils.js";
 
 // Brand accent (matches the overlay's COLORS.accent).
 const BRAND = "#ec003f";
@@ -33,8 +34,8 @@ function printBanner(): void {
     "",
   ];
   let out = "\n";
-  for (let i = 0; i < LOGO_LINES.length; i++) {
-    out += "  " + mark(LOGO_LINES[i]) + "   " + (side[i] ?? "") + "\n";
+  for (let i = 0; i < LOGO_LINES.length; i += 1) {
+    out += `  ${mark(LOGO_LINES[i])}   ${side[i] ?? ""}\n`;
   }
   logger.info(out);
 }
@@ -45,7 +46,10 @@ program
   .argument("[port]", "Dev server port override")
   .option("--no-open", "Don't open browser automatically")
   .option("--host <host>", "Dev server host", "localhost")
-  .option("--studio-url <url>", "ThemeLab studio base URL (for 'Open in editor')")
+  .option(
+    "--studio-url <url>",
+    "ThemeLab studio base URL (for 'Open in editor')"
+  )
   .option("--no-mcp", "Disable the MCP server for coding agents")
   .option("--mcp-port <port>", "Preferred port for the MCP server")
   .option("--verbose", "Enable debug logging")
@@ -57,13 +61,15 @@ program
       }
       const host = opts.host || "localhost";
       const studioUrl =
-        opts.studioUrl || process.env.THEMELAB_STUDIO_URL || "https://themelab.dev";
+        opts.studioUrl ||
+        process.env.THEMELAB_STUDIO_URL ||
+        "https://themelab.dev";
 
       printBanner();
 
       // Detect framework
       const detection = await detect();
-      const targetPort = portArg ? parseInt(portArg, 10) : detection.port;
+      const targetPort = portArg ? Math.trunc(Number(portArg)) : detection.port;
 
       logger.info(
         chalk.dim("  Framework: ") + chalk.white(detection.framework)
@@ -85,7 +91,9 @@ program
       let mcpServer: ReturnType<typeof createMcpHttpServer> | null = null;
       let mcpPort = 0;
       if (opts.mcp !== false) {
-        const preferred = opts.mcpPort ? parseInt(opts.mcpPort, 10) : 3458;
+        const preferred = opts.mcpPort
+          ? Math.trunc(Number(opts.mcpPort))
+          : 3458;
         mcpPort = await getAvailablePort(preferred);
         mcpServer = createMcpHttpServer(
           {
@@ -95,7 +103,7 @@ program
             discoverComponentFile: sketchServer.discoverComponentFile,
             isOverlayConnected: sketchServer.isOverlayConnected,
           },
-          mcpPort,
+          mcpPort
         );
       }
 
@@ -112,15 +120,15 @@ program
 
       proxyServer.listen(proxyPort, "127.0.0.1", () => {
         logger.info(
-          chalk.dim("  Proxy: ") +
-            chalk.green(`http://localhost:${proxyPort}`)
+          chalk.dim("  Proxy: ") + chalk.green(`http://localhost:${proxyPort}`)
         );
         logger.info(
           chalk.dim("  WebSocket: ") + chalk.green(`ws://localhost:${wsPort}`)
         );
         if (mcpServer) {
           logger.info(
-            chalk.dim("  MCP: ") + chalk.green(`http://localhost:${mcpPort}/mcp`)
+            chalk.dim("  MCP: ") +
+              chalk.green(`http://localhost:${mcpPort}/mcp`)
           );
         }
         logger.info(
@@ -145,11 +153,9 @@ program
 
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
-    } catch (err) {
+    } catch (error) {
       logger.error(
-        chalk.red("\n  Error: ") +
-          (err instanceof Error ? err.message : String(err)) +
-          "\n"
+        `${chalk.red("\n  Error: ")}${error instanceof Error ? error.message : String(error)}\n`
       );
       process.exit(1);
     }

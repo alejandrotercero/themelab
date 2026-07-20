@@ -1,5 +1,6 @@
 // packages/overlay/src/utils/color-math.test.ts
 import { describe, it, expect } from "vitest";
+
 import { hexToHsv, hsvToHex } from "./color-math.js";
 
 describe("hexToHsv / hsvToHex round-trip", () => {

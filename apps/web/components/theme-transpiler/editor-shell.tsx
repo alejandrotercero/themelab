@@ -1,31 +1,39 @@
-"use client";
+"use client"
 
 // The shared overlay-skinned chrome for both tools: toolbar, full-height token
 // editor sidebar, live preview with the sun/moon toggle, and a boom bar whose
 // left (input) and right (output) are provided by each tool. Driven entirely by
 // the useThemeEditor hook so the two tools stay in lockstep.
 
-import type { ReactNode } from "react";
-import { MoonIcon, SunIcon } from "@phosphor-icons/react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { TokenControls } from "./token-controls";
-import { PreviewPane } from "./preview-pane";
-import type { useThemeEditor } from "./use-theme-editor";
+import { MoonIcon, SunIcon } from "@phosphor-icons/react"
+import type { ReactNode } from "react"
+
+import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Switch } from "@/components/ui/switch"
+
+import { PreviewPane } from "./preview-pane"
+import { TokenControls } from "./token-controls"
+import type { useThemeEditor } from "./use-theme-editor"
 
 interface EditorShellProps {
-  editor: ReturnType<typeof useThemeEditor>;
-  toolbar: ReactNode;
+  editor: ReturnType<typeof useThemeEditor>
+  toolbar: ReactNode
   /** Left side of the boom bar (the tool's input). */
-  input: ReactNode;
+  input: ReactNode
   /** Right side of the boom bar (grader, scales…), or null. */
-  output: ReactNode;
+  output: ReactNode
   /** Portals/dialogs/toaster rendered inside the root. */
-  children?: ReactNode;
+  children?: ReactNode
 }
 
-export function EditorShell({ editor, toolbar, input, output, children }: EditorShellProps) {
+export function EditorShell({
+  editor,
+  toolbar,
+  input,
+  output,
+  children,
+}: EditorShellProps) {
   // Destructure to avoid the react-hooks/refs false-positive: the linter treats
   // all properties of an object containing a ref as "ref accesses during render".
   // These are plain state values and dispatch functions — not refs.
@@ -42,7 +50,7 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
     source,
     applyToSite,
     setApplyToSite,
-  } = editor;
+  } = editor
 
   return (
     <div ref={rootRef} className="tl-overlay flex h-dvh flex-col">
@@ -68,7 +76,11 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
         {/* Preview + boom bar */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="relative min-h-0 flex-1 overflow-hidden">
-            <div className="ov-seg absolute right-3 top-3 z-10 shadow-lg" role="tablist" aria-label="Preview mode">
+            <div
+              className="ov-seg absolute top-3 right-3 z-10 shadow-lg"
+              role="tablist"
+              aria-label="Preview mode"
+            >
               <button
                 type="button"
                 role="tab"
@@ -102,7 +114,7 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-baseline gap-2">
-                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--ov-text-ghost)]">
+                    <span className="shrink-0 text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
                       Theme:
                     </span>
                     <span className="truncate text-lg font-semibold text-[var(--ov-text)]">
@@ -115,7 +127,10 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
                       checked={applyToSite}
                       onCheckedChange={setApplyToSite}
                     />
-                    <Label htmlFor="apply-page" className="text-xs text-[var(--ov-text-dim)]">
+                    <Label
+                      htmlFor="apply-page"
+                      className="text-xs text-[var(--ov-text-dim)]"
+                    >
                       Apply to page
                     </Label>
                   </div>
@@ -130,5 +145,5 @@ export function EditorShell({ editor, toolbar, input, output, children }: Editor
 
       {children}
     </div>
-  );
+  )
 }

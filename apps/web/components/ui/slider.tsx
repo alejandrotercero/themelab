@@ -10,11 +10,14 @@ function Slider({
   max = 100,
   ...props
 }: SliderPrimitive.Root.Props) {
-  const _values = Array.isArray(value)
-    ? value
-    : Array.isArray(defaultValue)
-      ? defaultValue
-      : [min, max]
+  let _values: number[]
+  if (Array.isArray(value)) {
+    _values = value
+  } else if (Array.isArray(defaultValue)) {
+    _values = defaultValue
+  } else {
+    _values = [min, max]
+  }
 
   return (
     <SliderPrimitive.Root

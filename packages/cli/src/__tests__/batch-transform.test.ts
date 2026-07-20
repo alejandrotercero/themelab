@@ -1,73 +1,114 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { executeBatch } from "../batch-transform.js";
-import type { BatchOperation, TextEditAnchor } from "@themelab/shared";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-const fixturesDir = path.join(__dirname, "fixtures");
+import type { BatchOperation, TextEditAnchor } from "@themelab/shared";
+import { describe, it, expect, afterEach } from "vitest";
+
+import { executeBatch } from "../batch-transform.js";
+
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
 
 /** Helper to get a fresh copy of a fixture (avoids cross-test pollution). */
-function useFixture(name: string): { filePath: string; original: string; cleanup: () => void } {
+function useFixture(name: string): {
+  filePath: string;
+  original: string;
+  cleanup: () => void;
+} {
   const src = path.join(fixturesDir, name);
   const original = fs.readFileSync(src, "utf-8");
-  const tmp = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${name}`);
+  const tmp = path.join(
+    fixturesDir,
+    `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${name}`
+  );
   fs.writeFileSync(tmp, original, "utf-8");
   return {
     filePath: tmp,
     original,
     cleanup: () => {
-      try { fs.unlinkSync(tmp); } catch {}
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        // best-effort cleanup
+      }
     },
   };
 }
 
 /** Find line:col of an opening JSX tag in source. */
-function findPosition(source: string, tag: string): { line: number; col: number } {
+function findPosition(
+  source: string,
+  tag: string
+): { line: number; col: number } {
   const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i += 1) {
     const col = lines[i].indexOf(`<${tag}`);
-    if (col !== -1) return { line: i + 1, col }; // 1-indexed line, 0-indexed col
+    if (col !== -1) {
+      return { line: i + 1, col };
+    } // 1-indexed line, 0-indexed col
   }
   throw new Error(`Tag <${tag}> not found`);
 }
 
-function findMarkdownPosition(source: string, snippet: string): { line: number; col: number } {
+function findMarkdownPosition(
+  source: string,
+  snippet: string
+): { line: number; col: number } {
   const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i += 1) {
     const col = lines[i].indexOf(snippet);
-    if (col !== -1) return { line: i + 1, col };
+    if (col !== -1) {
+      return { line: i + 1, col };
+    }
   }
   throw new Error(`Markdown snippet "${snippet}" not found`);
 }
 
-function buildTextEditAnchor(originalText: string, newText: string): TextEditAnchor | undefined {
-  if (originalText === newText) return undefined;
+function buildTextEditAnchor(
+  originalText: string,
+  newText: string
+): TextEditAnchor | undefined {
+  if (originalText === newText) {
+    return undefined;
+  }
 
   let start = 0;
-  while (start < originalText.length && start < newText.length && originalText[start] === newText[start]) {
-    start++;
+  while (
+    start < originalText.length &&
+    start < newText.length &&
+    originalText[start] === newText[start]
+  ) {
+    start += 1;
   }
 
   let oldEnd = originalText.length;
   let newEnd = newText.length;
-  while (oldEnd > start && newEnd > start && originalText[oldEnd - 1] === newText[newEnd - 1]) {
-    oldEnd--;
-    newEnd--;
+  while (
+    oldEnd > start &&
+    newEnd > start &&
+    originalText[oldEnd - 1] === newText[newEnd - 1]
+  ) {
+    oldEnd -= 1;
+    newEnd -= 1;
   }
 
   return {
     start,
     end: oldEnd,
     contextBefore: originalText.slice(Math.max(0, start - 32), start),
-    contextAfter: originalText.slice(oldEnd, Math.min(originalText.length, oldEnd + 32)),
+    contextAfter: originalText.slice(
+      oldEnd,
+      Math.min(originalText.length, oldEnd + 32)
+    ),
   };
 }
 
 describe("executeBatch", () => {
-  let fixtures: Array<{ cleanup: () => void }> = [];
+  let fixtures: { cleanup: () => void }[] = [];
 
   afterEach(() => {
-    for (const f of fixtures) f.cleanup();
+    for (const f of fixtures) {
+      f.cleanup();
+    }
     fixtures = [];
   });
 
@@ -84,10 +125,18 @@ describe("executeBatch", () => {
     const pos = findPosition(original, "div");
 
     const result = executeBatch(
-      [{ op: "updateClass", file: filePath, line: pos.line, col: pos.col, updates: [
-        { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
-      ]}],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results).toHaveLength(1);
@@ -104,14 +153,16 @@ describe("executeBatch", () => {
     const pos = findPosition(original, "section");
 
     const result = executeBatch(
-      [{
-        op: "replaceClassName",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        className: "bg-white text-black md:dark:bg-slate-700",
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "replaceClassName",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          className: "bg-white text-black md:dark:bg-slate-700",
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results).toHaveLength(1);
@@ -119,7 +170,9 @@ describe("executeBatch", () => {
 
     const updated = fs.readFileSync(filePath, "utf-8");
     // Whole-string replacement: the new className replaces the old entirely.
-    expect(updated).toContain('className="bg-white text-black md:dark:bg-slate-700"');
+    expect(updated).toContain(
+      'className="bg-white text-black md:dark:bg-slate-700"'
+    );
     // Old stacked/breakpoint classes are gone.
     expect(updated).not.toContain("dark:bg-black");
     expect(updated).not.toContain("dark:md:p-6");
@@ -131,14 +184,16 @@ describe("executeBatch", () => {
     const pos = findPosition(original, "h2");
 
     const result = executeBatch(
-      [{
-        op: "replaceClassName",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        className: "text-xl font-bold",
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "replaceClassName",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          className: "text-xl font-bold",
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -152,8 +207,17 @@ describe("executeBatch", () => {
     const pos = findPosition(original, "h2");
 
     const result = executeBatch(
-      [{ op: "updateText", file: filePath, line: pos.line, col: pos.col, originalText: "Title", newText: "New Title" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          originalText: "Title",
+          newText: "New Title",
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results).toHaveLength(1);
@@ -169,8 +233,17 @@ describe("executeBatch", () => {
     const pos = findPosition(original, "h2");
 
     const result = executeBatch(
-      [{ op: "updateText", file: filePath, line: pos.line, col: pos.col, originalText: "Wrong Text", newText: "New" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          originalText: "Wrong Text",
+          newText: "New",
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(false);
@@ -184,8 +257,17 @@ describe("executeBatch", () => {
     // Reorder a real element among its siblings; resolve via line:col.
     const h1Pos = findPosition(original, "h1");
     const result = executeBatch(
-      [{ op: "moveSibling", file: filePath, line: h1Pos.line, col: h1Pos.col, direction: "down", tagName: "h1" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSibling",
+          file: filePath,
+          line: h1Pos.line,
+          col: h1Pos.col,
+          direction: "down",
+          tagName: "h1",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     expect(result.undoEntries).toHaveLength(1);
@@ -195,8 +277,17 @@ describe("executeBatch", () => {
     const { filePath, original } = setup("five-siblings.tsx");
     const navbarPos = findPosition(original, "Navbar");
     const result = executeBatch(
-      [{ op: "moveSibling", file: filePath, line: navbarPos.line, col: navbarPos.col, direction: "up", tagName: "Navbar" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSibling",
+          file: filePath,
+          line: navbarPos.line,
+          col: navbarPos.col,
+          direction: "up",
+          tagName: "Navbar",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(false);
     expect(result.results[0].error).toMatch(/already the first sibling/i);
@@ -208,20 +299,43 @@ describe("executeBatch", () => {
     const { filePath, original } = setup("five-siblings.tsx");
     const featuresPos = findPosition(original, "Features");
     const result = executeBatch(
-      [{ op: "moveSibling", file: filePath, line: featuresPos.line, col: featuresPos.col, direction: "up", tagName: "Features" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSibling",
+          file: filePath,
+          line: featuresPos.line,
+          col: featuresPos.col,
+          direction: "up",
+          tagName: "Features",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
     const order = updated
-      .split("\n").map(l => l.trim())
-      .filter(l => /^<(Navbar|Hero|Features|Pricing|Footer) \/>$/.test(l));
-    expect(order).toEqual(["<Navbar />", "<Features />", "<Hero />", "<Pricing />", "<Footer />"]);
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) =>
+        /^<(?<component>Navbar|Hero|Features|Pricing|Footer) \/>$/.test(l)
+      );
+    expect(order).toEqual([
+      "<Navbar />",
+      "<Features />",
+      "<Hero />",
+      "<Pricing />",
+      "<Footer />",
+    ]);
   });
 
   it("returns a per-op failure (no throw) when reorder targets a non-existent line", () => {
     const { filePath } = setup("five-siblings.tsx");
-    const op: BatchOperation = { op: "reorder", file: filePath, fromLine: 1, toLine: 9999 };
+    const op: BatchOperation = {
+      op: "reorder",
+      file: filePath,
+      fromLine: 1,
+      toLine: 9999,
+    };
     expect(() => executeBatch([op], path.dirname(filePath))).not.toThrow();
     const result = executeBatch([op], path.dirname(filePath));
     expect(result.results[0].success).toBe(false);
@@ -232,22 +346,34 @@ describe("executeBatch", () => {
 
   it("applies multiple updateClass ops on different elements in one file", () => {
     const { filePath, original } = setup("batch-multi.tsx");
-    const divPos = findPosition(original, "div className=\"flex flex-col");
+    const divPos = findPosition(original, 'div className="flex flex-col');
     const h1Pos = findPosition(original, "h1");
 
     const result = executeBatch(
       [
-        { op: "updateClass", file: filePath, line: divPos.line, col: divPos.col, updates: [
-          { tailwindPrefix: "bg", tailwindToken: "gray-100", value: "" },
-        ]},
-        { op: "updateClass", file: filePath, line: h1Pos.line, col: h1Pos.col, updates: [
-          { tailwindPrefix: "text", tailwindToken: "blue-900", value: "" },
-        ]},
+        {
+          op: "updateClass",
+          file: filePath,
+          line: divPos.line,
+          col: divPos.col,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "gray-100", value: "" },
+          ],
+        },
+        {
+          op: "updateClass",
+          file: filePath,
+          line: h1Pos.line,
+          col: h1Pos.col,
+          updates: [
+            { tailwindPrefix: "text", tailwindToken: "blue-900", value: "" },
+          ],
+        },
       ],
-      path.dirname(filePath),
+      path.dirname(filePath)
     );
 
-    expect(result.results.every(r => r.success)).toBe(true);
+    expect(result.results.every((r) => r.success)).toBe(true);
     expect(result.undoEntries).toHaveLength(1); // single file → single undo entry
 
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -261,15 +387,26 @@ describe("executeBatch", () => {
 
     const result = executeBatch(
       [
-        { op: "updateClass", file: filePath, line: h2Pos.line, col: h2Pos.col, updates: [
-          { tailwindPrefix: "text", tailwindToken: "xl", value: "" },
-        ]},
-        { op: "updateText", file: filePath, line: h2Pos.line, col: h2Pos.col, originalText: "Title", newText: "Updated" },
+        {
+          op: "updateClass",
+          file: filePath,
+          line: h2Pos.line,
+          col: h2Pos.col,
+          updates: [{ tailwindPrefix: "text", tailwindToken: "xl", value: "" }],
+        },
+        {
+          op: "updateText",
+          file: filePath,
+          line: h2Pos.line,
+          col: h2Pos.col,
+          originalText: "Title",
+          newText: "Updated",
+        },
       ],
-      path.dirname(filePath),
+      path.dirname(filePath)
     );
 
-    expect(result.results.every(r => r.success)).toBe(true);
+    expect(result.results.every((r) => r.success)).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
     expect(updated).toContain("text-xl");
@@ -278,53 +415,85 @@ describe("executeBatch", () => {
 
   it("applies anchored text insertion in a paragraph with repeated inline content", () => {
     const source = `function App() {\n  return (\n    <p>i study <strong>math</strong> at <strong>waterloo</strong> and enjoy software. i talk about random things at <strong>@imdonghakim</strong> on <a href="https://instagram.com/imdonghakim">instagram</a>, <a href="https://tiktok.com/@imdonghakim">tiktok</a>, and <a href="https://x.com/imdonghakim">x</a>.</p>\n  );\n}`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_anchored-text.tsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_anchored-text.tsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
-    const originalText = "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x.";
-    const newText = "i study math at waterloo and enjoy software. hello my name is jeff i talk about random things at @imdonghakim on instagram, tiktok, and x.";
+    const originalText =
+      "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x.";
+    const newText =
+      "i study math at waterloo and enjoy software. hello my name is jeff i talk about random things at @imdonghakim on instagram, tiktok, and x.";
 
     const result = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: 3,
-        col: 4,
-        originalText,
-        newText,
-        textAnchor: buildTextEditAnchor(originalText, newText),
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: 3,
+          col: 4,
+          originalText,
+          newText,
+          textAnchor: buildTextEditAnchor(originalText, newText),
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
-    expect(updated).toContain("and enjoy software. hello my name is jeff i talk about random things");
+    expect(updated).toContain(
+      "and enjoy software. hello my name is jeff i talk about random things"
+    );
     expect(updated).not.toContain("shello my name is jeff oftware");
   });
 
   it("applies anchored text insertion when the source text crosses indented JSX lines", () => {
-    const source = `function App() {\n  return (\n    <p>i study{' '}<strong>math</strong>{' '}at{' '}<strong>waterloo</strong>{' '}and enjoy software. i talk about\n      random things at{' '}<strong>@imdonghakim</strong>{' '}on{' '}<a href=\"https://instagram.com/imdonghakim\">instagram</a>,{' '}<a href=\"https://tiktok.com/@imdonghakim\">tiktok</a>, and{' '}<a href=\"https://x.com/imdonghakim\">x</a>.\n      i like playing basketball.</p>\n  );\n}`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_anchored-multiline.tsx`);
+    const source = `function App() {\n  return (\n    <p>i study{' '}<strong>math</strong>{' '}at{' '}<strong>waterloo</strong>{' '}and enjoy software. i talk about\n      random things at{' '}<strong>@imdonghakim</strong>{' '}on{' '}<a href="https://instagram.com/imdonghakim">instagram</a>,{' '}<a href="https://tiktok.com/@imdonghakim">tiktok</a>, and{' '}<a href="https://x.com/imdonghakim">x</a>.\n      i like playing basketball.</p>\n  );\n}`;
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_anchored-multiline.tsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
-    const originalText = "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
-    const newText = "i study math at waterloo and enjoy software. i talk about hello my name is jeff random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
+    const originalText =
+      "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
+    const newText =
+      "i study math at waterloo and enjoy software. i talk about hello my name is jeff random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
 
     const result = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: 3,
-        col: 4,
-        originalText,
-        newText,
-        textAnchor: buildTextEditAnchor(originalText, newText),
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: 3,
+          col: 4,
+          originalText,
+          newText,
+          textAnchor: buildTextEditAnchor(originalText, newText),
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -337,24 +506,37 @@ describe("executeBatch", () => {
 
   it("collapses whitespace-node pollution after a text update", () => {
     const source = `function App() {\n  return (\n    <p>i study{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>math</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}at{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>waterloo</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}and enjoy software.</p>\n  );\n}`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_cleanup.tsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_cleanup.tsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
     const originalText = "i study math at waterloo and enjoy software.";
     const newText = "i study math at waterloo and really enjoy software.";
 
     const result = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: 3,
-        col: 4,
-        originalText,
-        newText,
-        textAnchor: buildTextEditAnchor(originalText, newText),
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: 3,
+          col: 4,
+          originalText,
+          newText,
+          textAnchor: buildTextEditAnchor(originalText, newText),
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -366,20 +548,35 @@ describe("executeBatch", () => {
 
   it("preserves existing explicit boundary spaces during unrelated class updates", () => {
     const source = `function App() {\n  return (\n    <section>\n      <p>hello <strong>world</strong>{' '}{' '}again</p>\n      <div className="bg-white">card</div>\n    </section>\n  );\n}`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_class-whitespace.tsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_class-whitespace.tsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
-    const pos = findPosition(source, "div className=\"bg-white\"");
+    const pos = findPosition(source, 'div className="bg-white"');
     const result = executeBatch(
-      [{
-        op: "updateClass",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -391,21 +588,46 @@ describe("executeBatch", () => {
 
   it("duplicates keyed elements with unique keys across repeated duplicates", () => {
     const source = `function App() {\n  return (\n    <div>\n      <span key="chip">First</span>\n      <span key="next">Next</span>\n    </div>\n  );\n}`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_duplicate-keys.tsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_duplicate-keys.tsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
-    const pos = findPosition(source, "span key=\"chip\"");
+    const pos = findPosition(source, 'span key="chip"');
 
     const first = executeBatch(
-      [{ op: "duplicateElement", file: filePath, line: pos.line, col: pos.col }],
-      path.dirname(filePath),
+      [
+        {
+          op: "duplicateElement",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(first.results[0].success).toBe(true);
 
     const second = executeBatch(
-      [{ op: "duplicateElement", file: filePath, line: pos.line, col: pos.col }],
-      path.dirname(filePath),
+      [
+        {
+          op: "duplicateElement",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(second.results[0].success).toBe(true);
 
@@ -416,80 +638,148 @@ describe("executeBatch", () => {
 
   it("duplicates inline elements using the separator that follows them", () => {
     const source = `function App() {\n  return (\n    <p>on <a href="#1">instagram</a>, <a href="#2">tiktok</a>, and <a href="#3">x</a>.</p>\n  );\n}`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_duplicate-inline.tsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_duplicate-inline.tsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
-    const pos = findPosition(source, "a href=\"#1\"");
+    const pos = findPosition(source, 'a href="#1"');
     const result = executeBatch(
-      [{ op: "duplicateElement", file: filePath, line: pos.line, col: pos.col }],
-      path.dirname(filePath),
+      [
+        {
+          op: "duplicateElement",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
-    expect(updated).toContain('<a href="#1">instagram</a>, <a href="#1">instagram</a>, <a href="#2">tiktok</a>');
+    expect(updated).toContain(
+      '<a href="#1">instagram</a>, <a href="#1">instagram</a>, <a href="#2">tiktok</a>'
+    );
   });
 
   it("updates mapped object-property text by rewriting the backing string literal", () => {
     const source = `const Projects = () => {\n  const projects = [\n    { name: "themelab", description: "Figma for your localhost." },\n    { name: "UW GitRank", description: "Waterloo student GitHub rankings." },\n  ];\n\n  return (\n    <div>\n      {projects.map((project) => (\n        <section key={project.name}>\n          <h2>{project.name}</h2>\n          <p>{project.description}</p>\n        </section>\n      ))}\n    </div>\n  );\n};\n`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mapped-literals.jsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mapped-literals.jsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
     const result = executeBatch(
       [
-        { op: "updateText", file: filePath, line: 3, col: 12, originalText: "themelab", newText: "ThemeLab" },
-        { op: "updateText", file: filePath, line: 4, col: 12, originalText: "UW GitRank", newText: "UW Git Rank" },
+        {
+          op: "updateText",
+          file: filePath,
+          line: 3,
+          col: 12,
+          originalText: "themelab",
+          newText: "ThemeLab",
+        },
+        {
+          op: "updateText",
+          file: filePath,
+          line: 4,
+          col: 12,
+          originalText: "UW GitRank",
+          newText: "UW Git Rank",
+        },
       ],
-      path.dirname(filePath),
+      path.dirname(filePath)
     );
 
-    expect(result.results.every(r => r.success)).toBe(true);
+    expect(result.results.every((r) => r.success)).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
     expect(updated).toContain('name: "ThemeLab"');
     expect(updated).toContain('name: "UW Git Rank"');
-    expect(updated).toContain('<h2>{project.name}</h2>');
+    expect(updated).toContain("<h2>{project.name}</h2>");
   });
 
   it("updates repeated edits against a mixed static-plus-bound description without jumping", () => {
     const source = `const Projects = () => {\n  const projects = [\n    { description: "Waterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repository battles." },\n  ];\n\n  return (\n    <div>\n      {projects.map((project) => (\n        <p key={project.description}>yo{project.description}</p>\n      ))}\n    </div>\n  );\n};\n`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mixed-bound-text.jsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mixed-bound-text.jsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
     const pos = findPosition(source, "p key={project.description}");
 
     const first = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        originalText: "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repository battles.",
-        newText: "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles.",
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          originalText:
+            "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repository battles.",
+          newText:
+            "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles.",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(first.results[0].success).toBe(true);
 
     const second = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        originalText: "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles.",
-        newText: "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles for Waterloo.",
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          originalText:
+            "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles.",
+          newText:
+            "yoWaterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles for Waterloo.",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(second.results[0].success).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
-    expect(updated).toContain('description: "Waterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles for Waterloo."');
-    expect(updated).toContain('<p key={project.description}>yo{project.description}</p>');
+    expect(updated).toContain(
+      'description: "Waterloo student GitHub rankings scored by stars, PRs, commits, peer endorsements, and pvp repo battles for Waterloo."'
+    );
+    expect(updated).toContain(
+      "<p key={project.description}>yo{project.description}</p>"
+    );
   });
 
   it("applies repeated text edits to the same mdx paragraph without drifting", () => {
@@ -497,74 +787,110 @@ describe("executeBatch", () => {
 
 attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a mechanism.
 `;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mdx-repeat.mdx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mdx-repeat.mdx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
     const pos = findMarkdownPosition(source, "attention isn't");
-    const firstOriginal = "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a mechanism.";
-    const firstNew = "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a really important mechanism.";
+    const firstOriginal =
+      "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a mechanism.";
+    const firstNew =
+      "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a really important mechanism.";
 
     const first = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        originalText: firstOriginal,
-        newText: firstNew,
-        textAnchor: buildTextEditAnchor(firstOriginal, firstNew),
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          originalText: firstOriginal,
+          newText: firstNew,
+          textAnchor: buildTextEditAnchor(firstOriginal, firstNew),
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(first.results[0].success).toBe(true);
 
     const secondSource = fs.readFileSync(filePath, "utf-8");
     const secondPos = findMarkdownPosition(secondSource, "attention isn't");
-    const secondOriginal = "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a really important mechanism.";
-    const secondNew = "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a really important mechanism for transformers.";
+    const secondOriginal =
+      "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a really important mechanism.";
+    const secondNew =
+      "attention isn't some scary, complex, rocket science concept. to explain it simply, attention is a really important mechanism for transformers.";
 
     const second = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: secondPos.line,
-        col: secondPos.col,
-        originalText: secondOriginal,
-        newText: secondNew,
-        textAnchor: buildTextEditAnchor(secondOriginal, secondNew),
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: secondPos.line,
+          col: secondPos.col,
+          originalText: secondOriginal,
+          newText: secondNew,
+          textAnchor: buildTextEditAnchor(secondOriginal, secondNew),
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(second.results[0].success).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
-    expect(updated).toContain("attention is a really important mechanism for transformers.");
+    expect(updated).toContain(
+      "attention is a really important mechanism for transformers."
+    );
     expect(updated).not.toContain("{' '}");
   });
 
   it("preserves markdown formatting when editing mdx inline text", () => {
     const source = `attention lets every word look at *every other word* and decide what is relevant. read the [paper](https://arxiv.org/abs/1706.03762).
 `;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mdx-inline.mdx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_mdx-inline.mdx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
     const pos = findMarkdownPosition(source, "attention lets");
-    const originalText = "attention lets every word look at every other word and decide what is relevant. read the paper.";
-    const newText = "attention lets every word look at every nearby word and decide what is relevant. read the paper.";
+    const originalText =
+      "attention lets every word look at every other word and decide what is relevant. read the paper.";
+    const newText =
+      "attention lets every word look at every nearby word and decide what is relevant. read the paper.";
 
     const result = executeBatch(
-      [{
-        op: "updateText",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        originalText,
-        newText,
-        textAnchor: buildTextEditAnchor(originalText, newText),
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateText",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          originalText,
+          newText,
+          textAnchor: buildTextEditAnchor(originalText, newText),
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -582,18 +908,28 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     const result = executeBatch(
       [
-        { op: "updateClass", file: filePath, line: divPos.line, col: divPos.col, updates: [
-          { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
-        ]},
-        { op: "updateClass", file: filePath, line: divPos.line, col: divPos.col, updates: [
-          { tailwindPrefix: "p", tailwindToken: "8", value: "" },
-        ]},
+        {
+          op: "updateClass",
+          file: filePath,
+          line: divPos.line,
+          col: divPos.col,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+        {
+          op: "updateClass",
+          file: filePath,
+          line: divPos.line,
+          col: divPos.col,
+          updates: [{ tailwindPrefix: "p", tailwindToken: "8", value: "" }],
+        },
       ],
-      path.dirname(filePath),
+      path.dirname(filePath)
     );
 
     // Both should succeed (coalesced into one operation)
-    expect(result.results.every(r => r.success)).toBe(true);
+    expect(result.results.every((r) => r.success)).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
     expect(updated).toContain("bg-red-500");
@@ -610,12 +946,23 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     // Reorder: move <p> before <h1> + change h1 color
     const result = executeBatch(
       [
-        { op: "updateClass", file: filePath, line: h1Pos.line, col: h1Pos.col, updates: [
-          { tailwindPrefix: "text", tailwindToken: "red-500", value: "" },
-        ]},
-        { op: "reorder", file: filePath, fromLine: pPos.line, toLine: h1Pos.line },
+        {
+          op: "updateClass",
+          file: filePath,
+          line: h1Pos.line,
+          col: h1Pos.col,
+          updates: [
+            { tailwindPrefix: "text", tailwindToken: "red-500", value: "" },
+          ],
+        },
+        {
+          op: "reorder",
+          file: filePath,
+          fromLine: pPos.line,
+          toLine: h1Pos.line,
+        },
       ],
-      path.dirname(filePath),
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true); // class update
@@ -636,9 +983,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     const h2Pos = findPosition(original, "h2");
 
     const result = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos.line, col: h2Pos.col,
-         axis: "y", token: "4", pxDelta: 16, direction: "positive", layoutContext: "block" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos.line,
+          col: h2Pos.col,
+          axis: "y",
+          token: "4",
+          pxDelta: 16,
+          direction: "positive",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -652,9 +1010,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     const h2Pos = findPosition(original, "h2");
 
     const result = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos.line, col: h2Pos.col,
-         axis: "x", token: "8", pxDelta: -32, direction: "negative", layoutContext: "positioned" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos.line,
+          col: h2Pos.col,
+          axis: "x",
+          token: "8",
+          pxDelta: -32,
+          direction: "negative",
+          layoutContext: "positioned",
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -669,9 +1038,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     // First apply: translate-x-6 (24px)
     const result1 = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos.line, col: h2Pos.col,
-         axis: "x", token: "6", pxDelta: 24, direction: "positive", layoutContext: "block" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos.line,
+          col: h2Pos.col,
+          axis: "x",
+          token: "6",
+          pxDelta: 24,
+          direction: "positive",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result1.results[0].success).toBe(true);
 
@@ -681,9 +1061,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     // Second apply: +translate-x-4 (16px) → total 40px = translate-x-10
     const result2 = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos2.line, col: h2Pos2.col,
-         axis: "x", token: "4", pxDelta: 16, direction: "positive", layoutContext: "block" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos2.line,
+          col: h2Pos2.col,
+          axis: "x",
+          token: "4",
+          pxDelta: 16,
+          direction: "positive",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result2.results[0].success).toBe(true);
 
@@ -698,9 +1089,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     // First apply: translate-x-6 (24px positive)
     const result1 = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos.line, col: h2Pos.col,
-         axis: "x", token: "6", pxDelta: 24, direction: "positive", layoutContext: "block" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos.line,
+          col: h2Pos.col,
+          axis: "x",
+          token: "6",
+          pxDelta: 24,
+          direction: "positive",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result1.results[0].success).toBe(true);
 
@@ -710,9 +1112,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     // Second apply: -24px to cancel out → net zero
     const result2 = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos2.line, col: h2Pos2.col,
-         axis: "x", token: "6", pxDelta: -24, direction: "negative", layoutContext: "block" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos2.line,
+          col: h2Pos2.col,
+          axis: "x",
+          token: "6",
+          pxDelta: -24,
+          direction: "negative",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result2.results[0].success).toBe(true);
 
@@ -726,9 +1139,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     // First apply: -translate-y-4 (-16px)
     const result1 = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos.line, col: h2Pos.col,
-         axis: "y", token: "4", pxDelta: -16, direction: "negative", layoutContext: "block" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos.line,
+          col: h2Pos.col,
+          axis: "y",
+          token: "4",
+          pxDelta: -16,
+          direction: "negative",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result1.results[0].success).toBe(true);
 
@@ -738,9 +1162,20 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
     // Second apply: -translate-y-2 (-8px) → total -24px = -translate-y-6
     const result2 = executeBatch(
-      [{ op: "moveSpacing", file: filePath, line: h2Pos2.line, col: h2Pos2.col,
-         axis: "y", token: "2", pxDelta: -8, direction: "negative", layoutContext: "block" }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: h2Pos2.line,
+          col: h2Pos2.col,
+          axis: "y",
+          token: "2",
+          pxDelta: -8,
+          direction: "negative",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result2.results[0].success).toBe(true);
 
@@ -757,15 +1192,27 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     const result = executeBatch(
       [
         // This should succeed
-        { op: "updateClass", file: filePath, line: divPos.line, col: divPos.col, updates: [
-          { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
-        ]},
+        {
+          op: "updateClass",
+          file: filePath,
+          line: divPos.line,
+          col: divPos.col,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
         // This should fail — no element at line 999
-        { op: "updateClass", file: filePath, line: 999, col: 0, updates: [
-          { tailwindPrefix: "bg", tailwindToken: "blue-500", value: "" },
-        ]},
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "blue-500", value: "" },
+          ],
+        },
       ],
-      path.dirname(filePath),
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
@@ -779,10 +1226,18 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
   it("rejects file paths outside project root", () => {
     const result = executeBatch(
-      [{ op: "updateClass", file: "/etc/passwd", line: 1, col: 0, updates: [
-        { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
-      ]}],
-      fixturesDir,
+      [
+        {
+          op: "updateClass",
+          file: "/etc/passwd",
+          line: 1,
+          col: 0,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      fixturesDir
     );
 
     expect(result.results[0].success).toBe(false);
@@ -796,10 +1251,18 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     const pos = findPosition(original, "div");
 
     const result = executeBatch(
-      [{ op: "updateClass", file: filePath, line: pos.line, col: pos.col, updates: [
-        { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
-      ]}],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.undoEntries).toHaveLength(1);
@@ -822,15 +1285,26 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     // The engine should apply class update first (priority 0) then reorder (priority 1)
     const result = executeBatch(
       [
-        { op: "reorder", file: filePath, fromLine: pPos.line, toLine: h1Pos.line },
-        { op: "updateClass", file: filePath, line: h1Pos.line, col: h1Pos.col, updates: [
-          { tailwindPrefix: "text", tailwindToken: "purple-500", value: "" },
-        ]},
+        {
+          op: "reorder",
+          file: filePath,
+          fromLine: pPos.line,
+          toLine: h1Pos.line,
+        },
+        {
+          op: "updateClass",
+          file: filePath,
+          line: h1Pos.line,
+          col: h1Pos.col,
+          updates: [
+            { tailwindPrefix: "text", tailwindToken: "purple-500", value: "" },
+          ],
+        },
       ],
-      path.dirname(filePath),
+      path.dirname(filePath)
     );
 
-    expect(result.results.every(r => r.success)).toBe(true);
+    expect(result.results.every((r) => r.success)).toBe(true);
 
     const updated = fs.readFileSync(filePath, "utf-8");
     expect(updated).toContain("text-purple-500");
@@ -838,10 +1312,24 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
   // ── MDX fallback scoping (regression for the docs/blueprint.md corruption) ──
 
-  function makeTempProject(): { root: string; write: (rel: string, content: string) => string } {
-    const root = path.join(fixturesDir, `_tmpproj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  function makeTempProject(): {
+    root: string;
+    write: (rel: string, content: string) => string;
+  } {
+    const root = path.join(
+      fixturesDir,
+      `_tmpproj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    );
     fs.mkdirSync(root, { recursive: true });
-    fixtures.push({ cleanup: () => { try { fs.rmSync(root, { recursive: true, force: true }); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.rmSync(root, { recursive: true, force: true });
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
     return {
       root,
       write: (rel: string, content: string) => {
@@ -857,22 +1345,24 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     const proj = makeTempProject();
     const compFile = proj.write(
       "src/Comp.tsx",
-      `export default function Comp() {\n  return <div>Some component text</div>;\n}\n`,
+      `export default function Comp() {\n  return <div>Some component text</div>;\n}\n`
     );
     // An unrelated doc that happens to contain the text the user is editing.
     const docContent = `# Blueprint\n\n- Fetch Liked Tweets: retrieve liked tweets.\n`;
     const docFile = proj.write("docs/blueprint.md", docContent);
 
     const result = executeBatch(
-      [{
-        op: "updateText",
-        file: compFile,
-        line: 2,
-        col: 14,
-        originalText: "Fetch Liked Tweets",
-        newText: "Fetch Likes Tweets",
-      }],
-      proj.root,
+      [
+        {
+          op: "updateText",
+          file: compFile,
+          line: 2,
+          col: 14,
+          originalText: "Fetch Liked Tweets",
+          newText: "Fetch Likes Tweets",
+        },
+      ],
+      proj.root
     );
 
     // The edit must fail (text isn't in the component) and must NOT corrupt the doc.
@@ -884,7 +1374,7 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     const proj = makeTempProject();
     const postFile = proj.write(
       "src/Post.tsx",
-      `import Content from "./post.mdx";\nexport default function Post() {\n  return <article><Content /></article>;\n}\n`,
+      `import Content from "./post.mdx";\nexport default function Post() {\n  return <article><Content /></article>;\n}\n`
     );
     const original = "The quick brown fox jumps over the lazy dog.";
     const mdxFile = proj.write("src/post.mdx", `# Title\n\n${original}\n`);
@@ -892,24 +1382,34 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
     const unrelatedContent = `# Other\n\n${original}\n`;
     const unrelatedFile = proj.write("docs/other.md", unrelatedContent);
 
-    const articlePos = findPosition(fs.readFileSync(postFile, "utf-8"), "article");
+    const articlePos = findPosition(
+      fs.readFileSync(postFile, "utf-8"),
+      "article"
+    );
 
     const result = executeBatch(
-      [{
-        op: "updateText",
-        file: postFile,
-        line: articlePos.line,
-        col: articlePos.col,
-        originalText: original,
-        newText: "The quick brown fox leaps over the lazy dog.",
-        textAnchor: buildTextEditAnchor(original, "The quick brown fox leaps over the lazy dog."),
-      }],
-      proj.root,
+      [
+        {
+          op: "updateText",
+          file: postFile,
+          line: articlePos.line,
+          col: articlePos.col,
+          originalText: original,
+          newText: "The quick brown fox leaps over the lazy dog.",
+          textAnchor: buildTextEditAnchor(
+            original,
+            "The quick brown fox leaps over the lazy dog."
+          ),
+        },
+      ],
+      proj.root
     );
 
     expect(result.results[0].success).toBe(true);
     expect(result.results[0].file).toBe(mdxFile);
-    expect(fs.readFileSync(mdxFile, "utf-8")).toContain("leaps over the lazy dog");
+    expect(fs.readFileSync(mdxFile, "utf-8")).toContain(
+      "leaps over the lazy dog"
+    );
     // The unrelated, non-imported markdown is never touched.
     expect(fs.readFileSync(unrelatedFile, "utf-8")).toBe(unrelatedContent);
   });
@@ -918,32 +1418,49 @@ attention isn't some scary, complex, rocket science concept. to explain it simpl
 
   it("resolves a class edit on a shadcn component whose DOM tag (button) differs from the source tag (TabsTrigger)", () => {
     const source = `import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";\nexport function AppHeader() {\n  return (\n    <Tabs defaultValue="likes">\n      <TabsList>\n        <TabsTrigger value="likes" className="px-3">Likes</TabsTrigger>\n      </TabsList>\n    </Tabs>\n  );\n}\n`;
-    const filePath = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_shadcn-tabs.tsx`);
+    const filePath = path.join(
+      fixturesDir,
+      `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_shadcn-tabs.tsx`
+    );
     fs.writeFileSync(filePath, source, "utf-8");
-    fixtures.push({ cleanup: () => { try { fs.unlinkSync(filePath); } catch {} } });
+    fixtures.push({
+      cleanup: () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          // best-effort cleanup
+        }
+      },
+    });
 
     const pos = findPosition(source, "TabsTrigger");
 
     const result = executeBatch(
-      [{
-        op: "updateClass",
-        file: filePath,
-        line: pos.line,
-        col: pos.col,
-        // DOM host tag is "button" (what shadcn renders), but the source JSX is
-        // the <TabsTrigger> component — the bridge resolves via componentName.
-        tagName: "button",
-        componentName: "TabsTrigger",
-        className: "inline-flex items-center justify-center px-3 text-sm",
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: pos.line,
+          col: pos.col,
+          // DOM host tag is "button" (what shadcn renders), but the source JSX is
+          // the <TabsTrigger> component — the bridge resolves via componentName.
+          tagName: "button",
+          componentName: "TabsTrigger",
+          className: "inline-flex items-center justify-center px-3 text-sm",
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
 
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
     // The class lands on the <TabsTrigger>, preserving its existing classes.
-    expect(updated).toMatch(/<TabsTrigger[^>]*className="[^"]*bg-red-500[^"]*"/);
+    expect(updated).toMatch(
+      /<TabsTrigger[^>]*className="[^"]*bg-red-500[^"]*"/
+    );
     expect(updated).toContain("px-3");
   });
 });

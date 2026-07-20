@@ -1,9 +1,11 @@
-import { lint } from "@google/design.md/linter"
 import { execFileSync } from "node:child_process"
-import { resolve } from "node:path"
+import path from "node:path"
+
+import { lint } from "@google/design.md/linter"
 import { describe, expect, it } from "vitest"
-import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
+
 import { themeStylesToDesignMd } from "../design-md"
+import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
 
 const theme = paletteToThemeStyles("#2563eb", "#71717a")
 
@@ -30,8 +32,8 @@ describe("themeStylesToDesignMd", () => {
     expect(first).toContain("## Shapes")
     expect(first).toContain("## Components")
     expect(first).toContain("## Do's and Don'ts")
-    expect(first).not.toMatch(/^## (Typography|Layout|Elevation & Depth)$/m)
-    expect(first).not.toMatch(/^\s*(typography|spacing):/m)
+    expect(first).not.toMatch(/^## (?:Typography|Layout|Elevation & Depth)$/m)
+    expect(first).not.toMatch(/^\s*(?:typography|spacing):/m)
 
     for (const token of THEME_TOKENS) {
       expect(first).toMatch(new RegExp(`^  ${token}: \\"`, "m"))
@@ -40,10 +42,14 @@ describe("themeStylesToDesignMd", () => {
 
     expect(lint(first).summary.errors).toBe(0)
     expect(() =>
-      execFileSync(resolve("node_modules/.bin/designmd"), ["lint", "--", "-"], {
-        input: first,
-        stdio: ["pipe", "pipe", "pipe"],
-      })
+      execFileSync(
+        path.resolve("node_modules/.bin/designmd"),
+        ["lint", "--", "-"],
+        {
+          input: first,
+          stdio: ["pipe", "pipe", "pipe"],
+        }
+      )
     ).not.toThrow()
   })
 
@@ -59,8 +65,8 @@ describe("themeStylesToDesignMd", () => {
       format: "rgb",
     })
 
-    expect(hex).toMatch(/^  primary: "#[0-9a-f]{6}"$/m)
-    expect(hex).toMatch(/^  dark-primary: "#[0-9a-f]{6}"$/m)
-    expect(rgb).toMatch(/^  primary: "rgb\(/m)
+    expect(hex).toMatch(/^ {2}primary: "#[0-9a-f]{6}"$/m)
+    expect(hex).toMatch(/^ {2}dark-primary: "#[0-9a-f]{6}"$/m)
+    expect(rgb).toMatch(/^ {2}primary: "rgb\(/m)
   })
 })

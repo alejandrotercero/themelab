@@ -1,37 +1,58 @@
-import { describe, it, expect } from "vitest";
-import { updateTextContent } from "../transform.js";
-import type { TextEditAnchor } from "@themelab/shared";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import path from "node:path";
 
-function withTempFile(source: string, ext: string = ".tsx"): string {
+import type { TextEditAnchor } from "@themelab/shared";
+import { describe, it, expect } from "vitest";
+
+import { updateTextContent } from "../transform.js";
+
+function withTempFile(source: string, ext = ".tsx"): string {
   const tmpDir = os.tmpdir();
-  const filePath = path.join(tmpDir, `test-text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+  const filePath = path.join(
+    tmpDir,
+    `test-text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`
+  );
   fs.writeFileSync(filePath, source, "utf-8");
   return filePath;
 }
 
-function buildTextEditAnchor(originalText: string, newText: string): TextEditAnchor | undefined {
-  if (originalText === newText) return undefined;
+function buildTextEditAnchor(
+  originalText: string,
+  newText: string
+): TextEditAnchor | undefined {
+  if (originalText === newText) {
+    return undefined;
+  }
 
   let start = 0;
-  while (start < originalText.length && start < newText.length && originalText[start] === newText[start]) {
-    start++;
+  while (
+    start < originalText.length &&
+    start < newText.length &&
+    originalText[start] === newText[start]
+  ) {
+    start += 1;
   }
 
   let oldEnd = originalText.length;
   let newEnd = newText.length;
-  while (oldEnd > start && newEnd > start && originalText[oldEnd - 1] === newText[newEnd - 1]) {
-    oldEnd--;
-    newEnd--;
+  while (
+    oldEnd > start &&
+    newEnd > start &&
+    originalText[oldEnd - 1] === newText[newEnd - 1]
+  ) {
+    oldEnd -= 1;
+    newEnd -= 1;
   }
 
   return {
     start,
     end: oldEnd,
     contextBefore: originalText.slice(Math.max(0, start - 32), start),
-    contextAfter: originalText.slice(oldEnd, Math.min(originalText.length, oldEnd + 32)),
+    contextAfter: originalText.slice(
+      oldEnd,
+      Math.min(originalText.length, oldEnd + 32)
+    ),
   };
 }
 
@@ -41,16 +62,27 @@ function applyTextEdit(
   col: number,
   originalText: string,
   newText: string,
-  textAnchor = buildTextEditAnchor(originalText, newText),
+  textAnchor = buildTextEditAnchor(originalText, newText)
 ): string | null {
-  const result = updateTextContent(filePath, line, col, originalText, newText, undefined, textAnchor);
+  const result = updateTextContent(
+    filePath,
+    line,
+    col,
+    originalText,
+    newText,
+    undefined,
+    textAnchor
+  );
   if (result) {
     fs.writeFileSync(filePath, result, "utf-8");
   }
   return result;
 }
 
-function findTagPosition(source: string, tagName: string): { line: number; col: number } {
+function findTagPosition(
+  source: string,
+  tagName: string
+): { line: number; col: number } {
   const marker = `<${tagName}`;
   const index = source.indexOf(marker);
   if (index === -1) {
@@ -61,7 +93,7 @@ function findTagPosition(source: string, tagName: string): { line: number; col: 
   const lines = before.split("\n");
   return {
     line: lines.length,
-    col: lines[lines.length - 1].length,
+    col: lines.at(-1).length,
   };
 }
 
@@ -69,7 +101,13 @@ describe("updateTextContent", () => {
   it("replaces JSXText in a simple element", () => {
     const source = `function App() {\n  return <h1>Hello World</h1>;\n}`;
     const filePath = withTempFile(source);
-    const result = updateTextContent(filePath, 2, 9, "Hello World", "Goodbye World");
+    const result = updateTextContent(
+      filePath,
+      2,
+      9,
+      "Hello World",
+      "Goodbye World"
+    );
     expect(result).not.toBeNull();
     expect(result).toContain("Goodbye World");
     expect(result).not.toContain("Hello World");
@@ -138,18 +176,26 @@ describe("updateTextContent", () => {
       3,
       4,
       "i study math at waterloo and do software stuff.",
-      "i study math at waterloo and enjoy software.",
+      "i study math at waterloo and enjoy software."
     );
 
     expect(result).not.toBeNull();
-    expect(result).toContain('<strong>math</strong>{" "}at{" "}<strong>waterloo</strong>{" "}and enjoy software.');
+    expect(result).toContain(
+      '<strong>math</strong>{" "}at{" "}<strong>waterloo</strong>{" "}and enjoy software.'
+    );
   });
 
   it("supports deleting a space at a JSX child boundary", () => {
     const source = `function App() {\n  return (\n    <p>\n      hello <strong>world</strong>\n      again\n    </p>\n  );\n}`;
     const filePath = withTempFile(source);
 
-    const result = applyTextEdit(filePath, 3, 4, "hello world again", "hello worldagain");
+    const result = applyTextEdit(
+      filePath,
+      3,
+      4,
+      "hello world again",
+      "hello worldagain"
+    );
 
     expect(result).not.toBeNull();
     expect(result).toContain("</strong>again");
@@ -159,7 +205,13 @@ describe("updateTextContent", () => {
     const source = `function App() {\n  return (\n    <p>hello <strong>world</strong>again</p>\n  );\n}`;
     const filePath = withTempFile(source);
 
-    const result = applyTextEdit(filePath, 3, 4, "hello worldagain", "hello world again");
+    const result = applyTextEdit(
+      filePath,
+      3,
+      4,
+      "hello worldagain",
+      "hello world again"
+    );
 
     expect(result).not.toBeNull();
     expect(result).toContain('</strong>{" "}again');
@@ -169,7 +221,13 @@ describe("updateTextContent", () => {
     const source = `function App() {\n  return (\n    <p>hello <strong>world</strong> again</p>\n  );\n}`;
     const filePath = withTempFile(source);
 
-    const result = applyTextEdit(filePath, 3, 4, "hello world again", "hello world  again");
+    const result = applyTextEdit(
+      filePath,
+      3,
+      4,
+      "hello world again",
+      "hello world  again"
+    );
 
     expect(result).not.toBeNull();
     expect(result).toContain('</strong>{" "}again');
@@ -179,7 +237,13 @@ describe("updateTextContent", () => {
     const source = `function App() {\n  return <p>alpha beta gamma</p>;\n}`;
     const filePath = withTempFile(source);
 
-    const result = applyTextEdit(filePath, 2, 9, "alpha beta gamma", "alpha  beta gamma");
+    const result = applyTextEdit(
+      filePath,
+      2,
+      9,
+      "alpha beta gamma",
+      "alpha  beta gamma"
+    );
 
     expect(result).not.toBeNull();
     expect(result).toContain("alpha  beta gamma");
@@ -189,11 +253,23 @@ describe("updateTextContent", () => {
     const source = `function App() {\n  return (\n    <p>\n      hello <strong>world</strong>\n      again\n    </p>\n  );\n}`;
     const filePath = withTempFile(source);
 
-    const first = applyTextEdit(filePath, 3, 4, "hello world again", "hello worldagain");
+    const first = applyTextEdit(
+      filePath,
+      3,
+      4,
+      "hello world again",
+      "hello worldagain"
+    );
     expect(first).not.toBeNull();
 
     const pos = findTagPosition(fs.readFileSync(filePath, "utf-8"), "p");
-    const second = applyTextEdit(filePath, pos.line, pos.col, "hello worldagain", "hello worldlater");
+    const second = applyTextEdit(
+      filePath,
+      pos.line,
+      pos.col,
+      "hello worldagain",
+      "hello worldlater"
+    );
     expect(second).not.toBeNull();
     expect(second).toContain("</strong>later");
   });
@@ -201,21 +277,27 @@ describe("updateTextContent", () => {
   it("anchors insertions after nested inline elements using surrounding context", () => {
     const source = `function App() {\n  return (\n    <p>i study <strong>math</strong> at <strong>waterloo</strong> and enjoy software. i talk about random things at <strong>@imdonghakim</strong> on <a href="https://instagram.com/imdonghakim">instagram</a>, <a href="https://tiktok.com/@imdonghakim">tiktok</a>, and <a href="https://x.com/imdonghakim">x</a>.</p>\n  );\n}`;
     const filePath = withTempFile(source);
-    const originalText = "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x.";
-    const newText = "i study math at waterloo and enjoy software. hello my name is jeff i talk about random things at @imdonghakim on instagram, tiktok, and x.";
+    const originalText =
+      "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x.";
+    const newText =
+      "i study math at waterloo and enjoy software. hello my name is jeff i talk about random things at @imdonghakim on instagram, tiktok, and x.";
 
     const result = applyTextEdit(filePath, 3, 4, originalText, newText);
 
     expect(result).not.toBeNull();
-    expect(result).toContain("and enjoy software. hello my name is jeff i talk about random things");
+    expect(result).toContain(
+      "and enjoy software. hello my name is jeff i talk about random things"
+    );
     expect(result).not.toContain("shello my name is jeff oftware");
   });
 
   it("anchors insertions when the source paragraph spans multiple indented lines", () => {
-    const source = `function App() {\n  return (\n    <p>i study{' '}<strong>math</strong>{' '}at{' '}<strong>waterloo</strong>{' '}and enjoy software. i talk about\n      random things at{' '}<strong>@imdonghakim</strong>{' '}on{' '}<a href=\"https://instagram.com/imdonghakim\">instagram</a>,{' '}<a href=\"https://tiktok.com/@imdonghakim\">tiktok</a>, and{' '}<a href=\"https://x.com/imdonghakim\">x</a>.\n      i like playing basketball.</p>\n  );\n}`;
+    const source = `function App() {\n  return (\n    <p>i study{' '}<strong>math</strong>{' '}at{' '}<strong>waterloo</strong>{' '}and enjoy software. i talk about\n      random things at{' '}<strong>@imdonghakim</strong>{' '}on{' '}<a href="https://instagram.com/imdonghakim">instagram</a>,{' '}<a href="https://tiktok.com/@imdonghakim">tiktok</a>, and{' '}<a href="https://x.com/imdonghakim">x</a>.\n      i like playing basketball.</p>\n  );\n}`;
     const filePath = withTempFile(source);
-    const originalText = "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
-    const newText = "i study math at waterloo and enjoy software. i talk about hello my name is jeff random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
+    const originalText =
+      "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
+    const newText =
+      "i study math at waterloo and enjoy software. i talk about hello my name is jeff random things at @imdonghakim on instagram, tiktok, and x. i like playing basketball.";
 
     const result = applyTextEdit(filePath, 3, 4, originalText, newText);
 
@@ -236,25 +318,31 @@ describe("updateTextContent", () => {
     expect(result).not.toBeNull();
     expect(result).toContain("really enjoy software");
     expect(result).not.toContain("{' '}{' '}{' '}{' '}{' '}{' '}{' '}");
-    expect((result!.match(/\{' '\}/g) || []).length).toBeLessThan(7);
+    expect((result?.match(/\{' '\}/g) ?? []).length).toBeLessThan(7);
   });
 
   it("rewrites polluted inline paragraphs back to minimal boundary spacing", () => {
-    const source = `function App() {\n  return (\n    <p>i study{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>math</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}at{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>waterloo</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}and enjoy software. i talk about random things at{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>@imdonghakim</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}on{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href=\"https://instagram.com\">instagram</a>,{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href=\"https://tiktok.com\">tiktok</a>, and{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href=\"https://x.com\">x</a>. message me if you wanna make something cool{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href=\"mailto:test@example.com\">here</a>.</p>\n  );\n}`;
+    const source = `function App() {\n  return (\n    <p>i study{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>math</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}at{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>waterloo</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}and enjoy software. i talk about random things at{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>@imdonghakim</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}on{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href="https://instagram.com">instagram</a>,{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href="https://tiktok.com">tiktok</a>, and{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href="https://x.com">x</a>. message me if you wanna make something cool{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href="mailto:test@example.com">here</a>.</p>\n  );\n}`;
     const filePath = withTempFile(source);
-    const originalText = "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. message me if you wanna make something cool here.";
-    const newText = "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. message me if you wanna make something really cool here.";
+    const originalText =
+      "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. message me if you wanna make something cool here.";
+    const newText =
+      "i study math at waterloo and enjoy software. i talk about random things at @imdonghakim on instagram, tiktok, and x. message me if you wanna make something really cool here.";
 
     const result = applyTextEdit(filePath, 3, 4, originalText, newText);
 
     expect(result).not.toBeNull();
-    expect(result).toContain('i study{" "}<strong>math</strong>{" "}at{" "}<strong>waterloo</strong>{" "}and enjoy software.');
-    expect(result).toContain('message me if you wanna make something really cool{" "}<a href="mailto:test@example.com">here</a>.');
-    expect((result!.match(/\{' '\}/g) || []).length).toBeLessThan(10);
+    expect(result).toContain(
+      'i study{" "}<strong>math</strong>{" "}at{" "}<strong>waterloo</strong>{" "}and enjoy software.'
+    );
+    expect(result).toContain(
+      'message me if you wanna make something really cool{" "}<a href="mailto:test@example.com">here</a>.'
+    );
+    expect((result?.match(/\{' '\}/g) ?? []).length).toBeLessThan(10);
   });
 
   it("keeps spacing stable across a second edit on the same once-polluted paragraph", () => {
-    const source = `function App() {\n  return (\n    <p>i study{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>math</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}at{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>waterloo</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}and enjoy software. message me if you wanna make something cool{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href=\"mailto:test@example.com\">here</a>.</p>\n  );\n}`;
+    const source = `function App() {\n  return (\n    <p>i study{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>math</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}at{' '}{' '}{' '}{' '}{' '}{' '}{' '}<strong>waterloo</strong>{' '}{' '}{' '}{' '}{' '}{' '}{' '}and enjoy software. message me if you wanna make something cool{' '}{' '}{' '}{' '}{' '}{' '}{' '}<a href="mailto:test@example.com">here</a>.</p>\n  );\n}`;
     const filePath = withTempFile(source);
 
     const first = applyTextEdit(
@@ -262,7 +350,7 @@ describe("updateTextContent", () => {
       3,
       4,
       "i study math at waterloo and enjoy software. message me if you wanna make something cool here.",
-      "i study math at waterloo and enjoy software. message me if you wanna make something really cool here.",
+      "i study math at waterloo and enjoy software. message me if you wanna make something really cool here."
     );
     expect(first).not.toBeNull();
 
@@ -272,11 +360,13 @@ describe("updateTextContent", () => {
       pos.line,
       pos.col,
       "i study math at waterloo and enjoy software. message me if you wanna make something really cool here.",
-      "i study math at waterloo and enjoy software. message me if you wanna make something really cool right here.",
+      "i study math at waterloo and enjoy software. message me if you wanna make something really cool right here."
     );
 
     expect(second).not.toBeNull();
-    expect(second).toContain('something really cool right{" "}<a href="mailto:test@example.com">here</a>.');
-    expect((second!.match(/\{' '\}/g) || []).length).toBeLessThan(6);
+    expect(second).toContain(
+      'something really cool right{" "}<a href="mailto:test@example.com">here</a>.'
+    );
+    expect((second?.match(/\{' '\}/g) ?? []).length).toBeLessThan(6);
   });
 });

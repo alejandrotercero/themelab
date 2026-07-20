@@ -5,8 +5,12 @@ export default function EdgeCases() {
       <p className="p-[13px] m-4">Arbitrary</p>
       <button className="">Empty</button>
       <section className="text-red-500 font-bold">No match prefix</section>
-      <article className="  p-4
-  m-2  ">Whitespace</article>
+      <article
+        className="  p-4
+  m-2  "
+      >
+        Whitespace
+      </article>
     </div>
   );
 }

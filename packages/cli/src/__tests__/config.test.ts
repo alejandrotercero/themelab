@@ -1,10 +1,25 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import * as path from "node:path";
-import { loadConfig, saveConfig, updateAiConfig, resolveAiConfig, configPath } from "../config.js";
+import path from "node:path";
 
-const ENV_KEYS = ["XDG_CONFIG_HOME", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "THEMELAB_AI_MODEL", "THEMELAB_AI_MODEL_ESCALATED", "THEMELAB_AI_ESCALATION"] as const;
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+
+import {
+  loadConfig,
+  saveConfig,
+  updateAiConfig,
+  resolveAiConfig,
+  configPath,
+} from "../config.js";
+
+const ENV_KEYS = [
+  "XDG_CONFIG_HOME",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_BASE_URL",
+  "THEMELAB_AI_MODEL",
+  "THEMELAB_AI_MODEL_ESCALATED",
+  "THEMELAB_AI_ESCALATION",
+] as const;
 
 describe("config: AI settings storage + resolution", () => {
   let saved: Record<string, string | undefined>;
@@ -12,23 +27,37 @@ describe("config: AI settings storage + resolution", () => {
 
   beforeEach(() => {
     saved = {};
-    for (const k of ENV_KEYS) { saved[k] = process.env[k]; delete process.env[k]; }
+    for (const k of ENV_KEYS) {
+      saved[k] = process.env[k];
+      // oxlint-disable-next-line typescript/no-dynamic-delete -- env vars must be removed with delete; assigning undefined stores the string "undefined"
+      delete process.env[k];
+    }
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rr-config-"));
     process.env.XDG_CONFIG_HOME = tmpDir;
   });
   afterEach(() => {
     for (const k of ENV_KEYS) {
-      if (saved[k] === undefined) delete process.env[k];
-      else process.env[k] = saved[k];
+      if (saved[k] === undefined) {
+        // oxlint-disable-next-line typescript/no-dynamic-delete -- env vars must be removed with delete; assigning undefined stores the string "undefined"
+        delete process.env[k];
+      } else {
+        process.env[k] = saved[k];
+      }
     }
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // best-effort tmp dir cleanup
+    }
   });
 
   it("round-trips save/load and writes under the config dir", () => {
     expect(loadConfig()).toEqual({});
     saveConfig({ ai: { apiKey: "sk-test", model: "claude-x" } });
     expect(configPath().startsWith(tmpDir)).toBe(true);
-    expect(loadConfig()).toEqual({ ai: { apiKey: "sk-test", model: "claude-x" } });
+    expect(loadConfig()).toEqual({
+      ai: { apiKey: "sk-test", model: "claude-x" },
+    });
   });
 
   it("enables when a stored key is present; disabled flag wins", () => {
@@ -49,7 +78,9 @@ describe("config: AI settings storage + resolution", () => {
   });
 
   it("env overrides the file and is reported as the source", () => {
-    saveConfig({ ai: { apiKey: "sk-file", baseURL: "https://file", model: "file-model" } });
+    saveConfig({
+      ai: { apiKey: "sk-file", baseURL: "https://file", model: "file-model" },
+    });
     process.env.ANTHROPIC_API_KEY = "sk-env";
     process.env.ANTHROPIC_BASE_URL = "https://env";
     process.env.THEMELAB_AI_MODEL = "env-model";
@@ -57,7 +88,12 @@ describe("config: AI settings storage + resolution", () => {
     expect(r.apiKey).toBe("sk-env");
     expect(r.baseURL).toBe("https://env");
     expect(r.model).toBe("env-model");
-    expect(r.source).toEqual({ apiKey: "env", baseURL: "env", model: "env", escalationModel: "none" });
+    expect(r.source).toEqual({
+      apiKey: "env",
+      baseURL: "env",
+      model: "env",
+      escalationModel: "none",
+    });
   });
 
   it("resolves escalation settings: on by default, env kill-switch and model override", () => {
@@ -65,7 +101,13 @@ describe("config: AI settings storage + resolution", () => {
     expect(resolveAiConfig().escalationEnabled).toBe(true); // default on
     expect(resolveAiConfig().escalationModel).toBeUndefined();
 
-    saveConfig({ ai: { apiKey: "sk-file", escalationEnabled: false, escalationModel: "file-strong" } });
+    saveConfig({
+      ai: {
+        apiKey: "sk-file",
+        escalationEnabled: false,
+        escalationModel: "file-strong",
+      },
+    });
     let r = resolveAiConfig();
     expect(r.escalationEnabled).toBe(false);
     expect(r.escalationModel).toBe("file-strong");
@@ -84,7 +126,11 @@ describe("config: AI settings storage + resolution", () => {
   it("updateAiConfig merges, and empty string clears a value", () => {
     saveConfig({ ai: { apiKey: "sk-file", baseURL: "https://file" } });
     updateAiConfig({ model: "new-model" });
-    expect(loadConfig().ai).toEqual({ apiKey: "sk-file", baseURL: "https://file", model: "new-model" });
+    expect(loadConfig().ai).toEqual({
+      apiKey: "sk-file",
+      baseURL: "https://file",
+      model: "new-model",
+    });
     updateAiConfig({ baseURL: "" }); // clear
     expect(loadConfig().ai).toEqual({ apiKey: "sk-file", model: "new-model" });
   });

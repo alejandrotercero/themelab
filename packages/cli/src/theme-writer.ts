@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 
 function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return s.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -20,10 +20,12 @@ function escapeRegExp(s: string): string {
 export function upsertCssVars(
   css: string,
   selector: string,
-  vars: Record<string, string>,
+  vars: Record<string, string>
 ): string {
   const entries = Object.entries(vars);
-  if (entries.length === 0) return css;
+  if (entries.length === 0) {
+    return css;
+  }
 
   const blockRe = new RegExp(`(${escapeRegExp(selector)}\\s*\\{)([^{}]*)(\\})`);
   const match = blockRe.exec(css);
@@ -39,8 +41,8 @@ export function upsertCssVars(
   let newBody = body;
 
   // Detect the indentation used by existing declarations in the block.
-  const indentMatch = body.match(/\n([ \t]+)--/);
-  const indent = indentMatch ? indentMatch[1] : "  ";
+  const indentMatch = body.match(/\n(?<indent>[ \t]+)--/);
+  const indent = indentMatch ? (indentMatch.groups?.indent ?? "  ") : "  ";
 
   for (const [name, value] of entries) {
     const declRe = new RegExp(`(--${escapeRegExp(name)}\\s*:\\s*)([^;]*)(;)`);
@@ -48,13 +50,19 @@ export function upsertCssVars(
       newBody = newBody.replace(declRe, `$1${value}$3`);
     } else {
       // Append before the block's trailing whitespace.
-      const trailing = newBody.match(/(\s*)$/)?.[1] ?? "";
+      const trailing = newBody.match(/(?<trail>\s*)$/)?.groups?.trail ?? "";
       const core = newBody.slice(0, newBody.length - trailing.length);
       newBody = `${core}\n${indent}--${name}: ${value};${trailing}`;
     }
   }
 
-  return css.slice(0, match.index) + open + newBody + close + css.slice(match.index + match[0].length);
+  return (
+    css.slice(0, match.index) +
+    open +
+    newBody +
+    close +
+    css.slice(match.index + match[0].length)
+  );
 }
 
 export interface ThemeVarEdit {
@@ -77,12 +85,18 @@ export interface ThemeWriteResult {
  * writes once. Returns before/after content for undo. Does not write when the
  * content is unchanged.
  */
-export function writeThemeVars(filePath: string, edits: ThemeVarEdit[]): ThemeWriteResult {
+export function writeThemeVars(
+  filePath: string,
+  edits: ThemeVarEdit[]
+): ThemeWriteResult {
   let before: string;
   try {
     before = fs.readFileSync(filePath, "utf-8");
-  } catch (err) {
-    return { success: false, error: `Could not read theme file: ${err instanceof Error ? err.message : String(err)}` };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Could not read theme file: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
   let after = before;
@@ -96,8 +110,11 @@ export function writeThemeVars(filePath: string, edits: ThemeVarEdit[]): ThemeWr
 
   try {
     fs.writeFileSync(filePath, after, "utf-8");
-  } catch (err) {
-    return { success: false, error: `Could not write theme file: ${err instanceof Error ? err.message : String(err)}` };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Could not write theme file: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
   return { success: true, before, after };

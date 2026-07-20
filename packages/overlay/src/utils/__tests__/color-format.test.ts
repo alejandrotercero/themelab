@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+
 import {
   detectColorKind,
   isColor,
@@ -33,16 +34,18 @@ describe("toRenderableCss", () => {
     expect(toRenderableCss("64 128 192")).toBe("rgb(64 128 192)");
   });
   it("passes functional/hex through unchanged", () => {
-    expect(toRenderableCss("oklch(0.67 0.16 244)")).toBe("oklch(0.67 0.16 244)");
+    expect(toRenderableCss("oklch(0.67 0.16 244)")).toBe(
+      "oklch(0.67 0.16 244)"
+    );
     expect(toRenderableCss("#fff")).toBe("#fff");
   });
 });
 
 describe("toHex", () => {
   it("normalizes any format to hex", () => {
-    expect(toHex("0 0% 100%")).toBe("#ffffff");      // hsl triple white
-    expect(toHex("0 0% 0%")).toBe("#000000");         // hsl triple black
-    expect(toHex("255 0 0")).toBe("#ff0000");         // rgb triple red
+    expect(toHex("0 0% 100%")).toBe("#ffffff"); // hsl triple white
+    expect(toHex("0 0% 0%")).toBe("#000000"); // hsl triple black
+    expect(toHex("255 0 0")).toBe("#ff0000"); // rgb triple red
     expect(toHex("#3b82f6")).toBe("#3b82f6");
   });
 });
@@ -71,8 +74,9 @@ describe("serializeToKind round-trips (format preservation)", () => {
 
   it("round-trips a triple → hex → triple stably", () => {
     const original = "11.63 100% 68.63%";
-    const hex = toHex(original)!;
-    const back = serializeToKind(hex, "hsl-triple");
+    const hex = toHex(original);
+    expect(hex).not.toBeNull();
+    const back = serializeToKind(hex as string, "hsl-triple");
     // Re-hex of the round-tripped value should match the original's hex.
     expect(toHex(back)).toBe(hex);
   });

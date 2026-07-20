@@ -1,18 +1,17 @@
-"use client";
+"use client"
 
-import { CheckIcon, CopyIcon } from "lucide-react";
-import {
-  type ComponentProps,
-  cloneElement,
-  type HTMLAttributes,
-  type ReactElement,
-  useState,
-} from "react";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { CheckIcon, CopyIcon } from "lucide-react"
+import { cloneElement, useState } from "react"
+import type { ComponentProps, HTMLAttributes, ReactElement } from "react"
 
-export type SnippetProps = ComponentProps<typeof Tabs>;
+import { Button } from "@/components/ui/button"
+import type { TabsList } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
+
+export { TabsList as SnippetTabsList } from "@/components/ui/tabs"
+
+export type SnippetProps = ComponentProps<typeof Tabs>
 
 export const Snippet = ({ className, ...props }: SnippetProps) => (
   <Tabs
@@ -22,9 +21,9 @@ export const Snippet = ({ className, ...props }: SnippetProps) => (
     )}
     {...props}
   />
-);
+)
 
-export type SnippetHeaderProps = HTMLAttributes<HTMLDivElement>;
+export type SnippetHeaderProps = HTMLAttributes<HTMLDivElement>
 
 export const SnippetHeader = ({ className, ...props }: SnippetHeaderProps) => (
   <div
@@ -34,15 +33,15 @@ export const SnippetHeader = ({ className, ...props }: SnippetHeaderProps) => (
     )}
     {...props}
   />
-);
+)
 
 export type SnippetCopyButtonProps = ComponentProps<typeof Button> & {
-  asChild?: boolean;
-  value: string;
-  onCopy?: () => void;
-  onError?: (error: Error) => void;
-  timeout?: number;
-};
+  asChild?: boolean
+  value: string
+  onCopy?: () => void
+  onError?: (error: Error) => void
+  timeout?: number
+}
 
 export const SnippetCopyButton = ({
   asChild,
@@ -53,33 +52,37 @@ export const SnippetCopyButton = ({
   children,
   ...props
 }: SnippetCopyButtonProps) => {
-  const [isCopied, setIsCopied] = useState(false);
+  const [isCopied, setIsCopied] = useState(false)
 
-  const copyToClipboard = () => {
+  const copyToClipboard = async () => {
     if (
       typeof window === "undefined" ||
       !navigator.clipboard.writeText ||
       !value
     ) {
-      return;
+      return
     }
 
-    navigator.clipboard.writeText(value).then(() => {
-      setIsCopied(true);
-      onCopy?.();
+    try {
+      await navigator.clipboard.writeText(value)
+      setIsCopied(true)
+      onCopy?.()
 
-      setTimeout(() => setIsCopied(false), timeout);
-    }, onError);
-  };
+      setTimeout(() => setIsCopied(false), timeout)
+    } catch (error) {
+      onError?.(error as Error)
+    }
+  }
 
   if (asChild) {
+    // oxlint-disable-next-line react/no-clone-element -- asChild pattern needs to merge onClick onto the caller-supplied child element; a render-prop replacement would change this component's public API
     return cloneElement(children as ReactElement, {
       // @ts-expect-error - we know this is a button
       onClick: copyToClipboard,
-    });
+    })
   }
 
-  const icon = isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />;
+  const icon = isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />
 
   return (
     <Button
@@ -91,23 +94,21 @@ export const SnippetCopyButton = ({
     >
       {children ?? icon}
     </Button>
-  );
-};
+  )
+}
 
-export type SnippetTabsListProps = ComponentProps<typeof TabsList>;
+export type SnippetTabsListProps = ComponentProps<typeof TabsList>
 
-export const SnippetTabsList = TabsList;
-
-export type SnippetTabsTriggerProps = ComponentProps<typeof TabsTrigger>;
+export type SnippetTabsTriggerProps = ComponentProps<typeof TabsTrigger>
 
 export const SnippetTabsTrigger = ({
   className,
   ...props
 }: SnippetTabsTriggerProps) => (
   <TabsTrigger className={cn("gap-1.5", className)} {...props} />
-);
+)
 
-export type SnippetTabsContentProps = ComponentProps<typeof TabsContent>;
+export type SnippetTabsContentProps = ComponentProps<typeof TabsContent>
 
 export const SnippetTabsContent = ({
   className,
@@ -122,4 +123,4 @@ export const SnippetTabsContent = ({
   >
     <pre className="truncate">{children}</pre>
   </TabsContent>
-);
+)

@@ -43,24 +43,24 @@ export const RADII = {
 
 // --- Transitions ---
 export const TRANSITIONS = {
-  fast: "100ms ease",      // color/opacity hover
-  medium: "150ms ease",    // fade in/out panels
-  settle: "200ms ease",    // move shadow on drop, panel entrance
+  fast: "100ms ease", // color/opacity hover
+  medium: "150ms ease", // fade in/out panels
+  settle: "200ms ease", // move shadow on drop, panel entrance
 } as const;
 
 // --- Property panel palette (dark navy, per Figma node 115:322) ---
 // Scoped to the property sidebar only — the rest of the overlay keeps COLORS.
 export const PANEL = {
   bg: "#12121a",
-  surface: "#1d222d",        // section header bars + input chips
-  border: "#333950",         // input chip border
-  text: "#d1cdcd",           // labels + values
-  textDim: "#8b8b95",        // secondary / file path
-  textGhost: "#333040",      // disabled value (e.g. unset "flex")
-  accent: "#4d679e",         // var / bound-token blue
-  btnBg: "#333950",          // active arrow/move button
+  surface: "#1d222d", // section header bars + input chips
+  border: "#333950", // input chip border
+  text: "#d1cdcd", // labels + values
+  textDim: "#8b8b95", // secondary / file path
+  textGhost: "#333040", // disabled value (e.g. unset "flex")
+  accent: "#4d679e", // var / bound-token blue
+  btnBg: "#333950", // active arrow/move button
   btnBorder: "#43506d",
-  btnBgInactive: "#1d222d",  // disabled button
+  btnBgInactive: "#1d222d", // disabled button
   focusRing: "rgba(77,103,158,0.4)",
 } as const;
 
@@ -75,14 +75,16 @@ let panelFontInjected = false;
 /** Injects the Google Sans Code stylesheet once (font-face is global, so it
  *  reaches the shadow DOM). Safe to call on every panel creation. */
 export function ensurePanelFont(): void {
-  if (panelFontInjected) return;
+  if (panelFontInjected) {
+    return;
+  }
   panelFontInjected = true;
   try {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href =
       "https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500&display=swap";
-    document.head.appendChild(link);
+    document.head.append(link);
   } catch {
     // document.head unavailable — fall back to the monospace stack
   }

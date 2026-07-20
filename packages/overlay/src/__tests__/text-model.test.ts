@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { getElementVisibleText, getRangeVisibleText, normalizeVisibleText } from "../text-model.js";
+
+import {
+  getElementVisibleText,
+  getRangeVisibleText,
+  normalizeVisibleText,
+} from "../text-model.js";
 
 describe("text-model", () => {
   it("normalizes non-breaking spaces to regular spaces", () => {
-    expect(normalizeVisibleText("and enjoy\u00a0software")).toBe("and enjoy software");
+    expect(normalizeVisibleText("and enjoy\u00A0software")).toBe(
+      "and enjoy software"
+    );
   });
 
   it("prefers visible innerText over raw textContent", () => {
@@ -17,7 +24,7 @@ describe("text-model", () => {
 
   it("normalizes range text using the same visible-text model", () => {
     const range = {
-      toString: () => "message\u00a0me",
+      toString: () => "message\u00A0me",
     } as Range;
 
     expect(getRangeVisibleText(range)).toBe("message me");

@@ -1,12 +1,19 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { upsertCssVars, writeThemeVars } from "../theme-writer.js";
-import { resolveTheme } from "../theme-resolver.js";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-const fixturesDir = path.join(__dirname, "fixtures");
-const cleanups: Array<() => void> = [];
-afterEach(() => { for (const c of cleanups) c(); cleanups.length = 0; });
+import { describe, it, expect, afterEach } from "vitest";
+
+import { resolveTheme } from "../theme-resolver.js";
+import { upsertCssVars, writeThemeVars } from "../theme-writer.js";
+
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
+const cleanups: (() => void)[] = [];
+afterEach(() => {
+  for (const c of cleanups) {
+    c();
+  }
+  cleanups.length = 0;
+});
 
 describe("upsertCssVars", () => {
   it("replaces an existing var in place, preserving everything else", () => {
@@ -43,9 +50,18 @@ describe("upsertCssVars", () => {
 
 describe("writeThemeVars round-trip", () => {
   function tempProject(files: Record<string, string>): string {
-    const root = path.join(fixturesDir, `_tmpwrite_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    const root = path.join(
+      fixturesDir,
+      `_tmpwrite_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    );
     fs.mkdirSync(root, { recursive: true });
-    cleanups.push(() => { try { fs.rmSync(root, { recursive: true, force: true }); } catch {} });
+    cleanups.push(() => {
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+      } catch {
+        // Best-effort cleanup; ignore failures (e.g. already removed).
+      }
+    });
     for (const [rel, content] of Object.entries(files)) {
       const full = path.join(root, rel);
       fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -70,12 +86,18 @@ describe("writeThemeVars round-trip", () => {
     const file = path.join(root, "src/app/globals.css");
 
     const result = writeThemeVars(file, [
-      { selector: ":root", vars: { primary: "oklch(0.5 0.2 250)", radius: "1rem" } },
+      {
+        selector: ":root",
+        vars: { primary: "oklch(0.5 0.2 250)", radius: "1rem" },
+      },
       { selector: ".dark", vars: { primary: "oklch(0.3 0.1 250)" } },
     ]);
     expect(result.success).toBe(true);
 
-    const reread = resolveTheme(root)!;
+    const reread = resolveTheme(root);
+    if (!reread) {
+      throw new Error("expected resolveTheme to return a theme");
+    }
     expect(reread.theme.light.primary).toBe("oklch(0.5 0.2 250)");
     expect(reread.theme.light.radius).toBe("1rem");
     expect(reread.theme.dark.primary).toBe("oklch(0.3 0.1 250)");
@@ -86,7 +108,9 @@ describe("writeThemeVars round-trip", () => {
   it("returns before/after for undo and reports no-op cleanly", () => {
     const root = tempProject({ "src/index.css": ":root { --primary: #111; }" });
     const file = path.join(root, "src/index.css");
-    const result = writeThemeVars(file, [{ selector: ":root", vars: { primary: "#111" } }]);
+    const result = writeThemeVars(file, [
+      { selector: ":root", vars: { primary: "#111" } },
+    ]);
     expect(result.success).toBe(true);
     expect(result.before).toBe(result.after); // no-op (same value)
   });

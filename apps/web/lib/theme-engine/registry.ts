@@ -9,10 +9,10 @@ const REGISTRY_ITEM_SCHEMA = "https://ui.shadcn.com/schema/registry-item.json"
 function registryName(name: string): string {
   const slug = name
     .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/gu, "")
+    .replaceAll(/[\u0300-\u036F]/gu, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
+    .replaceAll(/[^a-z0-9]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "")
     .slice(0, 64)
     .replace(/-+$/u, "")
   return slug || "themelab-theme"

@@ -1,8 +1,13 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
-import * as path from "node:path";
+import path from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
-import { isProjectFilePathSafe, resolveProjectFilePath } from "../path-resolver.js";
+
+import {
+  isProjectFilePathSafe,
+  resolveProjectFilePath,
+} from "../path-resolver.js";
 
 const tempRoots: string[] = [];
 
@@ -26,7 +31,7 @@ describe("resolveProjectFilePath", () => {
     const projectRoot = makeProject();
 
     expect(resolveProjectFilePath("src/Navbar.jsx", projectRoot)).toBe(
-      path.join(projectRoot, "src", "Navbar.jsx"),
+      path.join(projectRoot, "src", "Navbar.jsx")
     );
   });
 
@@ -34,13 +39,13 @@ describe("resolveProjectFilePath", () => {
     const projectRoot = makeProject();
 
     expect(resolveProjectFilePath("/src/Navbar.jsx", projectRoot)).toBe(
-      path.join(projectRoot, "src", "Navbar.jsx"),
+      path.join(projectRoot, "src", "Navbar.jsx")
     );
     expect(resolveProjectFilePath("/app/page.tsx", projectRoot)).toBe(
-      path.join(projectRoot, "app", "page.tsx"),
+      path.join(projectRoot, "app", "page.tsx")
     );
     expect(resolveProjectFilePath("/components/Button.tsx", projectRoot)).toBe(
-      path.join(projectRoot, "components", "Button.tsx"),
+      path.join(projectRoot, "components", "Button.tsx")
     );
   });
 
@@ -48,7 +53,9 @@ describe("resolveProjectFilePath", () => {
     const projectRoot = makeProject();
     const absolutePath = path.join(projectRoot, "features", "Hero.tsx");
 
-    expect(resolveProjectFilePath(absolutePath, projectRoot)).toBe(absolutePath);
+    expect(resolveProjectFilePath(absolutePath, projectRoot)).toBe(
+      absolutePath
+    );
   });
 
   it("rejects traversal outside the project root", () => {
@@ -60,10 +67,16 @@ describe("resolveProjectFilePath", () => {
 
   it("rejects real absolute filesystem paths outside the project root", () => {
     const projectRoot = makeProject();
-    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "themelab-outside-"));
+    const outsideDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "themelab-outside-")
+    );
     tempRoots.push(outsideDir);
     const outsideFile = path.join(outsideDir, "Navbar.jsx");
-    fs.writeFileSync(outsideFile, "export default function Navbar() { return null; }", "utf-8");
+    fs.writeFileSync(
+      outsideFile,
+      "export default function Navbar() { return null; }",
+      "utf-8"
+    );
 
     expect(resolveProjectFilePath(outsideFile, projectRoot)).toBeNull();
     expect(isProjectFilePathSafe(outsideFile, projectRoot)).toBe(false);
@@ -73,16 +86,23 @@ describe("resolveProjectFilePath", () => {
     // Skip gracefully on platforms where symlink creation is not permitted.
     let canSymlink = true;
     try {
-      const testLink = path.join(os.tmpdir(), `themelab-symtest-${process.pid}`);
+      const testLink = path.join(
+        os.tmpdir(),
+        `themelab-symtest-${process.pid}`
+      );
       fs.symlinkSync(os.tmpdir(), testLink);
       fs.unlinkSync(testLink);
     } catch {
       canSymlink = false;
     }
-    if (!canSymlink) return;
+    if (!canSymlink) {
+      return;
+    }
 
     const projectRoot = makeProject();
-    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "themelab-escape-"));
+    const outsideDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "themelab-escape-")
+    );
     tempRoots.push(outsideDir);
     fs.writeFileSync(path.join(outsideDir, "secret.txt"), "secret", "utf-8");
     // Create a symlink inside the project that points outside.
@@ -96,22 +116,36 @@ describe("resolveProjectFilePath", () => {
     // Skip gracefully on platforms where symlink creation is not permitted.
     let canSymlink = true;
     try {
-      const testLink = path.join(os.tmpdir(), `themelab-symtest2-${process.pid}`);
+      const testLink = path.join(
+        os.tmpdir(),
+        `themelab-symtest2-${process.pid}`
+      );
       fs.symlinkSync(os.tmpdir(), testLink);
       fs.unlinkSync(testLink);
     } catch {
       canSymlink = false;
     }
-    if (!canSymlink) return;
+    if (!canSymlink) {
+      return;
+    }
 
     const projectRoot = makeProject();
     // Create a real directory and file inside the project.
     fs.mkdirSync(path.join(projectRoot, "real"));
-    fs.writeFileSync(path.join(projectRoot, "real", "Button.tsx"), "export {};", "utf-8");
+    fs.writeFileSync(
+      path.join(projectRoot, "real", "Button.tsx"),
+      "export {};",
+      "utf-8"
+    );
     // Create a symlink inside the project that points to another dir inside the project.
-    fs.symlinkSync(path.join(projectRoot, "real"), path.join(projectRoot, "link"));
+    fs.symlinkSync(
+      path.join(projectRoot, "real"),
+      path.join(projectRoot, "link")
+    );
 
-    expect(resolveProjectFilePath("link/Button.tsx", projectRoot)).not.toBeNull();
+    expect(
+      resolveProjectFilePath("link/Button.tsx", projectRoot)
+    ).not.toBeNull();
     expect(isProjectFilePathSafe("link/Button.tsx", projectRoot)).toBe(true);
   });
 });

@@ -1,10 +1,13 @@
+import {
+  CaretLeftIcon,
+  CaretRightIcon,
+  DotsThreeIcon,
+} from "@phosphor-icons/react"
+import type { VariantProps } from "class-variance-authority"
 import * as React from "react"
 
-import { cn } from "@/lib/utils"
-import { type VariantProps } from "class-variance-authority"
-
 import { buttonVariants } from "@/components/ui/button"
-import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react"
+import { cn } from "@/lib/utils"
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (
@@ -47,6 +50,7 @@ function PaginationLink({
   ...props
 }: PaginationLinkProps) {
   return (
+    // oxlint-disable-next-line jsx-a11y/anchor-has-content -- generic anchor wrapper; content is forwarded via ...props/children from call sites (PaginationPrevious/Next/PaginationLink usages), which the static analyzer can't see through the spread
     <a
       aria-current={isActive ? "page" : undefined}
       data-slot="pagination-link"
@@ -113,8 +117,7 @@ function PaginationEllipsis({
       )}
       {...props}
     >
-      <DotsThreeIcon
-      />
+      <DotsThreeIcon />
       <span className="sr-only">More pages</span>
     </span>
   )

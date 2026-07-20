@@ -6,8 +6,15 @@
 // root fix for "color edits break when toggling dark mode".
 
 import type { ThemeStyles, ThemeSource } from "@themelab/shared";
+
 import { send } from "./bridge.js";
-import { isColor, detectColorKind, toHex, serializeToKind, type ColorKind } from "./utils/color-format.js";
+import {
+  isColor,
+  detectColorKind,
+  toHex,
+  serializeToKind,
+} from "./utils/color-format.js";
+import type { ColorKind } from "./utils/color-format.js";
 
 export type ThemeMode = "light" | "dark";
 
@@ -16,13 +23,18 @@ let source: ThemeSource | null = null;
 let mode: ThemeMode = "light";
 
 // Pending (uncommitted) edits per mode: var name (no --) → new value.
-const pending: Record<ThemeMode, Record<string, string>> = { light: {}, dark: {} };
+const pending: Record<ThemeMode, Record<string, string>> = {
+  light: {},
+  dark: {},
+};
 
 type ThemeListener = () => void;
 const listeners = new Set<ThemeListener>();
 
 function notify(): void {
-  for (const fn of listeners) fn();
+  for (const fn of listeners) {
+    fn();
+  }
 }
 
 export function onThemeChange(fn: ThemeListener): () => void {
@@ -31,13 +43,18 @@ export function onThemeChange(fn: ThemeListener): () => void {
 }
 
 /** Install the theme received from the CLI. */
-export function setTheme(next: ThemeStyles, nextSource: ThemeSource | null): void {
+export function setTheme(
+  next: ThemeStyles,
+  nextSource: ThemeSource | null
+): void {
   theme = next;
   source = nextSource;
   pending.light = {};
   pending.dark = {};
   // If there's no dark block, dark editing is unavailable; stay in light.
-  if (!nextSource?.darkSelector) mode = "light";
+  if (!nextSource?.darkSelector) {
+    mode = "light";
+  }
   notify();
 }
 
@@ -57,22 +74,16 @@ export function canEditDark(): boolean {
   return Boolean(source?.darkSelector);
 }
 
-export function setMode(next: ThemeMode): void {
-  if (next === "dark" && !canEditDark()) return;
-  mode = next;
-  // Re-point the inline preview at the new mode's staged values so toggling
-  // light/dark shows each mode's pending edits — both are previewable before commit.
-  syncInlinePreview();
-  notify();
-}
-
 /**
  * Make the inline :root overrides reflect exactly the active mode's pending
  * edits. Inline overrides can only hold one value per variable, so switching
  * modes swaps which mode's staged values are forced onto the page.
  */
 function syncInlinePreview(): void {
-  const staged = new Set([...Object.keys(pending.light), ...Object.keys(pending.dark)]);
+  const staged = new Set([
+    ...Object.keys(pending.light),
+    ...Object.keys(pending.dark),
+  ]);
   for (const name of staged) {
     document.documentElement.style.removeProperty(`--${name}`);
   }
@@ -81,15 +92,40 @@ function syncInlinePreview(): void {
   }
 }
 
+export function setMode(next: ThemeMode): void {
+  if (next === "dark" && !canEditDark()) {
+    return;
+  }
+  mode = next;
+  // Re-point the inline preview at the new mode's staged values so toggling
+  // light/dark shows each mode's pending edits — both are previewable before commit.
+  syncInlinePreview();
+  notify();
+}
+
 /** All token names for the current mode (committed keys ∪ base light keys), sorted. */
 export function getTokenNames(): string[] {
-  if (!theme) return [];
+  if (!theme) {
+    return [];
+  }
   const names = new Set<string>([
     ...Object.keys(theme.light),
     ...Object.keys(theme[mode]),
     ...Object.keys(pending[mode]),
   ]);
+  // `.toSorted()` needs ES2023 lib (tsconfig targets ES2022, shared across the
+  // package — not this task's to change); `.sort()` here mutates a fresh array
+  // just created by the spread above, not any external/shared state, so this is safe.
+  // oxlint-disable-next-line unicorn/no-array-sort -- see comment above
   return [...names].sort();
+}
+
+/** The effective value for a token in the current mode: pending edit, else committed. */
+export function getValue(name: string): string | undefined {
+  if (pending[mode][name] !== undefined) {
+    return pending[mode][name];
+  }
+  return theme?.[mode]?.[name] ?? theme?.light?.[name];
 }
 
 /** Token names whose value is a color, for the current mode — used by the
@@ -97,14 +133,8 @@ export function getTokenNames(): string[] {
 export function getColorTokenNames(): string[] {
   return getTokenNames().filter((name) => {
     const v = getValue(name);
-    return v != null && isColor(v);
+    return v !== null && v !== undefined && isColor(v);
   });
-}
-
-/** The effective value for a token in the current mode: pending edit, else committed. */
-export function getValue(name: string): string | undefined {
-  if (pending[mode][name] !== undefined) return pending[mode][name];
-  return theme?.[mode]?.[name] ?? theme?.light?.[name];
 }
 
 /** Whether a token currently has an uncommitted edit in the active mode. */
@@ -115,7 +145,9 @@ export function isEdited(name: string): boolean {
 /** The current theme (committed values + staged edits) for both modes — used to
  *  hand the live theme off to the web studio's editor. */
 export function getCurrentThemeStyles(): ThemeStyles | null {
-  if (!theme) return null;
+  if (!theme) {
+    return null;
+  }
   return {
     light: { ...theme.light, ...pending.light },
     dark: { ...theme.dark, ...pending.dark },
@@ -130,6 +162,27 @@ export interface BatchApplyResult {
 }
 
 /**
+ * Convert an incoming pasted value into the project token's existing color
+ * format — e.g. an `hsl(…)` paste into an `hsl`-triple token becomes the bare
+ * `H S% L%` channels the project consumes via `hsl(var(--x))`. Mirrors the
+ * single-token color picker. Non-color or unparseable values pass through.
+ */
+function coerceToTokenFormat(
+  existing: string | undefined,
+  incoming: string
+): string {
+  if (existing === undefined) {
+    return incoming;
+  }
+  const kind = detectColorKind(existing);
+  if (!kind) {
+    return incoming;
+  }
+  const hex = toHex(incoming);
+  return hex ? serializeToKind(hex, kind) : incoming;
+}
+
+/**
  * Stage a full pasted theme across both modes at once. Only tokens the project
  * already defines are applied (so a commit never invents new vars the CSS file
  * doesn't have); unknown tokens are counted as skipped. Values are written
@@ -141,7 +194,9 @@ export function batchApplyTheme(parsed: {
   light?: Record<string, string>;
   dark?: Record<string, string>;
 }): BatchApplyResult {
-  if (!theme) return { applied: 0, skipped: 0, modes: mode };
+  if (!theme) {
+    return { applied: 0, skipped: 0, modes: mode };
+  }
 
   const hasLight = Object.keys(parsed.light ?? {}).length > 0;
   const hasDark = Object.keys(parsed.dark ?? {}).length > 0;
@@ -149,7 +204,10 @@ export function batchApplyTheme(parsed: {
   // A single-mode paste applies to the mode you're currently editing — "paste
   // one theme" updates just the active mode, not always light. A dual paste
   // (CSS :root + .dark, or JSON { root, dark }) writes both.
-  const apply: Record<ThemeMode, Record<string, string>> = { light: {}, dark: {} };
+  const apply: Record<ThemeMode, Record<string, string>> = {
+    light: {},
+    dark: {},
+  };
   let modes: "both" | ThemeMode;
   if (hasLight && hasDark) {
     apply.light = parsed.light ?? {};
@@ -164,34 +222,23 @@ export function batchApplyTheme(parsed: {
   let skipped = 0;
   for (const m of ["light", "dark"] as ThemeMode[]) {
     // The project's known tokens for this mode (dark may share light's keys).
-    const known = new Set([...Object.keys(theme.light), ...Object.keys(theme[m])]);
+    const known = new Set([
+      ...Object.keys(theme.light),
+      ...Object.keys(theme[m]),
+    ]);
     for (const [name, value] of Object.entries(apply[m])) {
       if (!known.has(name)) {
-        skipped++;
+        skipped += 1;
         continue;
       }
       const existing = theme[m]?.[name] ?? theme.light?.[name];
       pending[m][name] = coerceToTokenFormat(existing, value);
-      applied++;
+      applied += 1;
     }
   }
   syncInlinePreview();
   notify();
   return { applied, skipped, modes };
-}
-
-/**
- * Convert an incoming pasted value into the project token's existing color
- * format — e.g. an `hsl(…)` paste into an `hsl`-triple token becomes the bare
- * `H S% L%` channels the project consumes via `hsl(var(--x))`. Mirrors the
- * single-token color picker. Non-color or unparseable values pass through.
- */
-function coerceToTokenFormat(existing: string | undefined, incoming: string): string {
-  if (existing === undefined) return incoming;
-  const kind = detectColorKind(existing);
-  if (!kind) return incoming;
-  const hex = toHex(incoming);
-  return hex ? serializeToKind(hex, kind) : incoming;
 }
 
 const KIND_LABELS: Record<ColorKind, string> = {
@@ -227,9 +274,13 @@ export function detectThemeFormat(): ThemeFormatInfo {
   if (theme) {
     for (const value of Object.values(theme.light)) {
       const kind = detectColorKind(value);
-      if (!kind) continue;
+      if (!kind) {
+        continue;
+      }
       counts.set(kind, (counts.get(kind) ?? 0) + 1);
-      if (kind === "hsl-triple" || kind === "rgb-triple") hasTriple = true;
+      if (kind === "hsl-triple" || kind === "rgb-triple") {
+        hasTriple = true;
+      }
     }
   }
   let kind: ColorKind | null = null;
@@ -253,20 +304,26 @@ export function detectThemeFormat(): ThemeFormatInfo {
  * {@link detectThemeFormat}. Returns how many tokens changed.
  */
 export function convertThemeFormat(target: ColorKind): number {
-  if (!theme) return 0;
+  if (!theme) {
+    return 0;
+  }
   let changed = 0;
   for (const m of ["light", "dark"] as ThemeMode[]) {
     for (const [name, committed] of Object.entries(theme[m])) {
       const current = pending[m][name] ?? committed;
-      if (!isColor(current)) continue;
+      if (!isColor(current)) {
+        continue;
+      }
       const hex = toHex(current);
-      if (!hex) continue;
+      if (!hex) {
+        continue;
+      }
       const next = serializeToKind(hex, target);
-      if (next !== committed) {
-        pending[m][name] = next;
-        changed++;
+      if (next === committed) {
+        Reflect.deleteProperty(pending[m], name);
       } else {
-        delete pending[m][name];
+        pending[m][name] = next;
+        changed += 1;
       }
     }
   }
@@ -276,7 +333,10 @@ export function convertThemeFormat(target: ColorKind): number {
 }
 
 export function hasPendingEdits(): boolean {
-  return Object.keys(pending.light).length > 0 || Object.keys(pending.dark).length > 0;
+  return (
+    Object.keys(pending.light).length > 0 ||
+    Object.keys(pending.dark).length > 0
+  );
 }
 
 /**
@@ -308,16 +368,20 @@ export function resetPreview(): void {
  * (the real stylesheet now carries them).
  */
 export function commit(): boolean {
-  if (!source || !hasPendingEdits()) return false;
+  if (!source || !hasPendingEdits()) {
+    return false;
+  }
 
-  const edits: Array<{ selector: string; vars: Record<string, string> }> = [];
+  const edits: { selector: string; vars: Record<string, string> }[] = [];
   if (Object.keys(pending.light).length > 0) {
     edits.push({ selector: ":root", vars: { ...pending.light } });
   }
   if (Object.keys(pending.dark).length > 0 && source.darkSelector) {
     edits.push({ selector: source.darkSelector, vars: { ...pending.dark } });
   }
-  if (edits.length === 0) return false;
+  if (edits.length === 0) {
+    return false;
+  }
 
   send({ type: "updateTheme", filePath: source.filePath, edits });
   return true;
@@ -325,7 +389,9 @@ export function commit(): boolean {
 
 /** Called when the CLI confirms a successful write — fold edits into state. */
 export function onCommitSuccess(): void {
-  if (!theme) return;
+  if (!theme) {
+    return;
+  }
   for (const m of ["light", "dark"] as ThemeMode[]) {
     for (const [name, value] of Object.entries(pending[m])) {
       theme[m][name] = value;

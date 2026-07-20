@@ -5,11 +5,27 @@ const STORAGE_KEY = "themelab-onboarding-dismissed";
 
 let barEl: HTMLDivElement | null = null;
 
+export function dismissOnboarding(): void {
+  if (!barEl) {
+    return;
+  }
+  localStorage.setItem(STORAGE_KEY, "1");
+  barEl.style.opacity = "0";
+  setTimeout(() => {
+    barEl?.remove();
+    barEl = null;
+  }, 150);
+}
+
 export function showOnboardingHint(): void {
-  if (localStorage.getItem(STORAGE_KEY)) return;
+  if (localStorage.getItem(STORAGE_KEY)) {
+    return;
+  }
 
   const shadowRoot = getShadowRoot();
-  if (!shadowRoot) return;
+  if (!shadowRoot) {
+    return;
+  }
 
   barEl = document.createElement("div");
   barEl.style.cssText = `
@@ -33,10 +49,11 @@ export function showOnboardingHint(): void {
   `;
 
   const text = document.createElement("span");
-  text.textContent = "Click any element to edit its properties. Double-click text to edit it.";
+  text.textContent =
+    "Click any element to edit its properties. Double-click text to edit it.";
 
   const closeBtn = document.createElement("span");
-  closeBtn.textContent = "\u00d7";
+  closeBtn.textContent = "\u00D7";
   closeBtn.style.cssText = `
     cursor: pointer;
     font-size: 16px;
@@ -46,21 +63,13 @@ export function showOnboardingHint(): void {
   `;
   closeBtn.addEventListener("click", () => dismissOnboarding());
 
-  barEl.appendChild(text);
-  barEl.appendChild(closeBtn);
-  shadowRoot.appendChild(barEl);
+  barEl.append(text);
+  barEl.append(closeBtn);
+  shadowRoot.append(barEl);
 
   requestAnimationFrame(() => {
-    if (barEl) barEl.style.opacity = "1";
+    if (barEl) {
+      barEl.style.opacity = "1";
+    }
   });
-}
-
-export function dismissOnboarding(): void {
-  if (!barEl) return;
-  localStorage.setItem(STORAGE_KEY, "1");
-  barEl.style.opacity = "0";
-  setTimeout(() => {
-    barEl?.remove();
-    barEl = null;
-  }, 150);
 }

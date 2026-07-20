@@ -1,46 +1,61 @@
 // packages/overlay/src/canvas-state.ts
 import type {
-  ToolType, Annotation, TextAnnotation, ColorOverride,
-  ComponentRef, CanvasUndoAction,
-  TextEditAnnotation, ElementIdentity, BatchOperation,
+  ToolType,
+  Annotation,
+  ColorOverride,
+  CanvasUndoAction,
+  TextEditAnnotation,
+  ElementIdentity,
+  BatchOperation,
+  JSXStructuralPath,
 } from "@themelab/shared";
-import type { MoveEntry, ParentLayout } from "./move-state.js";
+
 import type { CloneEntry } from "./clone-state.js";
 import type { DeleteEntry } from "./delete-state.js";
-import { applyMoveTransform, clearMoveTransform, reacquireMovedElement } from "./move-state.js";
+import type { MoveEntry, ParentLayout } from "./move-state.js";
+import {
+  applyMoveTransform,
+  clearMoveTransform,
+  reacquireMovedElement,
+} from "./move-state.js";
 import { getTokenMap } from "./properties/tailwind-resolver.js";
 import { setStyle } from "./utils/style-access.js";
 
 /** Runtime extension of ColorOverride — adds the DOM element reference (not serializable). */
-export type ColorOverrideRuntime = ColorOverride & { targetElement: HTMLElement };
+export type ColorOverrideRuntime = ColorOverride & {
+  targetElement: HTMLElement;
+};
 
 /** Runtime extension of propertyChange — adds DOM element reference (not serializable). */
-export type PropertyChangeRuntime = Extract<CanvasUndoAction, { type: "propertyChange" }> & {
+export type PropertyChangeRuntime = Extract<
+  CanvasUndoAction,
+  { type: "propertyChange" }
+> & {
   element: HTMLElement;
   pendingMergeKey?: string;
   pendingPropertyKeys?: string[];
 };
 
-let moves: Map<string, MoveEntry> = new Map();
-let clones: Map<string, CloneEntry> = new Map();
-let deletes: Map<string, DeleteEntry> = new Map();
+let moves = new Map<string, MoveEntry>();
+let clones = new Map<string, CloneEntry>();
+let deletes = new Map<string, DeleteEntry>();
 let annotations: Annotation[] = [];
 let undoStack: CanvasUndoAction[] = [];
-type PendingPropertyOperation = {
+interface PendingPropertyOperation {
   mergeKey: string;
   operation: Extract<BatchOperation, { op: "updateClass" }>;
   propertyKeys: string[];
-};
+}
 let pendingPropertyOps: PendingPropertyOperation[] = [];
-type PendingReorderOperation = {
+interface PendingReorderOperation {
   mergeKey: string;
   operation: Extract<BatchOperation, { op: "reorder" }>;
-};
+}
 let pendingReorderOps: PendingReorderOperation[] = [];
 let activeTool: ToolType = "select";
 let originalsHidden = true;
 
-let toolOptions = {
+const toolOptions = {
   fontSize: 16,
   textColor: "#ffffff",
 };
@@ -61,32 +76,54 @@ let stateChangeListeners: StateChangeListener[] = [];
 
 export function onToolChange(fn: ToolChangeListener): () => void {
   toolChangeListeners.push(fn);
-  return () => { toolChangeListeners = toolChangeListeners.filter(f => f !== fn); };
+  return () => {
+    toolChangeListeners = toolChangeListeners.filter((f) => f !== fn);
+  };
 }
 
 export function onStateChange(fn: StateChangeListener): () => void {
   stateChangeListeners.push(fn);
-  return () => { stateChangeListeners = stateChangeListeners.filter(f => f !== fn); };
+  return () => {
+    stateChangeListeners = stateChangeListeners.filter((f) => f !== fn);
+  };
 }
 
 function notifyStateChange(): void {
-  stateChangeListeners.forEach(fn => fn());
+  for (const fn of stateChangeListeners) {
+    fn();
+  }
+}
+
+export function pushUndoAction(action: CanvasUndoAction): void {
+  undoStack.push(action);
+  notifyStateChange();
 }
 
 // --- Tool ---
 
-export function getActiveTool(): ToolType { return activeTool; }
+export function getActiveTool(): ToolType {
+  return activeTool;
+}
 
 export function setActiveTool(tool: ToolType): void {
   const prev = activeTool;
-  if (prev === tool) return;
+  if (prev === tool) {
+    return;
+  }
   activeTool = tool;
-  toolChangeListeners.forEach(fn => fn(tool, prev));
+  for (const fn of toolChangeListeners) {
+    fn(tool, prev);
+  }
 }
 
-export function getToolOptions() { return { ...toolOptions }; }
+export function getToolOptions() {
+  return { ...toolOptions };
+}
 
-export function setToolOption<K extends keyof typeof toolOptions>(key: K, value: typeof toolOptions[K]): void {
+export function setToolOption<K extends keyof typeof toolOptions>(
+  key: K,
+  value: (typeof toolOptions)[K]
+): void {
   toolOptions[key] = value;
 }
 
@@ -101,17 +138,28 @@ export function addMove(entry: MoveEntry): void {
   pushUndoAction({ type: "moveCreate", moveId: entry.id });
 }
 
-export function updateMoveDelta(id: string, delta: { dx: number; dy: number }, previousDelta: { dx: number; dy: number }): void {
+export function updateMoveDelta(
+  id: string,
+  delta: { dx: number; dy: number },
+  previousDelta: { dx: number; dy: number }
+): void {
   const entry = moves.get(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   entry.delta = delta;
   applyMoveTransform(entry);
   pushUndoAction({ type: "moveDelta", moveId: id, previousDelta });
 }
 
-export function restoreMoveDelta(id: string, previousDelta: { dx: number; dy: number }): void {
+export function restoreMoveDelta(
+  id: string,
+  previousDelta: { dx: number; dy: number }
+): void {
   const entry = moves.get(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   entry.delta = previousDelta;
   applyMoveTransform(entry);
   notifyStateChange();
@@ -119,12 +167,14 @@ export function restoreMoveDelta(id: string, previousDelta: { dx: number; dy: nu
 
 export function removeMove(id: string): void {
   const entry = moves.get(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   // Restore original element state
   entry.element.style.cssText = entry.originalCssText;
   // Remove placeholder
   if (entry.placeholder && entry.placeholder.parentNode) {
-    entry.placeholder.parentNode.removeChild(entry.placeholder);
+    entry.placeholder.remove();
   }
   moves.delete(id);
   notifyStateChange();
@@ -132,7 +182,9 @@ export function removeMove(id: string): void {
 
 // --- Annotations ---
 
-export function getAnnotations(): Annotation[] { return annotations; }
+export function getAnnotations(): Annotation[] {
+  return annotations;
+}
 
 export function addAnnotation(ann: Annotation): void {
   annotations.push(ann);
@@ -160,7 +212,7 @@ interface TextEditDomHints {
   nthOfType?: number;
   elementId?: string;
   jsxKey?: string;
-  jsxPath?: import("@themelab/shared").JSXStructuralPath;
+  jsxPath?: JSXStructuralPath;
   fileMtime?: number;
   fileSize?: number;
 }
@@ -170,10 +222,12 @@ export function addTextEditAnnotation(
   ann: TextEditAnnotation,
   elementIdentity: ElementIdentity,
   originalInnerHTML: string,
-  domHints?: TextEditDomHints,
+  domHints?: TextEditDomHints
 ): void {
   annotations.push(ann);
-  if (domHints) textEditDomHints.set(ann.id, domHints);
+  if (domHints) {
+    textEditDomHints.set(ann.id, domHints);
+  }
   undoStack.push({
     type: "textEditRestore",
     annotationId: ann.id,
@@ -189,14 +243,16 @@ export function onAnnotationRemoved(fn: (id: string) => void): void {
 }
 
 export function removeAnnotation(id: string): void {
-  annotations = annotations.filter(a => a.id !== id);
+  annotations = annotations.filter((a) => a.id !== id);
   annotationRemovedCallback?.(id);
   notifyStateChange();
 }
 
 // --- Eye Toggle ---
 
-export function getOriginalsHidden(): boolean { return originalsHidden; }
+export function getOriginalsHidden(): boolean {
+  return originalsHidden;
+}
 
 export function setOriginalsHidden(hidden: boolean): void {
   originalsHidden = hidden;
@@ -214,21 +270,29 @@ export function setOriginalsHidden(hidden: boolean): void {
 
 export function hasMoveForElement(el: HTMLElement): boolean {
   for (const entry of moves.values()) {
-    if (entry.element === el) return true;
+    if (entry.element === el) {
+      return true;
+    }
   }
   return false;
 }
 
 export function getMoveForElement(el: HTMLElement): MoveEntry | undefined {
   for (const entry of moves.values()) {
-    if (entry.element === el) return entry;
+    if (entry.element === el) {
+      return entry;
+    }
   }
   return undefined;
 }
 
-export function getMoveContainingElement(el: HTMLElement): MoveEntry | undefined {
+export function getMoveContainingElement(
+  el: HTMLElement
+): MoveEntry | undefined {
   for (const entry of moves.values()) {
-    if (entry.element === el) return entry;
+    if (entry.element === el) {
+      return entry;
+    }
   }
   return undefined;
 }
@@ -246,9 +310,11 @@ export function addClone(entry: CloneEntry): void {
 
 export function removeCloneEntry(id: string): void {
   const entry = clones.get(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   if (entry.element.parentNode) {
-    entry.element.parentNode.removeChild(entry.element);
+    entry.element.remove();
   }
   clones.delete(id);
   notifyStateChange();
@@ -267,13 +333,15 @@ export function addDelete(entry: DeleteEntry): void {
 
 export function restoreDelete(id: string): void {
   const entry = deletes.get(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   const { element, originalParent, originalNextSibling } = entry;
   if (document.contains(originalParent)) {
     if (originalNextSibling && originalParent.contains(originalNextSibling)) {
-      originalParent.insertBefore(element, originalNextSibling);
+      originalNextSibling.before(element);
     } else {
-      originalParent.appendChild(element);
+      originalParent.append(element);
     }
   }
   deletes.delete(id);
@@ -282,14 +350,54 @@ export function restoreDelete(id: string): void {
 
 // --- Undo ---
 
+function removePendingPropertyOperation(
+  mergeKey: string,
+  propertyKeys: string[]
+): void {
+  const index = pendingPropertyOps.findIndex(
+    (entry) => entry.mergeKey === mergeKey
+  );
+  if (index === -1) {
+    return;
+  }
+
+  const entry = pendingPropertyOps[index];
+  const keptUpdates: typeof entry.operation.updates = [];
+  const keptPropertyKeys: string[] = [];
+  for (const [
+    updateIndex,
+    existingPropertyKey,
+  ] of entry.propertyKeys.entries()) {
+    if (propertyKeys.includes(existingPropertyKey)) {
+      continue;
+    }
+    keptUpdates.push(entry.operation.updates[updateIndex]);
+    keptPropertyKeys.push(existingPropertyKey);
+  }
+
+  if (keptUpdates.length === 0) {
+    pendingPropertyOps.splice(index, 1);
+  } else {
+    entry.operation = {
+      ...entry.operation,
+      updates: keptUpdates,
+    };
+    entry.propertyKeys = keptPropertyKeys;
+  }
+  notifyStateChange();
+}
+
 export function canvasUndo(): string | null {
   const action = undoStack.pop();
-  if (!action) return null;
+  if (!action) {
+    return null;
+  }
 
   switch (action.type) {
-    case "moveCreate":
+    case "moveCreate": {
       removeMove(action.moveId);
       return "move removed";
+    }
     case "moveDelta": {
       const moveEntry = moves.get(action.moveId);
       if (moveEntry) {
@@ -303,7 +411,9 @@ export function canvasUndo(): string | null {
       return "annotation removed";
     }
     case "colorChange": {
-      const ann = annotations.find(a => a.id === action.annotationId) as ColorOverrideRuntime | undefined;
+      const ann = annotations.find((a) => a.id === action.annotationId) as
+        | ColorOverrideRuntime
+        | undefined;
       if (ann?.targetElement) {
         setStyle(ann.targetElement, action.property, action.previousColor);
       }
@@ -314,11 +424,21 @@ export function canvasUndo(): string | null {
       const propAction = action as PropertyChangeRuntime;
       if (propAction.element && document.contains(propAction.element)) {
         for (const override of propAction.overrides) {
-          setStyle(propAction.element, override.cssProperty, override.previousValue);
+          setStyle(
+            propAction.element,
+            override.cssProperty,
+            override.previousValue
+          );
         }
       }
-      if (propAction.pendingMergeKey && propAction.pendingPropertyKeys?.length) {
-        removePendingPropertyOperation(propAction.pendingMergeKey, propAction.pendingPropertyKeys);
+      if (
+        propAction.pendingMergeKey &&
+        propAction.pendingPropertyKeys?.length
+      ) {
+        removePendingPropertyOperation(
+          propAction.pendingMergeKey,
+          propAction.pendingPropertyKeys
+        );
       }
       return "property reverted";
     }
@@ -330,45 +450,61 @@ export function canvasUndo(): string | null {
       removeAnnotation(action.annotationId);
       return "text edit reverted";
     }
-    case "cloneCreate":
+    case "cloneCreate": {
       removeCloneEntry(action.cloneId);
       return "clone removed";
-    case "deleteCreate":
+    }
+    case "deleteCreate": {
       restoreDelete(action.deleteId);
       return "delete undone";
+    }
+    default: {
+      return null;
+    }
   }
-  return null;
-}
-
-export function pushUndoAction(action: CanvasUndoAction): void {
-  undoStack.push(action);
-  notifyStateChange();
 }
 
 export function peekUndoStack(): CanvasUndoAction | null {
-  return undoStack.length > 0 ? undoStack[undoStack.length - 1] : null;
+  return undoStack.at(-1) ?? null;
 }
 
 // --- Canvas Transform ---
 
-export function getCanvasTransform(): { scale: number; offsetX: number; offsetY: number } {
+export function getCanvasTransform(): {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+} {
   return { scale: canvasScale, offsetX: canvasOffsetX, offsetY: canvasOffsetY };
 }
 
-export function setCanvasTransform(scale: number, offsetX: number, offsetY: number): void {
+export function setCanvasTransform(
+  scale: number,
+  offsetX: number,
+  offsetY: number
+): void {
   canvasScale = scale;
   canvasOffsetX = offsetX;
   canvasOffsetY = offsetY;
-  canvasTransformListeners.forEach(fn => fn());
+  for (const fn of canvasTransformListeners) {
+    fn();
+  }
 }
 
-export function onCanvasTransformChange(fn: CanvasTransformListener): () => void {
+export function onCanvasTransformChange(
+  fn: CanvasTransformListener
+): () => void {
   canvasTransformListeners.push(fn);
-  return () => { canvasTransformListeners = canvasTransformListeners.filter(f => f !== fn); };
+  return () => {
+    canvasTransformListeners = canvasTransformListeners.filter((f) => f !== fn);
+  };
 }
 
 /** Convert viewport (mouse) coordinates to page coordinates, accounting for canvas transform */
-export function viewportToPage(clientX: number, clientY: number): { x: number; y: number } {
+export function viewportToPage(
+  clientX: number,
+  clientY: number
+): { x: number; y: number } {
   return {
     x: (clientX - canvasOffsetX) / canvasScale,
     y: (clientY - canvasOffsetY) / canvasScale,
@@ -376,7 +512,10 @@ export function viewportToPage(clientX: number, clientY: number): { x: number; y
 }
 
 /** Convert page coordinates to viewport (screen) coordinates */
-export function pageToViewport(pageX: number, pageY: number): { x: number; y: number } {
+export function pageToViewport(
+  pageX: number,
+  pageY: number
+): { x: number; y: number } {
   return {
     x: pageX * canvasScale + canvasOffsetX,
     y: pageY * canvasScale + canvasOffsetY,
@@ -389,7 +528,7 @@ export function resetCanvas(): void {
   for (const entry of moves.values()) {
     entry.element.style.cssText = entry.originalCssText;
     if (entry.placeholder && entry.placeholder.parentNode) {
-      entry.placeholder.parentNode.removeChild(entry.placeholder);
+      entry.placeholder.remove();
     }
   }
   // Revert color overrides
@@ -407,7 +546,11 @@ export function resetCanvas(): void {
       const propAction = action as PropertyChangeRuntime;
       if (propAction.element && document.contains(propAction.element)) {
         for (const override of propAction.overrides) {
-          setStyle(propAction.element, override.cssProperty, override.previousValue);
+          setStyle(
+            propAction.element,
+            override.cssProperty,
+            override.previousValue
+          );
         }
       }
     }
@@ -415,7 +558,7 @@ export function resetCanvas(): void {
   // Remove all cloned elements from DOM
   for (const entry of clones.values()) {
     if (entry.element.parentNode) {
-      entry.element.parentNode.removeChild(entry.element);
+      entry.element.remove();
     }
   }
   clones = new Map();
@@ -424,9 +567,9 @@ export function resetCanvas(): void {
     const { element, originalParent, originalNextSibling } = entry;
     if (document.contains(originalParent)) {
       if (originalNextSibling && originalParent.contains(originalNextSibling)) {
-        originalParent.insertBefore(element, originalNextSibling);
+        originalNextSibling.before(element);
       } else {
-        originalParent.appendChild(element);
+        originalParent.append(element);
       }
     }
   }
@@ -441,14 +584,23 @@ export function resetCanvas(): void {
   canvasScale = 1;
   canvasOffsetX = 0;
   canvasOffsetY = 0;
-  canvasTransformListeners.forEach(fn => fn());
+  for (const fn of canvasTransformListeners) {
+    fn();
+  }
   notifyStateChange();
 }
 
 // --- Has Changes ---
 
 export function hasChanges(): boolean {
-  return moves.size > 0 || clones.size > 0 || deletes.size > 0 || annotations.length > 0 || pendingPropertyOps.length > 0 || pendingReorderOps.length > 0;
+  return (
+    moves.size > 0 ||
+    clones.size > 0 ||
+    deletes.size > 0 ||
+    annotations.length > 0 ||
+    pendingPropertyOps.length > 0 ||
+    pendingReorderOps.length > 0
+  );
 }
 
 export function canUndo(): boolean {
@@ -473,13 +625,17 @@ function snapToSpacingToken(px: number): string {
   for (const [token, cssValue] of tokenMap.spacing) {
     let tokenPx: number;
     if (cssValue.endsWith("rem")) {
-      tokenPx = parseFloat(cssValue) * ROOT_FONT_SIZE_PX;
+      // oxlint-disable-next-line unicorn/prefer-number-coercion -- value has a "rem" unit suffix; Number() would return NaN, parseFloat is required
+      tokenPx = Number.parseFloat(cssValue) * ROOT_FONT_SIZE_PX;
     } else if (cssValue.endsWith("px")) {
-      tokenPx = parseFloat(cssValue);
+      // oxlint-disable-next-line unicorn/prefer-number-coercion -- value has a "px" unit suffix; Number() would return NaN, parseFloat is required
+      tokenPx = Number.parseFloat(cssValue);
     } else {
       continue;
     }
-    if (Number.isNaN(tokenPx)) continue;
+    if (Number.isNaN(tokenPx)) {
+      continue;
+    }
 
     const dist = Math.abs(absPx - tokenPx);
     if (dist < bestDist) {
@@ -500,22 +656,34 @@ function snapToSpacingToken(px: number): string {
 /**
  * Derive the batch engine layout context from the captured parent layout.
  */
-function deriveLayoutContext(layout?: ParentLayout): "flex" | "grid" | "block" | "positioned" {
-  if (!layout) return "block";
+function deriveLayoutContext(
+  layout?: ParentLayout
+): "flex" | "grid" | "block" | "positioned" {
+  if (!layout) {
+    return "block";
+  }
   const pos = layout.elementPosition;
-  if (pos === "absolute" || pos === "fixed") return "positioned";
-  const display = layout.display;
-  if (display === "flex" || display === "inline-flex") return "flex";
-  if (display === "grid" || display === "inline-grid") return "grid";
+  if (pos === "absolute" || pos === "fixed") {
+    return "positioned";
+  }
+  const { display } = layout;
+  if (display === "flex" || display === "inline-flex") {
+    return "flex";
+  }
+  if (display === "grid" || display === "inline-grid") {
+    return "grid";
+  }
   return "block";
 }
 
 export function addPendingPropertyOperation(
   mergeKey: string,
   operation: Extract<BatchOperation, { op: "updateClass" }>,
-  propertyKeys: string[],
+  propertyKeys: string[]
 ): void {
-  const existing = pendingPropertyOps.find((entry) => entry.mergeKey === mergeKey);
+  const existing = pendingPropertyOps.find(
+    (entry) => entry.mergeKey === mergeKey
+  );
   if (!existing) {
     pendingPropertyOps.push({
       mergeKey,
@@ -532,13 +700,14 @@ export function addPendingPropertyOperation(
   const mergedUpdates = [...existing.operation.updates];
   const mergedPropertyKeys = [...existing.propertyKeys];
   for (const [index, update] of operation.updates.entries()) {
-    const propertyKey = propertyKeys[index] ?? `${update.tailwindPrefix}:${index}`;
+    const propertyKey =
+      propertyKeys[index] ?? `${update.tailwindPrefix}:${index}`;
     const existingIndex = mergedPropertyKeys.indexOf(propertyKey);
-    if (existingIndex >= 0) {
-      mergedUpdates[existingIndex] = update;
-    } else {
+    if (existingIndex === -1) {
       mergedUpdates.push(update);
       mergedPropertyKeys.push(propertyKey);
+    } else {
+      mergedUpdates[existingIndex] = update;
     }
   }
 
@@ -551,42 +720,190 @@ export function addPendingPropertyOperation(
   notifyStateChange();
 }
 
-function removePendingPropertyOperation(mergeKey: string, propertyKeys: string[]): void {
-  const index = pendingPropertyOps.findIndex((entry) => entry.mergeKey === mergeKey);
-  if (index < 0) return;
-
-  const entry = pendingPropertyOps[index];
-  const keptUpdates: typeof entry.operation.updates = [];
-  const keptPropertyKeys: string[] = [];
-  for (const [updateIndex, existingPropertyKey] of entry.propertyKeys.entries()) {
-    if (propertyKeys.includes(existingPropertyKey)) continue;
-    keptUpdates.push(entry.operation.updates[updateIndex]);
-    keptPropertyKeys.push(existingPropertyKey);
-  }
-
-  if (keptUpdates.length === 0) {
-    pendingPropertyOps.splice(index, 1);
-  } else {
-    entry.operation = {
-      ...entry.operation,
-      updates: keptUpdates,
-    };
-    entry.propertyKeys = keptPropertyKeys;
-  }
-  notifyStateChange();
-}
-
 export function addPendingReorderOperation(
   mergeKey: string,
-  operation: Extract<BatchOperation, { op: "reorder" }>,
+  operation: Extract<BatchOperation, { op: "reorder" }>
 ): void {
-  const existing = pendingReorderOps.find((entry) => entry.mergeKey === mergeKey);
+  const existing = pendingReorderOps.find(
+    (entry) => entry.mergeKey === mergeKey
+  );
   if (existing) {
     existing.operation = operation;
   } else {
     pendingReorderOps.push({ mergeKey, operation });
   }
   notifyStateChange();
+}
+
+/** Color changes → updateClass */
+function buildColorChangeOp(colorAnn: ColorOverride): BatchOperation {
+  const prefix = colorAnn.property === "backgroundColor" ? "bg" : "text";
+  return {
+    op: "updateClass",
+    file: colorAnn.component.filePath,
+    line: colorAnn.component.lineNumber,
+    col: colorAnn.columnNumber ?? 0,
+    componentName: colorAnn.component.componentName,
+    updates: [
+      {
+        tailwindPrefix: prefix,
+        tailwindToken: colorAnn.pickedToken ?? null,
+        value: colorAnn.toColor,
+      },
+    ],
+  };
+}
+
+/** Text edits → updateText (returns null when the annotation has no file path) */
+function buildTextEditOp(textAnn: TextEditAnnotation): BatchOperation | null {
+  console.log("[ThemeLab:buildBatch] textEdit annotation:", {
+    filePath: textAnn.filePath,
+    line: textAnn.lineNumber,
+    col: textAnn.columnNumber,
+    originalText: textAnn.originalText?.slice(0, 40),
+    newText: textAnn.newText?.slice(0, 40),
+  });
+  if (!textAnn.filePath) {
+    return null;
+  }
+  const hints = textEditDomHints.get(textAnn.id);
+  return {
+    op: "updateText",
+    file: textAnn.filePath,
+    line: textAnn.lineNumber,
+    col: textAnn.columnNumber,
+    componentName: textAnn.componentName,
+    tagName: hints?.tagName,
+    className: hints?.className,
+    parentTagName: hints?.parentTagName,
+    parentClassName: hints?.parentClassName,
+    nthOfType: hints?.nthOfType,
+    id: hints?.elementId,
+    jsxKey: hints?.jsxKey,
+    jsxPath: hints?.jsxPath,
+    fileMtime: hints?.fileMtime,
+    fileSize: hints?.fileSize,
+    originalText: textAnn.originalText,
+    newText: textAnn.newText,
+    cursorOffset: textAnn.cursorOffset,
+    textAnchor: textAnn.textAnchor,
+  };
+}
+
+/** Moves → moveSpacing (one op per axis with a >= 1px delta) */
+function buildMoveOps(entry: MoveEntry): BatchOperation[] {
+  const file = entry.identity.filePath || entry.componentRef.filePath;
+  if (!file) {
+    return [];
+  }
+
+  const line = entry.identity.lineNumber;
+  const col = entry.identity.columnNumber;
+  const layout = deriveLayoutContext(entry.parentLayout);
+  const tagName = entry.element.tagName.toLowerCase();
+  const className = entry.element.className || undefined;
+  const parentEl = entry.element.parentElement;
+  const parentTagName = parentEl?.tagName.toLowerCase();
+  const parentClassName = parentEl?.className || undefined;
+  const elId = entry.element.id || undefined;
+
+  const baseIdentity = {
+    componentName: entry.componentRef.componentName,
+    tagName,
+    className,
+    parentTagName,
+    parentClassName,
+    nthOfType: entry.nthOfType,
+    id: elId,
+    jsxKey: entry.jsxKey,
+    fileMtime: entry.fileMtime,
+    fileSize: entry.fileSize,
+    jsxPath: entry.identity?.jsxPath,
+  };
+
+  const ops: BatchOperation[] = [];
+
+  if (Math.abs(entry.delta.dx) >= 1) {
+    ops.push({
+      op: "moveSpacing",
+      file,
+      line,
+      col,
+      ...baseIdentity,
+      axis: "x",
+      token: snapToSpacingToken(entry.delta.dx),
+      direction: entry.delta.dx > 0 ? "positive" : "negative",
+      pxDelta: Math.round(entry.delta.dx),
+      layoutContext: layout,
+    });
+  }
+
+  if (Math.abs(entry.delta.dy) >= 1) {
+    ops.push({
+      op: "moveSpacing",
+      file,
+      line,
+      col,
+      ...baseIdentity,
+      axis: "y",
+      token: snapToSpacingToken(entry.delta.dy),
+      direction: entry.delta.dy > 0 ? "positive" : "negative",
+      pxDelta: Math.round(entry.delta.dy),
+      layoutContext: layout,
+    });
+  }
+
+  return ops;
+}
+
+/** Clones → duplicateElement (returns null when the source has no file path) */
+function buildCloneOp(entry: CloneEntry): BatchOperation | null {
+  const file = entry.sourceLocation.filePath;
+  if (!file) {
+    return null;
+  }
+  return {
+    op: "duplicateElement",
+    file,
+    line: entry.sourceLocation.lineNumber,
+    col: entry.sourceLocation.columnNumber,
+    componentName: entry.sourceLocation.componentName,
+    tagName: entry.domHints.tagName,
+    className: entry.domHints.className,
+    parentTagName: entry.domHints.parentTagName,
+    parentClassName: entry.domHints.parentClassName,
+    nthOfType: entry.domHints.nthOfType,
+    id: entry.domHints.elementId,
+    jsxKey: entry.domHints.jsxKey,
+    fileMtime: entry.fileMtime,
+    fileSize: entry.fileSize,
+    jsxPath: entry.domHints.jsxPath,
+  };
+}
+
+/** Deletes → deleteElement (returns null when the source has no file path) */
+function buildDeleteOp(entry: DeleteEntry): BatchOperation | null {
+  const file = entry.sourceLocation.filePath;
+  if (!file) {
+    return null;
+  }
+  return {
+    op: "deleteElement",
+    file,
+    line: entry.sourceLocation.lineNumber,
+    col: entry.sourceLocation.columnNumber,
+    componentName: entry.sourceLocation.componentName,
+    tagName: entry.domHints.tagName,
+    className: entry.domHints.className,
+    parentTagName: entry.domHints.parentTagName,
+    parentClassName: entry.domHints.parentClassName,
+    nthOfType: entry.domHints.nthOfType,
+    id: entry.domHints.elementId,
+    jsxKey: entry.domHints.jsxKey,
+    fileMtime: entry.fileMtime,
+    fileSize: entry.fileSize,
+    jsxPath: entry.domHints.jsxPath,
+  };
 }
 
 /**
@@ -604,161 +921,36 @@ export function buildBatchOperations(): BatchOperation[] {
     });
   }
 
-  // Color changes → updateClass
   for (const ann of annotations) {
     if (ann.type === "colorChange") {
-      const colorAnn = ann as ColorOverride;
-      const prefix = colorAnn.property === "backgroundColor" ? "bg" : "text";
-      ops.push({
-        op: "updateClass",
-        file: colorAnn.component.filePath,
-        line: colorAnn.component.lineNumber,
-        col: colorAnn.columnNumber ?? 0,
-        componentName: colorAnn.component.componentName,
-        updates: [{
-          tailwindPrefix: prefix,
-          tailwindToken: colorAnn.pickedToken ?? null,
-          value: colorAnn.toColor,
-        }],
-      });
+      ops.push(buildColorChangeOp(ann as ColorOverride));
     }
 
-    // Text edits → updateText
     if (ann.type === "textEdit") {
-      const textAnn = ann as TextEditAnnotation;
-      console.log("[ThemeLab:buildBatch] textEdit annotation:", { filePath: textAnn.filePath, line: textAnn.lineNumber, col: textAnn.columnNumber, originalText: textAnn.originalText?.slice(0, 40), newText: textAnn.newText?.slice(0, 40) });
-      if (textAnn.filePath) {
-        const hints = textEditDomHints.get(textAnn.id);
-        ops.push({
-          op: "updateText",
-          file: textAnn.filePath,
-          line: textAnn.lineNumber,
-          col: textAnn.columnNumber,
-          componentName: textAnn.componentName,
-          tagName: hints?.tagName,
-          className: hints?.className,
-          parentTagName: hints?.parentTagName,
-          parentClassName: hints?.parentClassName,
-          nthOfType: hints?.nthOfType,
-          id: hints?.elementId,
-          jsxKey: hints?.jsxKey,
-          jsxPath: hints?.jsxPath,
-          fileMtime: hints?.fileMtime,
-          fileSize: hints?.fileSize,
-          originalText: textAnn.originalText,
-          newText: textAnn.newText,
-          cursorOffset: textAnn.cursorOffset,
-          textAnchor: textAnn.textAnchor,
-        });
+      const op = buildTextEditOp(ann as TextEditAnnotation);
+      if (op) {
+        ops.push(op);
       }
     }
   }
 
-  // Moves → moveSpacing
   // Send full identity for deterministic AST resolution
   for (const entry of moves.values()) {
-    const file = entry.identity.filePath || entry.componentRef.filePath;
-    if (!file) continue;
-
-    const line = entry.identity.lineNumber;
-    const col = entry.identity.columnNumber;
-    const layout = deriveLayoutContext(entry.parentLayout);
-    const tagName = entry.element.tagName.toLowerCase();
-    const className = entry.element.className || undefined;
-    const parentEl = entry.element.parentElement;
-    const parentTagName = parentEl?.tagName.toLowerCase();
-    const parentClassName = parentEl?.className || undefined;
-    const elId = entry.element.id || undefined;
-
-    const baseIdentity = {
-      componentName: entry.componentRef.componentName,
-      tagName,
-      className,
-      parentTagName,
-      parentClassName,
-      nthOfType: entry.nthOfType,
-      id: elId,
-      jsxKey: entry.jsxKey,
-      fileMtime: entry.fileMtime,
-      fileSize: entry.fileSize,
-      jsxPath: entry.identity?.jsxPath,
-    };
-
-    if (Math.abs(entry.delta.dx) >= 1) {
-      ops.push({
-        op: "moveSpacing",
-        file,
-        line,
-        col,
-        ...baseIdentity,
-        axis: "x",
-        token: snapToSpacingToken(entry.delta.dx),
-        direction: entry.delta.dx > 0 ? "positive" : "negative",
-        pxDelta: Math.round(entry.delta.dx),
-        layoutContext: layout,
-      });
-    }
-
-    if (Math.abs(entry.delta.dy) >= 1) {
-      ops.push({
-        op: "moveSpacing",
-        file,
-        line,
-        col,
-        ...baseIdentity,
-        axis: "y",
-        token: snapToSpacingToken(entry.delta.dy),
-        direction: entry.delta.dy > 0 ? "positive" : "negative",
-        pxDelta: Math.round(entry.delta.dy),
-        layoutContext: layout,
-      });
-    }
+    ops.push(...buildMoveOps(entry));
   }
 
-  // Clones → duplicateElement
   for (const entry of clones.values()) {
-    const file = entry.sourceLocation.filePath;
-    if (!file) continue;
-    ops.push({
-      op: "duplicateElement",
-      file,
-      line: entry.sourceLocation.lineNumber,
-      col: entry.sourceLocation.columnNumber,
-      componentName: entry.sourceLocation.componentName,
-      tagName: entry.domHints.tagName,
-      className: entry.domHints.className,
-      parentTagName: entry.domHints.parentTagName,
-      parentClassName: entry.domHints.parentClassName,
-      nthOfType: entry.domHints.nthOfType,
-      id: entry.domHints.elementId,
-      jsxKey: entry.domHints.jsxKey,
-      fileMtime: entry.fileMtime,
-      fileSize: entry.fileSize,
-      jsxPath: entry.domHints.jsxPath,
-    });
+    const op = buildCloneOp(entry);
+    if (op) {
+      ops.push(op);
+    }
   }
 
-  // Deletes → deleteElement
   for (const entry of deletes.values()) {
-    const file = entry.sourceLocation.filePath;
-    if (!file) continue;
-    ops.push({
-      op: "deleteElement",
-      file,
-      line: entry.sourceLocation.lineNumber,
-      col: entry.sourceLocation.columnNumber,
-      componentName: entry.sourceLocation.componentName,
-      tagName: entry.domHints.tagName,
-      className: entry.domHints.className,
-      parentTagName: entry.domHints.parentTagName,
-      parentClassName: entry.domHints.parentClassName,
-      nthOfType: entry.domHints.nthOfType,
-      id: entry.domHints.elementId,
-      jsxKey: entry.domHints.jsxKey,
-      fileMtime: entry.fileMtime,
-      fileSize: entry.fileSize,
-      jsxPath: entry.domHints.jsxPath,
-    });
+    const op = buildDeleteOp(entry);
+    if (op) {
+      ops.push(op);
+    }
   }
 
   for (const entry of pendingReorderOps) {

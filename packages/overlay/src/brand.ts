@@ -26,7 +26,7 @@ export const BRAND_LOGO_SVG = `<svg viewBox="0 0 263 30" fill="currentColor" xml
  *  the viewBox aspect ratio. Color inherits unless overridden. */
 export function brandMark(
   heightPx: number,
-  opts?: { color?: string; opacity?: number },
+  opts?: { color?: string; opacity?: number }
 ): HTMLSpanElement {
   const span = document.createElement("span");
   span.className = "rr-brand-mark";
@@ -65,7 +65,7 @@ export function mountBrandBadge(shadowRoot: ShadowRoot): void {
     svg.style.width = "auto";
     svg.style.display = "block";
   }
-  shadowRoot.appendChild(badgeEl);
+  shadowRoot.append(badgeEl);
 }
 
 export function destroyBrandBadge(): void {

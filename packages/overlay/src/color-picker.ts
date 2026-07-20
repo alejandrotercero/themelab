@@ -1,29 +1,87 @@
 // packages/overlay/src/color-picker.ts
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
+import {
+  COLORS,
+  SHADOWS,
+  RADII,
+  TRANSITIONS,
+  FONT_FAMILY,
+} from "./design-tokens.js";
 import { getShadowRoot } from "./toolbar.js";
 import { hexToHsv, hsvToHex } from "./utils/color-math.js";
 
-type ColorPickerOptions = {
+interface ColorPickerOptions {
   initialColor: string;
   position: { x: number; y: number };
   showPropertyToggle: boolean;
-  projectColors?: Array<{ token: string; hex: string }>;
+  projectColors?: { token: string; hex: string }[];
   onColorChange: (color: string) => void;
   onPickedToken?: (token: string | undefined) => void;
   onPropertyChange?: (property: "backgroundColor" | "color") => void;
   onClose: () => void;
-};
+}
 
 const pickerCleanup = new WeakMap<HTMLElement, () => void>();
 const pickerOnClose = new WeakMap<HTMLElement, () => void>();
 
 let activePickerEl: HTMLDivElement | null = null;
 
+export function closeColorPicker(): void {
+  if (activePickerEl) {
+    pickerCleanup.get(activePickerEl)?.();
+    pickerOnClose.get(activePickerEl)?.();
+    activePickerEl.remove();
+    activePickerEl = null;
+  }
+}
+
+// --- Helpers ---
+
+function createSegmentedToggle(
+  labels: string[],
+  activeIdx: number,
+  onChange: (idx: number) => void
+): HTMLDivElement {
+  const track = document.createElement("div");
+  track.style.cssText = `
+    display: flex;
+    background: ${COLORS.bgSecondary};
+    border-radius: 6px;
+    padding: 2px;
+    width: 100%;
+  `;
+  const segments: HTMLButtonElement[] = [];
+  for (let i = 0; i < labels.length; i += 1) {
+    const seg = document.createElement("button");
+    seg.textContent = labels[i];
+    seg.style.cssText = `
+      flex: 1; height: 28px; border: none; border-radius: 4px;
+      background: ${i === activeIdx ? COLORS.bgPrimary : "transparent"};
+      box-shadow: ${i === activeIdx ? SHADOWS.sm : "none"};
+      color: ${i === activeIdx ? COLORS.textPrimary : COLORS.textSecondary};
+      font-family: ${FONT_FAMILY}; font-size: 12px; cursor: pointer;
+      transition: background ${TRANSITIONS.fast}, color ${TRANSITIONS.fast};
+    `;
+    seg.addEventListener("click", () => {
+      for (const [j, s] of segments.entries()) {
+        s.style.background = j === i ? COLORS.bgPrimary : "transparent";
+        s.style.boxShadow = j === i ? SHADOWS.sm : "none";
+        s.style.color = j === i ? COLORS.textPrimary : COLORS.textSecondary;
+      }
+      onChange(i);
+    });
+    segments.push(seg);
+    track.append(seg);
+  }
+  return track;
+}
+
 export function openColorPicker(opts: ColorPickerOptions): void {
   closeColorPicker();
 
   const shadowRoot = getShadowRoot();
-  if (!shadowRoot) return;
+  if (!shadowRoot) {
+    return;
+  }
 
   const container = document.createElement("div");
   container.style.cssText = `
@@ -60,13 +118,37 @@ export function openColorPicker(opts: ColorPickerOptions): void {
   let currentHsv = hexToHsv(opts.initialColor);
   let selectedProperty: "backgroundColor" | "color" = "backgroundColor";
 
+  // --- Hex input (element created early: emitColor below writes into it) ---
+  const hexInput = document.createElement("input");
+  hexInput.type = "text";
+  hexInput.value = hsvToHex(currentHsv);
+  hexInput.style.cssText = `
+    width: 100%; box-sizing: border-box;
+    background: ${COLORS.bgSecondary};
+    border: 1px solid ${COLORS.border};
+    border-radius: ${RADII.sm};
+    color: ${COLORS.textPrimary};
+    font-family: monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+    outline: none;
+  `;
+
+  function emitColor() {
+    const hex = hsvToHex(currentHsv);
+    hexInput.value = hex;
+    opts.onColorChange(hex);
+    // oxlint-disable-next-line unicorn/no-useless-undefined -- onPickedToken's param is required (string | undefined), not optional; omitting the arg fails typecheck
+    opts.onPickedToken?.(undefined); // clear — user changed color via area/hue/input, not swatch
+  }
+
   // --- Property toggle (Fill / Text) ---
   if (opts.showPropertyToggle) {
     const toggle = createSegmentedToggle(["Fill", "Text"], 0, (idx) => {
       selectedProperty = idx === 0 ? "backgroundColor" : "color";
       opts.onPropertyChange?.(selectedProperty);
     });
-    container.appendChild(toggle);
+    container.append(toggle);
   }
 
   // --- Color area (saturation/brightness) ---
@@ -74,7 +156,15 @@ export function openColorPicker(opts: ColorPickerOptions): void {
   colorArea.width = 176;
   colorArea.height = 150;
   colorArea.style.cssText = `width:176px;height:150px;border-radius:${RADII.sm};cursor:crosshair;display:block;`;
-  const colorCtx = colorArea.getContext("2d")!;
+  const colorCtx2d = colorArea.getContext("2d");
+  if (!colorCtx2d) {
+    throw new Error("2D canvas context unavailable");
+  }
+  // Re-bind to a variable with a non-nullable static type: the null-check above
+  // only narrows `colorCtx2d` within this scope, not inside functions declared
+  // below (TS can't prove they run after the check), so nested closures need a
+  // reference whose type is already non-null.
+  const colorCtx: CanvasRenderingContext2D = colorCtx2d;
 
   const colorPicker = document.createElement("div");
   colorPicker.style.cssText = `
@@ -86,10 +176,11 @@ export function openColorPicker(opts: ColorPickerOptions): void {
   `;
 
   const colorAreaWrapper = document.createElement("div");
-  colorAreaWrapper.style.cssText = "position:relative;width:176px;height:150px;";
-  colorAreaWrapper.appendChild(colorArea);
-  colorAreaWrapper.appendChild(colorPicker);
-  container.appendChild(colorAreaWrapper);
+  colorAreaWrapper.style.cssText =
+    "position:relative;width:176px;height:150px;";
+  colorAreaWrapper.append(colorArea);
+  colorAreaWrapper.append(colorPicker);
+  container.append(colorAreaWrapper);
 
   function drawColorArea() {
     const hue = currentHsv.h;
@@ -110,12 +201,6 @@ export function openColorPicker(opts: ColorPickerOptions): void {
     colorPicker.style.top = `${py}px`;
   }
 
-  let draggingArea = false;
-  colorArea.addEventListener("mousedown", (e) => {
-    draggingArea = true;
-    updateAreaFromMouse(e);
-  });
-
   function updateAreaFromMouse(e: MouseEvent) {
     const rect = colorArea.getBoundingClientRect();
     const x = Math.max(0, Math.min(176, e.clientX - rect.left));
@@ -126,12 +211,23 @@ export function openColorPicker(opts: ColorPickerOptions): void {
     emitColor();
   }
 
+  let draggingArea = false;
+  colorArea.addEventListener("mousedown", (e) => {
+    draggingArea = true;
+    updateAreaFromMouse(e);
+  });
+
   // --- Hue strip ---
   const hueStrip = document.createElement("canvas");
   hueStrip.width = 176;
   hueStrip.height = 12;
-  hueStrip.style.cssText = "width:176px;height:12px;border-radius:999px;cursor:crosshair;display:block;";
-  const hueCtx = hueStrip.getContext("2d")!;
+  hueStrip.style.cssText =
+    "width:176px;height:12px;border-radius:999px;cursor:crosshair;display:block;";
+  const hueCtx2d = hueStrip.getContext("2d");
+  if (!hueCtx2d) {
+    throw new Error("2D canvas context unavailable");
+  }
+  const hueCtx: CanvasRenderingContext2D = hueCtx2d;
 
   const huePickerEl = document.createElement("div");
   huePickerEl.style.cssText = `
@@ -144,25 +240,19 @@ export function openColorPicker(opts: ColorPickerOptions): void {
 
   const hueWrapper = document.createElement("div");
   hueWrapper.style.cssText = "position:relative;width:176px;height:12px;";
-  hueWrapper.appendChild(hueStrip);
-  hueWrapper.appendChild(huePickerEl);
-  container.appendChild(hueWrapper);
+  hueWrapper.append(hueStrip);
+  hueWrapper.append(huePickerEl);
+  container.append(hueWrapper);
 
   function drawHueStrip() {
     const grad = hueCtx.createLinearGradient(0, 0, 176, 0);
-    for (let i = 0; i <= 6; i++) {
+    for (let i = 0; i <= 6; i += 1) {
       grad.addColorStop(i / 6, `hsl(${i * 60}, 100%, 50%)`);
     }
     hueCtx.fillStyle = grad;
     hueCtx.fillRect(0, 0, 176, 12);
     huePickerEl.style.left = `${(currentHsv.h / 360) * 176}px`;
   }
-
-  let draggingHue = false;
-  hueStrip.addEventListener("mousedown", (e) => {
-    draggingHue = true;
-    updateHueFromMouse(e);
-  });
 
   function updateHueFromMouse(e: MouseEvent) {
     const rect = hueStrip.getBoundingClientRect();
@@ -173,23 +263,17 @@ export function openColorPicker(opts: ColorPickerOptions): void {
     emitColor();
   }
 
-  // --- Hex input ---
-  const hexInput = document.createElement("input");
-  hexInput.type = "text";
-  hexInput.value = hsvToHex(currentHsv);
-  hexInput.style.cssText = `
-    width: 100%; box-sizing: border-box;
-    background: ${COLORS.bgSecondary};
-    border: 1px solid ${COLORS.border};
-    border-radius: ${RADII.sm};
-    color: ${COLORS.textPrimary};
-    font-family: monospace;
-    font-size: 12px;
-    padding: 6px 8px;
-    outline: none;
-  `;
+  let draggingHue = false;
+  hueStrip.addEventListener("mousedown", (e) => {
+    draggingHue = true;
+    updateHueFromMouse(e);
+  });
+
+  // --- Hex input event wiring ---
   hexInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") hexInput.blur();
+    if (e.key === "Enter") {
+      hexInput.blur();
+    }
     e.stopPropagation();
   });
   hexInput.addEventListener("blur", () => {
@@ -204,10 +288,34 @@ export function openColorPicker(opts: ColorPickerOptions): void {
       hexInput.value = hsvToHex(currentHsv);
     }
   });
-  container.appendChild(hexInput);
+  container.append(hexInput);
+
+  // Selecting a swatch (preset or project color): update state and emit. Defined
+  // once outside the swatch loops below so the click handlers don't create a new
+  // closure over the mutable `currentHsv` binding on every loop iteration.
+  function selectColor(hex: string, token?: string) {
+    currentHsv = hexToHsv(hex);
+    drawColorArea();
+    drawHueStrip();
+    hexInput.value = hex;
+    emitColor();
+    // Set pickedToken AFTER emitColor (which clears it) — this preserves the token
+    if (token !== undefined) {
+      opts.onPickedToken?.(token);
+    }
+  }
 
   // --- Preset swatches ---
-  const presets = ["#000000", "#ffffff", "#e5484d", "#f76b15", "#f5d90a", "#30a46c", "#0091ff", "#a259ff"];
+  const presets = [
+    "#000000",
+    "#ffffff",
+    "#e5484d",
+    "#f76b15",
+    "#f5d90a",
+    "#30a46c",
+    "#0091ff",
+    "#a259ff",
+  ];
   const swatchRow = document.createElement("div");
   swatchRow.style.cssText = "display:flex;gap:4px;justify-content:center;";
   for (const color of presets) {
@@ -219,18 +327,16 @@ export function openColorPicker(opts: ColorPickerOptions): void {
       cursor: pointer; padding: 0;
       transition: box-shadow ${TRANSITIONS.fast};
     `;
-    swatch.addEventListener("mouseenter", () => { swatch.style.boxShadow = SHADOWS.sm; });
-    swatch.addEventListener("mouseleave", () => { swatch.style.boxShadow = "none"; });
-    swatch.addEventListener("click", () => {
-      currentHsv = hexToHsv(color);
-      drawColorArea();
-      drawHueStrip();
-      hexInput.value = color;
-      emitColor();
+    swatch.addEventListener("mouseenter", () => {
+      swatch.style.boxShadow = SHADOWS.sm;
     });
-    swatchRow.appendChild(swatch);
+    swatch.addEventListener("mouseleave", () => {
+      swatch.style.boxShadow = "none";
+    });
+    swatch.addEventListener("click", () => selectColor(color));
+    swatchRow.append(swatch);
   }
-  container.appendChild(swatchRow);
+  container.append(swatchRow);
 
   // --- Project color swatches ---
   if (opts.projectColors && opts.projectColors.length > 0) {
@@ -242,10 +348,11 @@ export function openColorPicker(opts: ColorPickerOptions): void {
       font-family: ${FONT_FAMILY};
       margin-top: 2px;
     `;
-    container.appendChild(projectLabel);
+    container.append(projectLabel);
 
     const projectRow = document.createElement("div");
-    projectRow.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;max-height:48px;overflow-y:auto;";
+    projectRow.style.cssText =
+      "display:flex;gap:4px;flex-wrap:wrap;max-height:48px;overflow-y:auto;";
 
     for (const { token, hex } of opts.projectColors) {
       const swatch = document.createElement("button");
@@ -257,30 +364,19 @@ export function openColorPicker(opts: ColorPickerOptions): void {
         cursor: pointer; padding: 0;
         transition: box-shadow ${TRANSITIONS.fast};
       `;
-      swatch.addEventListener("mouseenter", () => { swatch.style.boxShadow = SHADOWS.sm; });
-      swatch.addEventListener("mouseleave", () => { swatch.style.boxShadow = "none"; });
-      swatch.addEventListener("click", () => {
-        currentHsv = hexToHsv(hex);
-        drawColorArea();
-        drawHueStrip();
-        hexInput.value = hex;
-        emitColor();
-        // Set pickedToken AFTER emitColor (which clears it) — this preserves the token
-        opts.onPickedToken?.(token);
+      swatch.addEventListener("mouseenter", () => {
+        swatch.style.boxShadow = SHADOWS.sm;
       });
-      projectRow.appendChild(swatch);
+      swatch.addEventListener("mouseleave", () => {
+        swatch.style.boxShadow = "none";
+      });
+      swatch.addEventListener("click", () => selectColor(hex, token));
+      projectRow.append(swatch);
     }
-    container.appendChild(projectRow);
+    container.append(projectRow);
   }
 
-  function emitColor() {
-    const hex = hsvToHex(currentHsv);
-    hexInput.value = hex;
-    opts.onColorChange(hex);
-    opts.onPickedToken?.(undefined);  // clear — user changed color via area/hue/input, not swatch
-  }
-
-  shadowRoot.appendChild(container);
+  shadowRoot.append(container);
   activePickerEl = container;
 
   // Draw initial state
@@ -289,15 +385,26 @@ export function openColorPicker(opts: ColorPickerOptions): void {
 
   // Drag event listeners (must be cleaned up)
   const onDocMouseMove = (e: MouseEvent) => {
-    if (draggingArea) updateAreaFromMouse(e);
-    if (draggingHue) updateHueFromMouse(e);
+    if (draggingArea) {
+      updateAreaFromMouse(e);
+    }
+    if (draggingHue) {
+      updateHueFromMouse(e);
+    }
   };
-  const onDocMouseUp = () => { draggingArea = false; draggingHue = false; };
+  const onDocMouseUp = () => {
+    draggingArea = false;
+    draggingHue = false;
+  };
   document.addEventListener("mousemove", onDocMouseMove);
   document.addEventListener("mouseup", onDocMouseUp);
 
   // Dismiss handlers
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeColorPicker(); };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      closeColorPicker();
+    }
+  };
   document.addEventListener("keydown", onKey, true);
 
   const onClickOutside = (e: MouseEvent) => {
@@ -307,7 +414,10 @@ export function openColorPicker(opts: ColorPickerOptions): void {
       closeColorPicker();
     }
   };
-  setTimeout(() => document.addEventListener("mousedown", onClickOutside, true), 0);
+  setTimeout(
+    () => document.addEventListener("mousedown", onClickOutside, true),
+    0
+  );
 
   // Store cleanup and onClose callback
   pickerCleanup.set(container, () => {
@@ -317,50 +427,4 @@ export function openColorPicker(opts: ColorPickerOptions): void {
     document.removeEventListener("mousedown", onClickOutside, true);
   });
   pickerOnClose.set(container, opts.onClose);
-}
-
-export function closeColorPicker(): void {
-  if (activePickerEl) {
-    pickerCleanup.get(activePickerEl)?.();
-    pickerOnClose.get(activePickerEl)?.();
-    activePickerEl.remove();
-    activePickerEl = null;
-  }
-}
-
-// --- Helpers ---
-
-function createSegmentedToggle(labels: string[], activeIdx: number, onChange: (idx: number) => void): HTMLDivElement {
-  const track = document.createElement("div");
-  track.style.cssText = `
-    display: flex;
-    background: ${COLORS.bgSecondary};
-    border-radius: 6px;
-    padding: 2px;
-    width: 100%;
-  `;
-  const segments: HTMLButtonElement[] = [];
-  for (let i = 0; i < labels.length; i++) {
-    const seg = document.createElement("button");
-    seg.textContent = labels[i];
-    seg.style.cssText = `
-      flex: 1; height: 28px; border: none; border-radius: 4px;
-      background: ${i === activeIdx ? COLORS.bgPrimary : "transparent"};
-      box-shadow: ${i === activeIdx ? SHADOWS.sm : "none"};
-      color: ${i === activeIdx ? COLORS.textPrimary : COLORS.textSecondary};
-      font-family: ${FONT_FAMILY}; font-size: 12px; cursor: pointer;
-      transition: background ${TRANSITIONS.fast}, color ${TRANSITIONS.fast};
-    `;
-    seg.addEventListener("click", () => {
-      segments.forEach((s, j) => {
-        s.style.background = j === i ? COLORS.bgPrimary : "transparent";
-        s.style.boxShadow = j === i ? SHADOWS.sm : "none";
-        s.style.color = j === i ? COLORS.textPrimary : COLORS.textSecondary;
-      });
-      onChange(i);
-    });
-    segments.push(seg);
-    track.appendChild(seg);
-  }
-  return track;
 }

@@ -28,11 +28,13 @@ const SVG_ROOT_SELECTOR = "svg";
 let styleElement: HTMLStyleElement | null = null;
 
 const ensureStylesInjected = (): void => {
-  if (styleElement && styleElement.isConnected) return;
+  if (styleElement && styleElement.isConnected) {
+    return;
+  }
   styleElement = document.createElement("style");
-  styleElement.setAttribute("data-themelab-frozen-styles", "");
+  styleElement.dataset.themelabFrozenStyles = "";
   styleElement.textContent = FROZEN_STYLES;
-  document.head.appendChild(styleElement);
+  document.head.append(styleElement);
 };
 
 const collectSvgRoots = (elements: Element[]): SVGSVGElement[] => {
@@ -44,7 +46,9 @@ const collectSvgRoots = (elements: Element[]): SVGSVGElement[] => {
       svgElements.add(element.ownerSVGElement);
     }
     for (const innerSvg of element.querySelectorAll(SVG_ROOT_SELECTOR)) {
-      if (innerSvg instanceof SVGSVGElement) svgElements.add(innerSvg);
+      if (innerSvg instanceof SVGSVGElement) {
+        svgElements.add(innerSvg);
+      }
     }
   }
   return [...svgElements];
@@ -52,10 +56,12 @@ const collectSvgRoots = (elements: Element[]): SVGSVGElement[] => {
 
 const callSvgAnimationMethod = (
   svgElement: SVGSVGElement,
-  methodName: "pauseAnimations" | "unpauseAnimations",
+  methodName: "pauseAnimations" | "unpauseAnimations"
 ): void => {
   const animationMethod = Reflect.get(svgElement, methodName);
-  if (typeof animationMethod !== "function") return;
+  if (typeof animationMethod !== "function") {
+    return;
+  }
   try {
     animationMethod.call(svgElement);
   } catch {
@@ -67,7 +73,9 @@ const collectRunningWaapiAnimations = (elements: Element[]): Animation[] => {
   const animations: Animation[] = [];
   for (const element of elements) {
     for (const animation of element.getAnimations({ subtree: true })) {
-      if (animation.playState === "running") animations.push(animation);
+      if (animation.playState === "running") {
+        animations.push(animation);
+      }
     }
   }
   return animations;
@@ -97,7 +105,11 @@ const finishAnimations = (animations: Iterable<Animation>): void => {
  * responsibility: release the previous freeze before starting a new one.
  */
 export function freezeAnimations(elements: Element[]): () => void {
-  if (elements.length === 0) return () => {};
+  if (elements.length === 0) {
+    return () => {
+      /* empty */
+    };
+  }
 
   ensureStylesInjected();
 
@@ -106,7 +118,9 @@ export function freezeAnimations(elements: Element[]): () => void {
   }
 
   const svgRoots = collectSvgRoots(elements);
-  for (const svg of svgRoots) callSvgAnimationMethod(svg, "pauseAnimations");
+  for (const svg of svgRoots) {
+    callSvgAnimationMethod(svg, "pauseAnimations");
+  }
 
   const waapiAnimations = collectRunningWaapiAnimations(elements);
   for (const animation of waapiAnimations) {
@@ -119,13 +133,17 @@ export function freezeAnimations(elements: Element[]): () => void {
 
   let released = false;
   return () => {
-    if (released) return;
+    if (released) {
+      return;
+    }
     released = true;
 
     for (const element of elements) {
       element.removeAttribute(FROZEN_ELEMENT_ATTRIBUTE);
     }
-    for (const svg of svgRoots) callSvgAnimationMethod(svg, "unpauseAnimations");
+    for (const svg of svgRoots) {
+      callSvgAnimationMethod(svg, "unpauseAnimations");
+    }
     finishAnimations(waapiAnimations);
   };
 }

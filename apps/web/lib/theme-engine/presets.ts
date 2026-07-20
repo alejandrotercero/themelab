@@ -2,9 +2,9 @@
 // the same parse path as a dropped file. apollo / ablaze / aeriform come from
 // the 100r.md analysis; marble is a light-native theme to demo the light path.
 
-import type { HrSlot } from "./types";
+import type { HrSlot } from "./types"
 
-type SlotMap = Record<HrSlot, string>;
+type SlotMap = Record<HrSlot, string>
 
 function toSvg(author: string, s: SlotMap): string {
   return `<svg width='96px' height='64px' xmlns='http://www.w3.org/2000/svg' baseProfile='full' version='1.1'>
@@ -18,15 +18,15 @@ function toSvg(author: string, s: SlotMap): string {
   <circle cx='40' cy='40' r='8' id='b_med'  fill='${s.b_med}'></circle>
   <circle cx='56' cy='40' r='8' id='b_low'  fill='${s.b_low}'></circle>
   <circle cx='72' cy='40' r='8' id='b_inv'  fill='${s.b_inv}'></circle>
-</svg>`;
+</svg>`
 }
 
 export interface Preset {
-  id: string;
-  name: string;
+  id: string
+  name: string
   /** Short note shown in the picker. */
-  hint: string;
-  svg: string;
+  hint: string
+  svg: string
 }
 
 export const PRESETS: Preset[] = [
@@ -94,4 +94,4 @@ export const PRESETS: Preset[] = [
       b_inv: "#cc665f",
     }),
   },
-];
+]

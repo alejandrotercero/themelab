@@ -31,7 +31,7 @@ const ICONS: Record<string, string> = {
   "align-end-vertical": `<rect width="16" height="6" x="2" y="4" rx="2"/><rect width="9" height="6" x="9" y="14" rx="2"/><path d="M22 22V2"/>`,
   "stretch-horizontal": `<rect width="20" height="6" x="2" y="4" rx="2"/><rect width="20" height="6" x="2" y="14" rx="2"/>`,
   "stretch-vertical": `<rect width="6" height="20" x="4" y="2" rx="2"/><rect width="6" height="20" x="14" y="2" rx="2"/>`,
-  "baseline": `<path d="M4 20h16"/><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/>`,
+  baseline: `<path d="M4 20h16"/><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/>`,
 };
 
 // (property → axis → css-value → Lucide icon name).
@@ -40,40 +40,52 @@ const ICONS: Record<string, string> = {
 const MAP: Record<AlignProperty, Record<Axis, Record<string, string>>> = {
   "justify-content": {
     row: {
-      "flex-start": "align-horizontal-justify-start", "start": "align-horizontal-justify-start", "normal": "align-horizontal-justify-start",
-      "center": "align-horizontal-justify-center",
-      "flex-end": "align-horizontal-justify-end", "end": "align-horizontal-justify-end",
+      "flex-start": "align-horizontal-justify-start",
+      start: "align-horizontal-justify-start",
+      normal: "align-horizontal-justify-start",
+      center: "align-horizontal-justify-center",
+      "flex-end": "align-horizontal-justify-end",
+      end: "align-horizontal-justify-end",
       "space-between": "align-horizontal-space-between",
       "space-around": "align-horizontal-space-around",
       "space-evenly": "align-horizontal-distribute-center",
-      "stretch": "stretch-horizontal",
+      stretch: "stretch-horizontal",
     },
     column: {
-      "flex-start": "align-vertical-justify-start", "start": "align-vertical-justify-start", "normal": "align-vertical-justify-start",
-      "center": "align-vertical-justify-center",
-      "flex-end": "align-vertical-justify-end", "end": "align-vertical-justify-end",
+      "flex-start": "align-vertical-justify-start",
+      start: "align-vertical-justify-start",
+      normal: "align-vertical-justify-start",
+      center: "align-vertical-justify-center",
+      "flex-end": "align-vertical-justify-end",
+      end: "align-vertical-justify-end",
       "space-between": "align-vertical-space-between",
       "space-around": "align-vertical-space-around",
       "space-evenly": "align-vertical-distribute-center",
-      "stretch": "stretch-vertical",
+      stretch: "stretch-vertical",
     },
   },
   "align-items": {
     // Row: cross axis is vertical → items align top/center/bottom.
     row: {
-      "flex-start": "align-start-horizontal", "start": "align-start-horizontal", "normal": "align-start-horizontal",
-      "center": "align-center-horizontal",
-      "flex-end": "align-end-horizontal", "end": "align-end-horizontal",
-      "stretch": "stretch-vertical",
-      "baseline": "baseline",
+      "flex-start": "align-start-horizontal",
+      start: "align-start-horizontal",
+      normal: "align-start-horizontal",
+      center: "align-center-horizontal",
+      "flex-end": "align-end-horizontal",
+      end: "align-end-horizontal",
+      stretch: "stretch-vertical",
+      baseline: "baseline",
     },
     // Column: cross axis is horizontal → items align left/center/right.
     column: {
-      "flex-start": "align-start-vertical", "start": "align-start-vertical", "normal": "align-start-vertical",
-      "center": "align-center-vertical",
-      "flex-end": "align-end-vertical", "end": "align-end-vertical",
-      "stretch": "stretch-horizontal",
-      "baseline": "baseline",
+      "flex-start": "align-start-vertical",
+      start: "align-start-vertical",
+      normal: "align-start-vertical",
+      center: "align-center-vertical",
+      "flex-end": "align-end-vertical",
+      end: "align-end-vertical",
+      stretch: "stretch-horizontal",
+      baseline: "baseline",
     },
   },
 };
@@ -84,9 +96,15 @@ function svg(inner: string): string {
 
 /** Returns the SVG markup for a (property, css-value) pair, oriented for the
  *  given flex-direction (`row`/`row-reverse` → row, `column*` → column). */
-export function alignIcon(property: string, value: string, flexDirection = "row"): string {
+export function alignIcon(
+  property: string,
+  value: string,
+  flexDirection = "row"
+): string {
   const axis: Axis = flexDirection.startsWith("column") ? "column" : "row";
   const name = MAP[property as AlignProperty]?.[axis]?.[value];
   const inner = name ? ICONS[name] : null;
-  return svg(inner ?? `<circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>`);
+  return svg(
+    inner ?? `<circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>`
+  );
 }

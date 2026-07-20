@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import path from "node:path";
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+
 import { discoverFile } from "../file-discovery.js";
 
 describe("discoverFile", () => {
@@ -20,15 +22,17 @@ describe("discoverFile", () => {
   it("finds function declaration", async () => {
     fs.writeFileSync(
       path.join(tmpDir, "src/components/Button.tsx"),
-      'export function Button() { return <button>Click</button>; }'
+      "export function Button() { return <button>Click</button>; }"
     );
-    expect(await discoverFile("Button", tmpDir)).toBe("src/components/Button.tsx");
+    expect(await discoverFile("Button", tmpDir)).toBe(
+      "src/components/Button.tsx"
+    );
   });
 
   it("finds const arrow function", async () => {
     fs.writeFileSync(
       path.join(tmpDir, "src/components/Card.tsx"),
-      'export const Card = () => <div>Card</div>;'
+      "export const Card = () => <div>Card</div>;"
     );
     expect(await discoverFile("Card", tmpDir)).toBe("src/components/Card.tsx");
   });
@@ -36,7 +40,7 @@ describe("discoverFile", () => {
   it("finds export default function", async () => {
     fs.writeFileSync(
       path.join(tmpDir, "src/app/page.tsx"),
-      'export default function HomePage() { return <main>Home</main>; }'
+      "export default function HomePage() { return <main>Home</main>; }"
     );
     expect(await discoverFile("HomePage", tmpDir)).toBe("src/app/page.tsx");
   });
@@ -48,9 +52,11 @@ describe("discoverFile", () => {
     );
     fs.writeFileSync(
       path.join(tmpDir, "src/components/checkout-form.tsx"),
-      'export function CheckoutForm() { return <form>Checkout</form>; }'
+      "export function CheckoutForm() { return <form>Checkout</form>; }"
     );
-    expect(await discoverFile("CheckoutForm", tmpDir)).toBe("src/components/checkout-form.tsx");
+    expect(await discoverFile("CheckoutForm", tmpDir)).toBe(
+      "src/components/checkout-form.tsx"
+    );
   });
 
   it("follows re-export when only barrel file matches", async () => {
@@ -60,21 +66,25 @@ describe("discoverFile", () => {
     );
     fs.writeFileSync(
       path.join(tmpDir, "src/components/nav-bar.tsx"),
-      'export function NavBar() { return <nav>Nav</nav>; }'
+      "export function NavBar() { return <nav>Nav</nav>; }"
     );
-    expect(await discoverFile("NavBar", tmpDir)).toBe("src/components/nav-bar.tsx");
+    expect(await discoverFile("NavBar", tmpDir)).toBe(
+      "src/components/nav-bar.tsx"
+    );
   });
 
   it("prefers src/ files over root files", async () => {
     fs.writeFileSync(
       path.join(tmpDir, "Button.tsx"),
-      'export function Button() { return <button/>; }'
+      "export function Button() { return <button/>; }"
     );
     fs.writeFileSync(
       path.join(tmpDir, "src/components/Button.tsx"),
-      'export function Button() { return <button/>; }'
+      "export function Button() { return <button/>; }"
     );
-    expect(await discoverFile("Button", tmpDir)).toBe("src/components/Button.tsx");
+    expect(await discoverFile("Button", tmpDir)).toBe(
+      "src/components/Button.tsx"
+    );
   });
 
   it("returns null for nonexistent component", async () => {
@@ -82,10 +92,12 @@ describe("discoverFile", () => {
   });
 
   it("ignores node_modules", async () => {
-    fs.mkdirSync(path.join(tmpDir, "node_modules/some-lib"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, "node_modules/some-lib"), {
+      recursive: true,
+    });
     fs.writeFileSync(
       path.join(tmpDir, "node_modules/some-lib/Button.tsx"),
-      'export function Button() { return <button/>; }'
+      "export function Button() { return <button/>; }"
     );
     expect(await discoverFile("Button", tmpDir)).toBeNull();
   });

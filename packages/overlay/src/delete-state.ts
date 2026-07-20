@@ -4,6 +4,7 @@
 // Tracks parent + nextSibling for precise re-insertion on undo.
 
 import type { ComponentInfo, JSXStructuralPath } from "@themelab/shared";
+
 import { send } from "./bridge.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -12,7 +13,7 @@ export interface DeleteEntry {
   id: string;
   element: HTMLElement;
   originalParent: HTMLElement;
-  originalNextSibling: Node | null;
+  originalNextSibling: ChildNode | null;
   sourceInfo: ComponentInfo;
   sourceLocation: {
     filePath: string;
@@ -36,12 +37,17 @@ export interface DeleteEntry {
 
 const deletes = new Map<string, DeleteEntry>();
 
-export function deleteElement(el: HTMLElement, info: ComponentInfo): DeleteEntry | null {
+export function deleteElement(
+  el: HTMLElement,
+  info: ComponentInfo
+): DeleteEntry | null {
   const parent = el.parentElement;
-  if (!parent) return null;
+  if (!parent) {
+    return null;
+  }
 
   const deleteId = crypto.randomUUID();
-  const nextSibling = el.nextSibling;
+  const { nextSibling } = el;
   const tagName = el.tagName.toLowerCase();
   const className = el.className || undefined;
   const parentTagName = parent.tagName.toLowerCase();
@@ -49,10 +55,16 @@ export function deleteElement(el: HTMLElement, info: ComponentInfo): DeleteEntry
   const elementId = el.id || undefined;
 
   let nthOfType = 0;
-  for (const child of Array.from(parent.children)) {
-    if (child === el) break;
-    if (child.tagName === el.tagName) nthOfType++;
+  for (const child of parent.children) {
+    if (child === el) {
+      break;
+    }
+    if (child.tagName === el.tagName) {
+      nthOfType += 1;
+    }
   }
+
+  const lastSegment = info.jsxPath?.segments.at(-1);
 
   const entry: DeleteEntry = {
     id: deleteId,
@@ -73,14 +85,20 @@ export function deleteElement(el: HTMLElement, info: ComponentInfo): DeleteEntry
       parentClassName,
       nthOfType,
       elementId,
-      jsxKey: info.jsxPath?.segments.at(-1)?.discriminator.type === "key"
-        ? (info.jsxPath.segments.at(-1)!.discriminator as { type: "key"; value: string }).value
-        : undefined,
+      jsxKey:
+        lastSegment?.discriminator.type === "key"
+          ? (
+              lastSegment.discriminator as {
+                type: "key";
+                value: string;
+              }
+            ).value
+          : undefined,
       jsxPath: info.jsxPath,
     },
   };
 
-  parent.removeChild(el);
+  el.remove();
 
   if (info.filePath) {
     send({ type: "fileStat", filePath: info.filePath });
@@ -92,13 +110,15 @@ export function deleteElement(el: HTMLElement, info: ComponentInfo): DeleteEntry
 
 export function restoreDeletedElement(id: string): void {
   const entry = deletes.get(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   const { element, originalParent, originalNextSibling } = entry;
   if (document.contains(originalParent)) {
     if (originalNextSibling && originalParent.contains(originalNextSibling)) {
-      originalParent.insertBefore(element, originalNextSibling);
+      originalNextSibling.before(element);
     } else {
-      originalParent.appendChild(element);
+      originalParent.append(element);
     }
   }
   deletes.delete(id);
@@ -108,9 +128,16 @@ export function getDeletes(): Map<string, DeleteEntry> {
   return deletes;
 }
 
-export function updateDeleteFileStat(filePath: string, mtime: number, size: number): void {
+export function updateDeleteFileStat(
+  filePath: string,
+  mtime: number,
+  size: number
+): void {
   for (const entry of deletes.values()) {
-    if (entry.sourceLocation.filePath === filePath && entry.fileMtime == null) {
+    if (
+      entry.sourceLocation.filePath === filePath &&
+      entry.fileMtime === undefined
+    ) {
       entry.fileMtime = mtime;
       entry.fileSize = size;
     }
@@ -122,9 +149,9 @@ export function clearAllDeletes(): void {
     const { element, originalParent, originalNextSibling } = entry;
     if (document.contains(originalParent)) {
       if (originalNextSibling && originalParent.contains(originalNextSibling)) {
-        originalParent.insertBefore(element, originalNextSibling);
+        originalNextSibling.before(element);
       } else {
-        originalParent.appendChild(element);
+        originalParent.append(element);
       }
     }
   }

@@ -33,16 +33,19 @@ const DEFAULT_MAX_LINES = 3;
 const DEFAULT_HARD_MAX_LINES = 20;
 
 function formatLocation(frame: TraceStackFrame): string {
-  if (!frame.lineNumber) return frame.filePath;
+  if (!frame.lineNumber) {
+    return frame.filePath;
+  }
   const col = frame.columnNumber ? `:${frame.columnNumber}` : "";
   return `${frame.filePath}:${frame.lineNumber}${col}`;
 }
 
 /** One trace line plus whether it spends the compact line budget. */
 function formatFrameLine(
-  frame: TraceStackFrame,
+  frame: TraceStackFrame
 ): { text: string; consumesBudget: boolean } | null {
-  const isApp = frame.origin === "app" || (!frame.origin && Boolean(frame.filePath));
+  const isApp =
+    frame.origin === "app" || (!frame.origin && Boolean(frame.filePath));
   const appPath = isApp ? frame.filePath : "";
 
   if (appPath) {
@@ -56,7 +59,10 @@ function formatFrameLine(
   // Dependency frame: render by name (and package, when known) rather than a
   // node_modules path, so library wrappers never compete with app source.
   if (frame.packageName) {
-    return { text: `  in ${frame.componentName} (${frame.packageName})`, consumesBudget: false };
+    return {
+      text: `  in ${frame.componentName} (${frame.packageName})`,
+      consumesBudget: false,
+    };
   }
 
   if (frame.componentName) {
@@ -72,33 +78,46 @@ function formatFrameLine(
  */
 export function formatComponentTrace(
   stack: readonly TraceStackFrame[],
-  options: ComponentTraceOptions = {},
+  options: ComponentTraceOptions = {}
 ): string {
   const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
-  const hardMaxLines = Math.max(maxLines, options.hardMaxLines ?? DEFAULT_HARD_MAX_LINES);
+  const hardMaxLines = Math.max(
+    maxLines,
+    options.hardMaxLines ?? DEFAULT_HARD_MAX_LINES
+  );
 
   const lines: string[] = [];
   let budgetedLineCount = 0;
   let previousPackageKey: string | null = null;
 
   for (const frame of stack) {
-    if (budgetedLineCount >= maxLines || lines.length >= hardMaxLines) break;
+    if (budgetedLineCount >= maxLines || lines.length >= hardMaxLines) {
+      break;
+    }
 
     // Collapse consecutive frames from the same dependency (e.g. several Radix
     // parts in a row) into a single line.
     const packageKey = frame.packageName
       ? `${frame.packageName}:${frame.componentName}`
       : null;
-    if (packageKey && packageKey === previousPackageKey) continue;
+    if (packageKey && packageKey === previousPackageKey) {
+      continue;
+    }
 
     const frameLine = formatFrameLine(frame);
-    if (!frameLine) continue;
+    if (!frameLine) {
+      continue;
+    }
 
     // Skip consecutive identical lines (common under bundlers that omit line
     // numbers, where repeated wrapper frames collapse to the same text).
-    if (frameLine.text === lines[lines.length - 1]) continue;
+    if (frameLine.text === lines.at(-1)) {
+      continue;
+    }
 
-    if (frameLine.consumesBudget) budgetedLineCount += 1;
+    if (frameLine.consumesBudget) {
+      budgetedLineCount += 1;
+    }
     lines.push(frameLine.text);
     previousPackageKey = packageKey;
   }

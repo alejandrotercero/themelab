@@ -1,9 +1,9 @@
-import * as React from "react"
 import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
+import { CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react"
+import * as React from "react"
 
 import { cn } from "@/lib/utils"
-import { CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react"
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
   return (
@@ -59,11 +59,11 @@ function BreadcrumbLink({
   })
 }
 
-function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
+function BreadcrumbPage({ className, ...props }: React.ComponentProps<"a">) {
   return (
-    <span
+    // oxlint-disable-next-line jsx-a11y/anchor-has-content -- generic anchor wrapper; content is forwarded via ...props/children from call sites, which the static analyzer can't see through the spread
+    <a
       data-slot="breadcrumb-page"
-      role="link"
       aria-disabled="true"
       aria-current="page"
       className={cn("font-normal text-foreground", className)}
@@ -85,9 +85,7 @@ function BreadcrumbSeparator({
       className={cn("[&>svg]:size-3.5", className)}
       {...props}
     >
-      {children ?? (
-        <CaretRightIcon />
-      )}
+      {children ?? <CaretRightIcon />}
     </li>
   )
 }
@@ -107,8 +105,7 @@ function BreadcrumbEllipsis({
       )}
       {...props}
     >
-      <DotsThreeIcon
-      />
+      <DotsThreeIcon />
       <span className="sr-only">More</span>
     </span>
   )

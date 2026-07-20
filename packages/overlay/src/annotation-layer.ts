@@ -1,7 +1,7 @@
+import { getCanvasTransform, onCanvasTransformChange } from "./canvas-state.js";
+import { COLORS, SHADOWS, RADII, FONT_FAMILY } from "./design-tokens.js";
 // packages/overlay/src/annotation-layer.ts
 import { getShadowRoot } from "./toolbar.js";
-import { COLORS, SHADOWS, RADII, FONT_FAMILY } from "./design-tokens.js";
-import { getCanvasTransform, onCanvasTransformChange } from "./canvas-state.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -9,38 +9,43 @@ let svgEl: SVGSVGElement | null = null;
 let rootGroup: SVGGElement | null = null;
 let unsubTransform: (() => void) | null = null;
 
-export function initAnnotationLayer(): void {
-  const shadowRoot = getShadowRoot();
-  if (!shadowRoot) return;
-
-  svgEl = document.createElementNS(SVG_NS, "svg");
-  svgEl.setAttribute("style",
-    "position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483645;"
-  );
-
-  rootGroup = document.createElementNS(SVG_NS, "g");
-  rootGroup.setAttribute("class", "annotation-root");
-  svgEl.appendChild(rootGroup);
-
-  shadowRoot.appendChild(svgEl);
-
-  window.addEventListener("scroll", syncTransform, { passive: true });
-  unsubTransform = onCanvasTransformChange(syncTransform);
-  syncTransform();
-}
-
 /**
  * Sync the annotation root group with canvas transform (synchronous — no RAF).
  * Runs in the same JS tick as the wrapper transform update so annotations
  * and page content move in the exact same frame.
  */
 function syncTransform(): void {
-  if (!rootGroup) return;
+  if (!rootGroup) {
+    return;
+  }
   const { scale, offsetX, offsetY } = getCanvasTransform();
   rootGroup.setAttribute(
     "transform",
     `translate(${offsetX}, ${offsetY}) scale(${scale})`
   );
+}
+
+export function initAnnotationLayer(): void {
+  const shadowRoot = getShadowRoot();
+  if (!shadowRoot) {
+    return;
+  }
+
+  svgEl = document.createElementNS(SVG_NS, "svg");
+  svgEl.setAttribute(
+    "style",
+    "position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483645;"
+  );
+
+  rootGroup = document.createElementNS(SVG_NS, "g");
+  rootGroup.setAttribute("class", "annotation-root");
+  svgEl.append(rootGroup);
+
+  shadowRoot.append(svgEl);
+
+  window.addEventListener("scroll", syncTransform, { passive: true });
+  unsubTransform = onCanvasTransformChange(syncTransform);
+  syncTransform();
 }
 
 export function addTextAnnotation(
@@ -49,12 +54,14 @@ export function addTextAnnotation(
   y: number,
   content: string,
   fontSize: number,
-  color: string
+  _color: string
 ): SVGForeignObjectElement | null {
-  if (!rootGroup) return null;
+  if (!rootGroup) {
+    return null;
+  }
 
   const fo = document.createElementNS(SVG_NS, "foreignObject");
-  fo.setAttribute("data-annotation-id", id);
+  fo.dataset.annotationId = id;
   fo.setAttribute("x", String(x));
   fo.setAttribute("y", String(y));
   fo.setAttribute("width", "300");
@@ -75,9 +82,9 @@ export function addTextAnnotation(
     max-width: 280px;
   `;
   div.textContent = content;
-  fo.appendChild(div);
+  fo.append(div);
 
-  rootGroup.appendChild(fo);
+  rootGroup.append(fo);
   return fo;
 }
 
@@ -87,10 +94,12 @@ export function addColorBadge(
   y: number,
   color: string
 ): SVGCircleElement | null {
-  if (!rootGroup) return null;
+  if (!rootGroup) {
+    return null;
+  }
 
   const circle = document.createElementNS(SVG_NS, "circle");
-  circle.setAttribute("data-annotation-id", id);
+  circle.dataset.annotationId = id;
   circle.setAttribute("cx", String(x));
   circle.setAttribute("cy", String(y));
   circle.setAttribute("r", "6");
@@ -98,18 +107,24 @@ export function addColorBadge(
   circle.setAttribute("stroke", "white");
   circle.setAttribute("stroke-width", "1.5");
 
-  rootGroup.appendChild(circle);
+  rootGroup.append(circle);
   return circle;
 }
 
 export function removeAnnotationElement(id: string): void {
-  if (!rootGroup) return;
+  if (!rootGroup) {
+    return;
+  }
   const el = rootGroup.querySelector(`[data-annotation-id="${id}"]`);
-  if (el) el.remove();
+  if (el) {
+    el.remove();
+  }
 }
 
 export function clearAnnotationLayer(): void {
-  if (rootGroup) rootGroup.innerHTML = "";
+  if (rootGroup) {
+    rootGroup.innerHTML = "";
+  }
 }
 
 export function destroyAnnotationLayer(): void {
@@ -120,4 +135,3 @@ export function destroyAnnotationLayer(): void {
   svgEl = null;
   rootGroup = null;
 }
-

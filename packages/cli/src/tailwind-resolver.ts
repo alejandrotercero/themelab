@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
+
 import type { TailwindTokenMap } from "@themelab/shared";
 
 // ---------------------------------------------------------------------------
@@ -12,14 +13,15 @@ import type { TailwindTokenMap } from "@themelab/shared";
  */
 export function parseThemeBlock(css: string): Record<string, string> {
   const tokens: Record<string, string> = {};
-  const themeBlockRegex = /@theme\s*\{([^}]+)\}/g;
+  const themeBlockRegex = /@theme\s*\{(?<body>[^}]+)\}/g;
   let match;
   while ((match = themeBlockRegex.exec(css)) !== null) {
-    const block = match[1];
-    const propRegex = /(--[\w-]+)\s*:\s*([^;]+);/g;
+    const block = match.groups?.body ?? "";
+    const propRegex = /(?<name>--[\w-]+)\s*:\s*(?<value>[^;]+);/g;
     let propMatch;
     while ((propMatch = propRegex.exec(block)) !== null) {
-      tokens[propMatch[1].trim()] = propMatch[2].trim();
+      const groups = propMatch.groups as { name: string; value: string };
+      tokens[groups.name.trim()] = groups.value.trim();
     }
   }
   return tokens;
@@ -34,12 +36,17 @@ export function parseThemeBlock(css: string): Record<string, string> {
  * Returns "3", "4", or null if tailwindcss is not installed.
  */
 export function detectTailwindVersion(projectRoot: string): string | null {
-  const pkgPath = path.join(projectRoot, "node_modules", "tailwindcss", "package.json");
+  const pkgPath = path.join(
+    projectRoot,
+    "node_modules",
+    "tailwindcss",
+    "package.json"
+  );
   try {
     const raw = fs.readFileSync(pkgPath, "utf-8");
     const pkg = JSON.parse(raw) as { version?: string };
     const version = pkg.version ?? "";
-    const major = version.split(".")[0];
+    const [major] = version.split(".");
     return major || null;
   } catch {
     return null;
@@ -53,7 +60,7 @@ export function detectTailwindVersion(projectRoot: string): string | null {
 const DEFAULT_V4_THEME = {
   spacing: {
     "0": "0px",
-    "px": "1px",
+    px: "1px",
     "0.5": "0.125rem",
     "1": "0.25rem",
     "1.5": "0.375rem",
@@ -89,11 +96,11 @@ const DEFAULT_V4_THEME = {
     "96": "24rem",
   } as Record<string, string>,
   fontSize: {
-    "xs": "0.75rem",
-    "sm": "0.875rem",
-    "base": "1rem",
-    "lg": "1.125rem",
-    "xl": "1.25rem",
+    xs: "0.75rem",
+    sm: "0.875rem",
+    base: "1rem",
+    lg: "1.125rem",
+    xl: "1.25rem",
     "2xl": "1.5rem",
     "3xl": "1.875rem",
     "4xl": "2.25rem",
@@ -104,30 +111,30 @@ const DEFAULT_V4_THEME = {
     "9xl": "8rem",
   } as Record<string, string>,
   fontWeight: {
-    "thin": "100",
-    "extralight": "200",
-    "light": "300",
-    "normal": "400",
-    "medium": "500",
-    "semibold": "600",
-    "bold": "700",
-    "extrabold": "800",
-    "black": "900",
+    thin: "100",
+    extralight: "200",
+    light: "300",
+    normal: "400",
+    medium: "500",
+    semibold: "600",
+    bold: "700",
+    extrabold: "800",
+    black: "900",
   } as Record<string, string>,
   borderRadius: {
-    "none": "0px",
-    "sm": "0.125rem",
-    "DEFAULT": "0.25rem",
-    "md": "0.375rem",
-    "lg": "0.5rem",
-    "xl": "0.75rem",
+    none: "0px",
+    sm: "0.125rem",
+    DEFAULT: "0.25rem",
+    md: "0.375rem",
+    lg: "0.5rem",
+    xl: "0.75rem",
     "2xl": "1rem",
     "3xl": "1.5rem",
-    "full": "9999px",
+    full: "9999px",
   } as Record<string, string>,
   borderWidth: {
     "0": "0px",
-    "DEFAULT": "1px",
+    DEFAULT: "1px",
     "2": "2px",
     "4": "4px",
     "8": "8px",
@@ -156,20 +163,20 @@ const DEFAULT_V4_THEME = {
     "100": "1",
   } as Record<string, string>,
   letterSpacing: {
-    "tighter": "-0.05em",
-    "tight": "-0.025em",
-    "normal": "0em",
-    "wide": "0.025em",
-    "wider": "0.05em",
-    "widest": "0.1em",
+    tighter: "-0.05em",
+    tight: "-0.025em",
+    normal: "0em",
+    wide: "0.025em",
+    wider: "0.05em",
+    widest: "0.1em",
   } as Record<string, string>,
   lineHeight: {
-    "none": "1",
-    "tight": "1.25",
-    "snug": "1.375",
-    "normal": "1.5",
-    "relaxed": "1.625",
-    "loose": "2",
+    none: "1",
+    tight: "1.25",
+    snug: "1.375",
+    normal: "1.5",
+    relaxed: "1.625",
+    loose: "2",
     "3": "0.75rem",
     "4": "1rem",
     "5": "1.25rem",
@@ -445,9 +452,9 @@ const DEFAULT_V4_THEME = {
     "rose-900": "#881337",
     "rose-950": "#4c0519",
     // White/Black
-    "white": "#ffffff",
-    "black": "#000000",
-    "transparent": "transparent",
+    white: "#ffffff",
+    black: "#000000",
+    transparent: "transparent",
   } as Record<string, string>,
 };
 
@@ -455,11 +462,52 @@ const DEFAULT_V4_THEME = {
 // resolveV3Config
 // ---------------------------------------------------------------------------
 
+function flattenScale(
+  scale: Record<string, unknown> | undefined
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!scale) {
+    return result;
+  }
+  for (const [key, value] of Object.entries(scale)) {
+    if (typeof value === "string") {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+// Flatten colors (may be nested like { slate: { 500: "#..." } })
+function flattenColors(
+  colors: Record<string, unknown> | undefined
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!colors) {
+    return result;
+  }
+  for (const [colorName, colorValue] of Object.entries(colors)) {
+    if (typeof colorValue === "string") {
+      result[colorName] = colorValue;
+    } else if (colorValue && typeof colorValue === "object") {
+      for (const [shade, hex] of Object.entries(
+        colorValue as Record<string, unknown>
+      )) {
+        if (typeof hex === "string") {
+          result[`${colorName}-${shade}`] = hex;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * Uses tailwindcss v3's resolveConfig to load and resolve the full theme.
  * Returns a partial theme object with the scales we care about.
  */
-export function resolveV3Config(projectRoot: string): typeof DEFAULT_V4_THEME | null {
+export function resolveV3Config(
+  projectRoot: string
+): typeof DEFAULT_V4_THEME | null {
   try {
     // Dynamic require for v3 (CJS)
     const resolveConfigPath = path.join(
@@ -469,6 +517,7 @@ export function resolveV3Config(projectRoot: string): typeof DEFAULT_V4_THEME | 
       "resolveConfig"
     );
     // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // oxlint-disable-next-line node/global-require, unicorn/prefer-module -- intentional lazy CJS load of the user's installed tailwindcss version, path is resolved at runtime
     const resolveConfig = require(resolveConfigPath) as (config: unknown) => {
       theme: Record<string, unknown>;
     };
@@ -485,6 +534,7 @@ export function resolveV3Config(projectRoot: string): typeof DEFAULT_V4_THEME | 
       const configPath = path.join(projectRoot, candidate);
       if (fs.existsSync(configPath)) {
         try {
+          // oxlint-disable-next-line node/global-require, unicorn/prefer-module -- intentional lazy CJS load of the user's tailwind config file, resolved at runtime
           userConfig = require(configPath) as unknown;
         } catch {
           // ignore — use empty config
@@ -496,52 +546,24 @@ export function resolveV3Config(projectRoot: string): typeof DEFAULT_V4_THEME | 
     const resolved = resolveConfig(userConfig);
     const theme = resolved.theme as Record<string, Record<string, unknown>>;
 
-    const flattenScale = (scale: Record<string, unknown> | undefined): Record<string, string> => {
-      const result: Record<string, string> = {};
-      if (!scale) return result;
-      for (const [key, value] of Object.entries(scale)) {
-        if (typeof value === "string") {
-          result[key] = value;
-        }
-      }
-      return result;
-    };
-
-    // Flatten colors (may be nested like { slate: { 500: "#..." } })
-    const flattenColors = (colors: Record<string, unknown> | undefined): Record<string, string> => {
-      const result: Record<string, string> = {};
-      if (!colors) return result;
-      for (const [colorName, colorValue] of Object.entries(colors)) {
-        if (typeof colorValue === "string") {
-          result[colorName] = colorValue;
-        } else if (colorValue && typeof colorValue === "object") {
-          for (const [shade, hex] of Object.entries(colorValue as Record<string, unknown>)) {
-            if (typeof hex === "string") {
-              result[`${colorName}-${shade}`] = hex;
-            }
-          }
-        }
-      }
-      return result;
-    };
-
     return {
       spacing: flattenScale(theme.spacing as Record<string, unknown>),
       colors: flattenColors(theme.colors as Record<string, unknown>),
       fontSize: flattenScale(
         // v3 fontSize values can be [size, lineHeight] tuples
         Object.fromEntries(
-          Object.entries((theme.fontSize as Record<string, unknown>) ?? {}).map(([k, v]) => [
-            k,
-            Array.isArray(v) ? String(v[0]) : String(v),
-          ])
+          Object.entries((theme.fontSize as Record<string, unknown>) ?? {}).map(
+            ([k, v]) => [k, Array.isArray(v) ? String(v[0]) : String(v)]
+          )
         )
       ),
       fontWeight: flattenScale(theme.fontWeight as Record<string, unknown>),
       borderRadius: flattenScale(theme.borderRadius as Record<string, unknown>),
       borderWidth: flattenScale(theme.borderWidth as Record<string, unknown>),
       opacity: flattenScale(theme.opacity as Record<string, unknown>),
-      letterSpacing: flattenScale(theme.letterSpacing as Record<string, unknown>),
+      letterSpacing: flattenScale(
+        theme.letterSpacing as Record<string, unknown>
+      ),
       lineHeight: flattenScale(theme.lineHeight as Record<string, unknown>),
     };
   } catch {
@@ -552,6 +574,46 @@ export function resolveV3Config(projectRoot: string): typeof DEFAULT_V4_THEME | 
 // ---------------------------------------------------------------------------
 // resolveV4Config
 // ---------------------------------------------------------------------------
+
+/**
+ * Finds CSS files in a project root (up to 2 levels deep) that are candidates
+ * for Tailwind v4 @theme declarations.
+ */
+export function findCssFiles(projectRoot: string): string[] {
+  const results: string[] = [];
+  const searchDirs = [
+    projectRoot,
+    path.join(projectRoot, "src"),
+    path.join(projectRoot, "app"),
+    path.join(projectRoot, "styles"),
+    path.join(projectRoot, "css"),
+    path.join(projectRoot, "src", "styles"),
+    path.join(projectRoot, "src", "app"),
+  ];
+
+  for (const dir of searchDirs) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (
+          entry.isFile() &&
+          (entry.name.endsWith(".css") || entry.name.endsWith(".scss"))
+        ) {
+          results.push(path.join(dir, entry.name));
+        }
+      }
+    } catch {
+      // directory doesn't exist
+    }
+  }
+
+  return results;
+}
+
+/** Match `re` against `text` and return the named `"name"` capture, or null. */
+function matchGroupName(text: string, re: RegExp): string | null {
+  return text.match(re)?.groups?.name ?? null;
+}
 
 /**
  * Finds CSS files that import/use @theme, parses their custom properties,
@@ -589,58 +651,49 @@ export function resolveV4Config(projectRoot: string): typeof DEFAULT_V4_THEME {
   };
 
   for (const [prop, value] of Object.entries(customTokens)) {
-    // --color-* → colors
-    const colorMatch = prop.match(/^--color-(.+)$/);
-    if (colorMatch) {
-      merged.colors[colorMatch[1]] = value;
+    const colorName = matchGroupName(prop, /^--color-(?<name>.+)$/);
+    if (colorName !== null) {
+      merged.colors[colorName] = value;
       continue;
     }
-    // --spacing-* → spacing
-    const spacingMatch = prop.match(/^--spacing-(.+)$/);
-    if (spacingMatch) {
-      merged.spacing[spacingMatch[1]] = value;
+    const spacingName = matchGroupName(prop, /^--spacing-(?<name>.+)$/);
+    if (spacingName !== null) {
+      merged.spacing[spacingName] = value;
       continue;
     }
-    // --text-* → fontSize
-    const fontSizeMatch = prop.match(/^--text-(.+)$/);
-    if (fontSizeMatch) {
-      merged.fontSize[fontSizeMatch[1]] = value;
+    const fontSizeName = matchGroupName(prop, /^--text-(?<name>.+)$/);
+    if (fontSizeName !== null) {
+      merged.fontSize[fontSizeName] = value;
       continue;
     }
-    // --font-weight-* → fontWeight
-    const fontWeightMatch = prop.match(/^--font-weight-(.+)$/);
-    if (fontWeightMatch) {
-      merged.fontWeight[fontWeightMatch[1]] = value;
+    const fontWeightName = matchGroupName(prop, /^--font-weight-(?<name>.+)$/);
+    if (fontWeightName !== null) {
+      merged.fontWeight[fontWeightName] = value;
       continue;
     }
-    // --radius-* → borderRadius
-    const radiusMatch = prop.match(/^--radius-(.+)$/);
-    if (radiusMatch) {
-      merged.borderRadius[radiusMatch[1]] = value;
+    const radiusName = matchGroupName(prop, /^--radius-(?<name>.+)$/);
+    if (radiusName !== null) {
+      merged.borderRadius[radiusName] = value;
       continue;
     }
-    // --border-* → borderWidth
-    const borderMatch = prop.match(/^--border-(.+)$/);
-    if (borderMatch) {
-      merged.borderWidth[borderMatch[1]] = value;
+    const borderName = matchGroupName(prop, /^--border-(?<name>.+)$/);
+    if (borderName !== null) {
+      merged.borderWidth[borderName] = value;
       continue;
     }
-    // --opacity-* → opacity
-    const opacityMatch = prop.match(/^--opacity-(.+)$/);
-    if (opacityMatch) {
-      merged.opacity[opacityMatch[1]] = value;
+    const opacityName = matchGroupName(prop, /^--opacity-(?<name>.+)$/);
+    if (opacityName !== null) {
+      merged.opacity[opacityName] = value;
       continue;
     }
-    // --tracking-* → letterSpacing
-    const trackingMatch = prop.match(/^--tracking-(.+)$/);
-    if (trackingMatch) {
-      merged.letterSpacing[trackingMatch[1]] = value;
+    const trackingName = matchGroupName(prop, /^--tracking-(?<name>.+)$/);
+    if (trackingName !== null) {
+      merged.letterSpacing[trackingName] = value;
       continue;
     }
-    // --leading-* → lineHeight
-    const leadingMatch = prop.match(/^--leading-(.+)$/);
-    if (leadingMatch) {
-      merged.lineHeight[leadingMatch[1]] = value;
+    const leadingName = matchGroupName(prop, /^--leading-(?<name>.+)$/);
+    if (leadingName !== null) {
+      merged.lineHeight[leadingName] = value;
       continue;
     }
   }
@@ -648,55 +701,25 @@ export function resolveV4Config(projectRoot: string): typeof DEFAULT_V4_THEME {
   return merged;
 }
 
-/**
- * Finds CSS files in a project root (up to 2 levels deep) that are candidates
- * for Tailwind v4 @theme declarations.
- */
-export function findCssFiles(projectRoot: string): string[] {
-  const results: string[] = [];
-  const searchDirs = [
-    projectRoot,
-    path.join(projectRoot, "src"),
-    path.join(projectRoot, "app"),
-    path.join(projectRoot, "styles"),
-    path.join(projectRoot, "css"),
-    path.join(projectRoot, "src", "styles"),
-    path.join(projectRoot, "src", "app"),
-  ];
-
-  for (const dir of searchDirs) {
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isFile() && (entry.name.endsWith(".css") || entry.name.endsWith(".scss"))) {
-          results.push(path.join(dir, entry.name));
-        }
-      }
-    } catch {
-      // directory doesn't exist
-    }
-  }
-
-  return results;
-}
-
 // ---------------------------------------------------------------------------
 // buildTokenMap
 // ---------------------------------------------------------------------------
+
+function buildReverse(forward: Record<string, string>): Record<string, string> {
+  const reverse: Record<string, string> = {};
+  for (const [token, css] of Object.entries(forward)) {
+    reverse[css] = token;
+  }
+  return reverse;
+}
 
 /**
  * Builds a TailwindTokenMap with forward (token→css) and reverse (css→token)
  * maps for all scales.
  */
-export function buildTokenMap(theme: typeof DEFAULT_V4_THEME): TailwindTokenMap {
-  const buildReverse = (forward: Record<string, string>): Record<string, string> => {
-    const reverse: Record<string, string> = {};
-    for (const [token, css] of Object.entries(forward)) {
-      reverse[css] = token;
-    }
-    return reverse;
-  };
-
+export function buildTokenMap(
+  theme: typeof DEFAULT_V4_THEME
+): TailwindTokenMap {
   return {
     spacing: theme.spacing,
     colors: theme.colors,
@@ -726,29 +749,48 @@ export function buildTokenMap(theme: typeof DEFAULT_V4_THEME): TailwindTokenMap 
 type TailwindMeta = Pick<TailwindTokenMap, "screens" | "darkMode">;
 
 const DEFAULT_SCREENS_V3: Record<string, string> = {
-  sm: "640px", md: "768px", lg: "1024px", xl: "1280px", "2xl": "1536px",
+  sm: "640px",
+  md: "768px",
+  lg: "1024px",
+  xl: "1280px",
+  "2xl": "1536px",
 };
 const DEFAULT_SCREENS_V4: Record<string, string> = {
-  sm: "40rem", md: "48rem", lg: "64rem", xl: "80rem", "2xl": "96rem",
+  sm: "40rem",
+  md: "48rem",
+  lg: "64rem",
+  xl: "80rem",
+  "2xl": "96rem",
 };
 
 /** A breakpoint value may be a plain string or a v3 `{ min, max }` object — use the min. */
 function normalizeScreenValue(v: unknown): string | null {
-  if (typeof v === "string") return v;
-  if (v && typeof v === "object" && typeof (v as { min?: unknown }).min === "string") {
+  if (typeof v === "string") {
+    return v;
+  }
+  if (
+    v &&
+    typeof v === "object" &&
+    typeof (v as { min?: unknown }).min === "string"
+  ) {
     return (v as { min: string }).min;
   }
   return null;
 }
 
 /** Map a Tailwind v3 `darkMode` config value to {strategy, selector}. */
-export function parseDarkModeConfig(dm: unknown): { strategy: "class" | "media"; selector: string } {
+export function parseDarkModeConfig(dm: unknown): {
+  strategy: "class" | "media";
+  selector: string;
+} {
   if (Array.isArray(dm)) {
     // ["class", ".my-dark"] | ["selector", "[data-theme=dark]"] | ["variant", ...]
     const selector = typeof dm[1] === "string" ? dm[1] : ".dark";
     return { strategy: "class", selector };
   }
-  if (dm === "class" || dm === "selector") return { strategy: "class", selector: ".dark" };
+  if (dm === "class" || dm === "selector") {
+    return { strategy: "class", selector: ".dark" };
+  }
   // undefined / "media" — v3 default is prefers-color-scheme.
   return { strategy: "media", selector: ".dark" };
 }
@@ -760,22 +802,39 @@ export function parseDarkModeConfig(dm: unknown): { strategy: "class" | "media";
  * common `darkMode: ['class']`. A text scan is execution-free and handles .ts/.js
  * alike. Returns null when no darkMode is declared (caller keeps its default).
  */
-export function readDarkModeFromConfigText(projectRoot: string): { strategy: "class" | "media"; selector: string } | null {
-  for (const candidate of ["tailwind.config.ts", "tailwind.config.js", "tailwind.config.cjs", "tailwind.config.mjs"]) {
+export function readDarkModeFromConfigText(
+  projectRoot: string
+): { strategy: "class" | "media"; selector: string } | null {
+  for (const candidate of [
+    "tailwind.config.ts",
+    "tailwind.config.js",
+    "tailwind.config.cjs",
+    "tailwind.config.mjs",
+  ]) {
     const configPath = path.join(projectRoot, candidate);
-    if (!fs.existsSync(configPath)) continue;
+    if (!fs.existsSync(configPath)) {
+      continue;
+    }
     try {
       const text = fs.readFileSync(configPath, "utf-8");
       // Match `darkMode: 'class'` | "media" | ['class', '.sel'] | ["selector", "[data-x]"].
-      const m = text.match(/darkMode\s*:\s*(\[[^\]]*\]|['"`][^'"`]*['"`])/);
-      if (!m) return null;
-      const raw = m[1].trim();
+      const m = text.match(
+        /darkMode\s*:\s*(?<value>\[[^\]]*\]|['"`][^'"`]*['"`])/
+      );
+      if (!m?.groups) {
+        return null;
+      }
+      const raw = m.groups.value.trim();
       if (raw.startsWith("[")) {
-        const parts = [...raw.matchAll(/['"`]([^'"`]*)['"`]/g)].map((p) => p[1]);
-        if (parts.length === 0) return null;
+        const parts = [...raw.matchAll(/['"`](?<item>[^'"`]*)['"`]/g)].map(
+          (p) => p.groups?.item ?? ""
+        );
+        if (parts.length === 0) {
+          return null;
+        }
         return parseDarkModeConfig(parts);
       }
-      const value = raw.replace(/^['"`]|['"`]$/g, "");
+      const value = raw.replaceAll(/^['"`]|['"`]$/g, "");
       return parseDarkModeConfig(value);
     } catch {
       return null;
@@ -791,14 +850,32 @@ function resolveV3Meta(projectRoot: string): TailwindMeta {
   };
   let darkModeFromRequire = false;
   try {
-    const resolveConfigPath = path.join(projectRoot, "node_modules", "tailwindcss", "resolveConfig");
+    const resolveConfigPath = path.join(
+      projectRoot,
+      "node_modules",
+      "tailwindcss",
+      "resolveConfig"
+    );
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const resolveConfig = require(resolveConfigPath) as (config: unknown) => { theme: Record<string, unknown> };
+    // oxlint-disable-next-line node/global-require, unicorn/prefer-module -- intentional lazy CJS load of the user's installed tailwindcss version, path is resolved at runtime
+    const resolveConfig = require(resolveConfigPath) as (config: unknown) => {
+      theme: Record<string, unknown>;
+    };
     let userConfig: Record<string, unknown> = {};
-    for (const candidate of ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs", "tailwind.config.mjs"]) {
+    for (const candidate of [
+      "tailwind.config.js",
+      "tailwind.config.ts",
+      "tailwind.config.cjs",
+      "tailwind.config.mjs",
+    ]) {
       const configPath = path.join(projectRoot, candidate);
       if (fs.existsSync(configPath)) {
-        try { userConfig = require(configPath) as Record<string, unknown>; } catch { /* require can't load .ts/ESM */ }
+        try {
+          // oxlint-disable-next-line node/global-require, unicorn/prefer-module -- intentional lazy CJS load of the user's tailwind config file, resolved at runtime
+          userConfig = require(configPath) as Record<string, unknown>;
+        } catch {
+          /* require can't load .ts/ESM */
+        }
         break;
       }
     }
@@ -806,14 +883,22 @@ function resolveV3Meta(projectRoot: string): TailwindMeta {
     const screens = (resolved.theme as Record<string, unknown>)?.screens;
     if (screens && typeof screens === "object") {
       const out: Record<string, string> = {};
-      for (const [name, value] of Object.entries(screens as Record<string, unknown>)) {
+      for (const [name, value] of Object.entries(
+        screens as Record<string, unknown>
+      )) {
         const nv = normalizeScreenValue(value);
-        if (nv) out[name] = nv;
+        if (nv) {
+          out[name] = nv;
+        }
       }
-      if (Object.keys(out).length) meta.screens = out;
+      if (Object.keys(out).length) {
+        meta.screens = out;
+      }
     }
     if ((userConfig as { darkMode?: unknown }).darkMode !== undefined) {
-      meta.darkMode = parseDarkModeConfig((userConfig as { darkMode?: unknown }).darkMode);
+      meta.darkMode = parseDarkModeConfig(
+        (userConfig as { darkMode?: unknown }).darkMode
+      );
       darkModeFromRequire = true;
     }
   } catch {
@@ -824,28 +909,35 @@ function resolveV3Meta(projectRoot: string): TailwindMeta {
   // isn't lost as "media".
   if (!darkModeFromRequire) {
     const fromText = readDarkModeFromConfigText(projectRoot);
-    if (fromText) meta.darkMode = fromText;
+    if (fromText) {
+      meta.darkMode = fromText;
+    }
   }
   return meta;
 }
 
 function resolveV4Meta(projectRoot: string): TailwindMeta {
   const screens: Record<string, string> = { ...DEFAULT_SCREENS_V4 };
-  let darkMode: { strategy: "class" | "media"; selector: string } = { strategy: "media", selector: ".dark" };
+  let darkMode: { strategy: "class" | "media"; selector: string } = {
+    strategy: "media",
+    selector: ".dark",
+  };
 
   for (const cssFile of findCssFiles(projectRoot)) {
     try {
       const css = fs.readFileSync(cssFile, "utf-8");
       if (css.includes("@theme")) {
         for (const [prop, value] of Object.entries(parseThemeBlock(css))) {
-          const bm = prop.match(/^--breakpoint-(.+)$/);
-          if (bm) screens[bm[1]] = value;
+          const bm = prop.match(/^--breakpoint-(?<name>.+)$/);
+          if (bm?.groups) {
+            screens[bm.groups.name] = value;
+          }
         }
       }
       // A `@custom-variant dark (...)` declaration switches v4 to a class strategy.
-      const cv = css.match(/@custom-variant\s+dark\s+\(([^)]*)\)/);
-      if (cv) {
-        const sel = cv[1].match(/\.[A-Za-z0-9_-]+/);
+      const cv = css.match(/@custom-variant\s+dark\s+\((?<args>[^)]*)\)/);
+      if (cv?.groups) {
+        const sel = cv.groups.args.match(/\.[A-Za-z0-9_-]+/);
         darkMode = { strategy: "class", selector: sel ? sel[0] : ".dark" };
       }
     } catch {
@@ -855,8 +947,13 @@ function resolveV4Meta(projectRoot: string): TailwindMeta {
   return { screens, darkMode };
 }
 
-function resolveTailwindMeta(projectRoot: string, version: string | null): TailwindMeta {
-  if (version === "3") return resolveV3Meta(projectRoot);
+function resolveTailwindMeta(
+  projectRoot: string,
+  version: string | null
+): TailwindMeta {
+  if (version === "3") {
+    return resolveV3Meta(projectRoot);
+  }
   return resolveV4Meta(projectRoot);
 }
 
@@ -877,7 +974,10 @@ export function resolveTailwindConfig(projectRoot: string): {
 
   if (version === "3") {
     const v3Theme = resolveV3Config(projectRoot);
-    return { version: "3", tokens: { ...buildTokenMap(v3Theme ?? DEFAULT_V4_THEME), ...meta } };
+    return {
+      version: "3",
+      tokens: { ...buildTokenMap(v3Theme ?? DEFAULT_V4_THEME), ...meta },
+    };
   }
 
   if (version === "4") {
@@ -886,5 +986,8 @@ export function resolveTailwindConfig(projectRoot: string): {
   }
 
   // No tailwindcss detected — return defaults
-  return { version: version ?? "unknown", tokens: { ...buildTokenMap(DEFAULT_V4_THEME), ...meta } };
+  return {
+    version: version ?? "unknown",
+    tokens: { ...buildTokenMap(DEFAULT_V4_THEME), ...meta },
+  };
 }

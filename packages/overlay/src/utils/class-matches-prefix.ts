@@ -7,15 +7,19 @@
  */
 export function classMatchesPrefix(cls: string, prefix: string): boolean {
   // Skip variant-prefixed classes (e.g. hover:bg-blue-700, dark:bg-gray-900)
-  if (cls.includes(":")) return false;
+  if (cls.includes(":")) {
+    return false;
+  }
   // Exact match for standalone classes like "rounded"
-  if (cls === prefix) return true;
+  if (cls === prefix) {
+    return true;
+  }
   // prefix- followed by something
   return cls.startsWith(`${prefix}-`);
 }
 
 /** Tailwind's default responsive breakpoints, largest first, with min-widths (px). */
-const BREAKPOINTS: ReadonlyArray<readonly [string, number]> = [
+const BREAKPOINTS: readonly (readonly [string, number])[] = [
   ["2xl", 1536],
   ["xl", 1280],
   ["lg", 1024],
@@ -31,9 +35,14 @@ let BREAKPOINT_WIDTHS = new Map<string, number>(BREAKPOINTS);
  * - `mb-6`    → { variant: "",   bare: "mb-6" }
  * - `hover:bg-x`, `dark:md:p-2` → { variant: null } (non-responsive / stacked — not viewport-editable)
  */
-export function splitResponsiveVariant(cls: string): { variant: string | null; bare: string } {
+export function splitResponsiveVariant(cls: string): {
+  variant: string | null;
+  bare: string;
+} {
   const colon = cls.indexOf(":");
-  if (colon === -1) return { variant: "", bare: cls };
+  if (colon === -1) {
+    return { variant: "", bare: cls };
+  }
   const prefix = cls.slice(0, colon);
   const rest = cls.slice(colon + 1);
   // Only a single, purely-responsive prefix is viewport-editable.
@@ -54,15 +63,20 @@ export function splitResponsiveVariant(cls: string): { variant: string | null; b
 export function pickWinningVariant(
   classes: string[],
   matchesBare: (bare: string) => boolean,
-  viewportWidth: number,
+  viewportWidth: number
 ): string {
   let bestVariant = "";
   let bestWidth = -1;
   for (const cls of classes) {
     const { variant, bare } = splitResponsiveVariant(cls);
-    if (variant === null) continue; // state/stacked variant — not viewport-editable
-    if (!matchesBare(bare)) continue;
-    const minWidth = variant === "" ? 0 : (BREAKPOINT_WIDTHS.get(variant) ?? Infinity);
+    if (variant === null) {
+      continue;
+    } // state/stacked variant — not viewport-editable
+    if (!matchesBare(bare)) {
+      continue;
+    }
+    const minWidth =
+      variant === "" ? 0 : (BREAKPOINT_WIDTHS.get(variant) ?? Infinity);
     if (minWidth <= viewportWidth && minWidth > bestWidth) {
       bestWidth = minWidth;
       bestVariant = variant;
@@ -78,7 +92,9 @@ export function pickWinningVariant(
  * `screens`. Called from variant-target.ts when metadata arrives. Values are
  * already pixel min-widths.
  */
-export function setProjectScreens(screens: Array<{ name: string; minWidth: number }>): void {
+export function setProjectScreens(
+  screens: { name: string; minWidth: number }[]
+): void {
   BREAKPOINT_WIDTHS = new Map(screens.map((s) => [s.name, s.minWidth]));
 }
 
@@ -88,15 +104,20 @@ export function setProjectScreens(screens: Array<{ name: string; minWidth: numbe
  *   "dark:md:bg-red-500" → { variants: ["dark","md"], utility: "bg-red-500" }
  *   "bg-[url(http://x)]"  → { variants: [],            utility: "bg-[url(http://x)]" }
  */
-export function decomposeClass(cls: string): { variants: string[]; utility: string } {
+export function decomposeClass(cls: string): {
+  variants: string[];
+  utility: string;
+} {
   const segments: string[] = [];
   let depth = 0;
   let start = 0;
-  for (let i = 0; i < cls.length; i++) {
+  for (let i = 0; i < cls.length; i += 1) {
     const ch = cls[i];
-    if (ch === "[") depth++;
-    else if (ch === "]") depth = Math.max(0, depth - 1);
-    else if (ch === ":" && depth === 0) {
+    if (ch === "[") {
+      depth += 1;
+    } else if (ch === "]") {
+      depth = Math.max(0, depth - 1);
+    } else if (ch === ":" && depth === 0) {
       segments.push(cls.slice(start, i));
       start = i + 1;
     }
@@ -107,7 +128,9 @@ export function decomposeClass(cls: string): { variants: string[]; utility: stri
 }
 
 function sameVariantSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length) {
+    return false;
+  }
   const setB = new Set(b);
   return a.every((t) => setB.has(t));
 }
@@ -123,12 +146,16 @@ function sameVariantSet(a: string[], b: string[]): boolean {
 export function findClassForVariant(
   classes: string[],
   matchesBare: (bare: string) => boolean,
-  variantTokens: string[],
+  variantTokens: string[]
 ): string {
   for (const cls of classes) {
     const { variants, utility } = decomposeClass(cls);
-    if (!sameVariantSet(variants, variantTokens)) continue;
-    if (matchesBare(utility)) return cls;
+    if (!sameVariantSet(variants, variantTokens)) {
+      continue;
+    }
+    if (matchesBare(utility)) {
+      return cls;
+    }
   }
   return "";
 }
@@ -143,7 +170,9 @@ export function countDistinctBreakpoints(classes: string[]): number {
   for (const cls of classes) {
     const { variants } = decomposeClass(cls);
     for (const v of variants) {
-      if (BREAKPOINT_WIDTHS.has(v)) found.add(v);
+      if (BREAKPOINT_WIDTHS.has(v)) {
+        found.add(v);
+      }
     }
   }
   return found.size;

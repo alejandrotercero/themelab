@@ -1,27 +1,37 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { executeBatch } from "../batch-transform.js";
-import type { BatchOperation } from "@themelab/shared";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-const fixturesDir = path.join(__dirname, "fixtures");
+import { describe, it, expect, afterEach } from "vitest";
+
+import { executeBatch } from "../batch-transform.js";
+
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
 
 /** Write a temp fixture and return helpers. */
 function writeFixture(name: string, content: string) {
-  const tmp = path.join(fixturesDir, `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${name}`);
+  const tmp = path.join(
+    fixturesDir,
+    `_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${name}`
+  );
   fs.writeFileSync(tmp, content, "utf-8");
   return {
     filePath: tmp,
     cleanup: () => {
-      try { fs.unlinkSync(tmp); } catch {}
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        // Best-effort cleanup; ignore failures (e.g. already removed).
+      }
     },
   };
 }
 
 describe("element-resolution: deterministic chain", () => {
-  let cleanups: Array<() => void> = [];
+  let cleanups: (() => void)[] = [];
   afterEach(() => {
-    for (const fn of cleanups) fn();
+    for (const fn of cleanups) {
+      fn();
+    }
     cleanups = [];
   });
 
@@ -44,12 +54,20 @@ describe("element-resolution: deterministic chain", () => {
     const { filePath } = setup("exact-match.tsx", src);
     // <span> is at line 4, col 6
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 4, col: 6,
-        tagName: "span", className: "text-red-500",
-        updates: [{ tailwindPrefix: "text", tailwindToken: "blue-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 4,
+          col: 6,
+          tagName: "span",
+          className: "text-red-500",
+          updates: [
+            { tailwindPrefix: "text", tailwindToken: "blue-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -69,12 +87,21 @@ describe("element-resolution: deterministic chain", () => {
     const { filePath } = setup("fallback-match.tsx", src);
     // Give a wrong line (999) but correct hints
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 6,
-        tagName: "span", id: "greeting", className: "text-red-500",
-        updates: [{ tailwindPrefix: "text", tailwindToken: "blue-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 6,
+          tagName: "span",
+          id: "greeting",
+          className: "text-red-500",
+          updates: [
+            { tailwindPrefix: "text", tailwindToken: "blue-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -97,12 +124,21 @@ describe("element-resolution: deterministic chain", () => {
     // Target the second <div> child (nthOfType=1, 0-indexed)
     // Give wrong line so it falls through to fuzzy
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 6,
-        tagName: "div", className: "second", nthOfType: 1,
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 6,
+          tagName: "div",
+          className: "second",
+          nthOfType: 1,
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -125,12 +161,21 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("id-disambig.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        tagName: "div", id: "card-b", className: "card",
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "blue-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          tagName: "div",
+          id: "card-b",
+          className: "card",
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "blue-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -152,12 +197,21 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("key-disambig.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        tagName: "li", jsxKey: "beta", className: "item",
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "green-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          tagName: "li",
+          jsxKey: "beta",
+          className: "item",
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "green-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -175,14 +229,21 @@ describe("element-resolution: deterministic chain", () => {
     const { filePath } = setup("stale.tsx", src);
     // Pass a deliberately wrong mtime to trigger staleness
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 2, col: 9,
-        tagName: "div",
-        fileMtime: 1, // deliberately stale
-        fileSize: 999, // deliberately wrong
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 2,
+          col: 9,
+          tagName: "div",
+          fileMtime: 1, // deliberately stale
+          fileSize: 999, // deliberately wrong
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(false);
     expect(result.results[0].error).toMatch(/stale|modified/i);
@@ -196,12 +257,20 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("no-match.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        tagName: "section", className: "nonexistent",
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          tagName: "section",
+          className: "nonexistent",
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(false);
     expect(result.results[0].error).toBeDefined();
@@ -215,11 +284,20 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("neg-translate.tsx", src);
     const result = executeBatch(
-      [{
-        op: "moveSpacing", file: filePath, line: 2, col: 9,
-        axis: "y", token: "8", pxDelta: 48, direction: "positive", layoutContext: "block",
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: 2,
+          col: 9,
+          axis: "y",
+          token: "8",
+          pxDelta: 48,
+          direction: "positive",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -233,11 +311,20 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("pos-to-neg-translate.tsx", src);
     const result = executeBatch(
-      [{
-        op: "moveSpacing", file: filePath, line: 2, col: 9,
-        axis: "y", token: "8", pxDelta: -48, direction: "negative", layoutContext: "block",
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "moveSpacing",
+          file: filePath,
+          line: 2,
+          col: 9,
+          axis: "y",
+          token: "8",
+          pxDelta: -48,
+          direction: "negative",
+          layoutContext: "block",
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -253,15 +340,27 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("stale-path.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 2, col: 9,
-        tagName: "div",
-        // A structural path that WOULD resolve — proving staleness now runs first.
-        jsxPath: { componentName: "App", filePath, segments: [{ name: "div", discriminator: { type: "root" } }] },
-        fileMtime: 1, fileSize: 999, // deliberately stale
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 2,
+          col: 9,
+          tagName: "div",
+          // A structural path that WOULD resolve — proving staleness now runs first.
+          jsxPath: {
+            componentName: "App",
+            filePath,
+            segments: [{ name: "div", discriminator: { type: "root" } }],
+          },
+          fileMtime: 1,
+          fileSize: 999, // deliberately stale
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(false);
     expect(result.results[0].error).toMatch(/FILE_CHANGED|stale|modified/i);
@@ -275,13 +374,21 @@ describe("element-resolution: deterministic chain", () => {
     const { filePath } = setup("fresh-stat.tsx", src);
     const stat = fs.statSync(filePath);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 2, col: 9,
-        tagName: "div",
-        fileMtime: stat.mtimeMs, fileSize: stat.size, // accurate baseline
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 2,
+          col: 9,
+          tagName: "div",
+          fileMtime: stat.mtimeMs,
+          fileSize: stat.size, // accurate baseline
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     expect(fs.readFileSync(filePath, "utf-8")).toContain("bg-red-500");
@@ -305,12 +412,20 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("subset-vs-overlap.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        tagName: "div", className: "flex gap-4 bg-blue-500 px-2",
-        updates: [{ tailwindPrefix: "text", tailwindToken: "white", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          tagName: "div",
+          className: "flex gap-4 bg-blue-500 px-2",
+          updates: [
+            { tailwindPrefix: "text", tailwindToken: "white", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -332,12 +447,21 @@ describe("element-resolution: deterministic chain", () => {
     const { filePath } = setup("text-hint.tsx", src);
     // Both buttons share className "btn" — only the text tells them apart.
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        tagName: "button", className: "btn", text: "Cancel",
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          tagName: "button",
+          className: "btn",
+          text: "Cancel",
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -358,12 +482,20 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("ambiguous.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        tagName: "div", className: "card", // no id/key/nthOfType to break the tie
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          tagName: "div",
+          className: "card", // no id/key/nthOfType to break the tie
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "red-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(false);
     expect(result.results[0].error).toMatch(/AMBIGUOUS/);
@@ -382,15 +514,27 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("path-tag-gate.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        // Path resolves to the root <div>, but the captured element is a <span>.
-        // verifyIdentity rejects on tag, so it falls through to fuzzy hints.
-        tagName: "span", className: "target text-red-500",
-        jsxPath: { componentName: "App", filePath, segments: [{ name: "div", discriminator: { type: "root" } }] },
-        updates: [{ tailwindPrefix: "text", tailwindToken: "blue-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          // Path resolves to the root <div>, but the captured element is a <span>.
+          // verifyIdentity rejects on tag, so it falls through to fuzzy hints.
+          tagName: "span",
+          className: "target text-red-500",
+          jsxPath: {
+            componentName: "App",
+            filePath,
+            segments: [{ name: "div", discriminator: { type: "root" } }],
+          },
+          updates: [
+            { tailwindPrefix: "text", tailwindToken: "blue-500", value: "" },
+          ],
+        },
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");
@@ -411,20 +555,33 @@ describe("element-resolution: deterministic chain", () => {
 }`;
     const { filePath } = setup("classhint-index.tsx", src);
     const result = executeBatch(
-      [{
-        op: "updateClass", file: filePath, line: 999, col: 0,
-        tagName: "li", className: "b",
-        // index points at the FIRST <li> (a), but classHint identifies the second.
-        jsxPath: {
-          componentName: "App", filePath,
-          segments: [
-            { name: "ul", discriminator: { type: "root" } },
-            { name: "li", discriminator: { type: "index", value: 0 }, classHint: ["b"] },
+      [
+        {
+          op: "updateClass",
+          file: filePath,
+          line: 999,
+          col: 0,
+          tagName: "li",
+          className: "b",
+          // index points at the FIRST <li> (a), but classHint identifies the second.
+          jsxPath: {
+            componentName: "App",
+            filePath,
+            segments: [
+              { name: "ul", discriminator: { type: "root" } },
+              {
+                name: "li",
+                discriminator: { type: "index", value: 0 },
+                classHint: ["b"],
+              },
+            ],
+          },
+          updates: [
+            { tailwindPrefix: "bg", tailwindToken: "green-500", value: "" },
           ],
         },
-        updates: [{ tailwindPrefix: "bg", tailwindToken: "green-500", value: "" }],
-      }],
-      path.dirname(filePath),
+      ],
+      path.dirname(filePath)
     );
     expect(result.results[0].success).toBe(true);
     const updated = fs.readFileSync(filePath, "utf-8");

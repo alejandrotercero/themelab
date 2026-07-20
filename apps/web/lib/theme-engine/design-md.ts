@@ -1,5 +1,7 @@
 import type { ThemeStyles } from "@themelab/shared"
-import { reformat, type ColorFormat } from "./oklch"
+
+import { reformat } from "./oklch"
+import type { ColorFormat } from "./oklch"
 import { THEME_TOKENS } from "./transpile"
 
 const DEFAULT_NAME = "ThemeLab theme"
@@ -8,8 +10,9 @@ const DEFAULT_DESCRIPTION =
 
 function cleanText(value: string, fallback: string, maxLength: number): string {
   const cleaned = value
-    .replace(/[\u0000-\u001f\u007f-\u009f]/gu, " ")
-    .replace(/\s+/gu, " ")
+    // oxlint-disable-next-line no-control-regex -- intentionally strips control characters from user-supplied theme name/description text
+    .replaceAll(/[\u0000-\u001F\u007F-\u009F]/gu, " ")
+    .replaceAll(/\s+/gu, " ")
     .trim()
     .slice(0, maxLength)
     .trim()
@@ -51,13 +54,15 @@ export function themeStylesToDesignMd(
 
   for (const token of THEME_TOKENS) {
     const value = theme.light[token]
-    if (value != null)
+    if (value !== undefined) {
       colorLines.push(`  ${token}: ${yamlString(reformat(value, format))}`)
+    }
   }
   for (const token of THEME_TOKENS) {
     const value = theme.dark[token]
-    if (value != null)
+    if (value !== undefined) {
       colorLines.push(`  dark-${token}: ${yamlString(reformat(value, format))}`)
+    }
   }
 
   return [

@@ -1,6 +1,7 @@
 import type { PropertyDescriptor } from "@themelab/shared";
-import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
+
 import { COLORS, PANEL, FONT_MONO, RADII } from "../../design-tokens.js";
+import type { PropertyControl, OnPreview, OnCommit } from "./types.js";
 
 type Side = "top" | "right" | "bottom" | "left";
 
@@ -10,23 +11,71 @@ interface SpacingEntry {
   layer: "padding" | "margin";
 }
 
-function parseSide(key: string): { layer: "padding" | "margin"; side: Side } | null {
-  if (key === "paddingTop") return { layer: "padding", side: "top" };
-  if (key === "paddingRight") return { layer: "padding", side: "right" };
-  if (key === "paddingBottom") return { layer: "padding", side: "bottom" };
-  if (key === "paddingLeft") return { layer: "padding", side: "left" };
-  if (key === "marginTop") return { layer: "margin", side: "top" };
-  if (key === "marginRight") return { layer: "margin", side: "right" };
-  if (key === "marginBottom") return { layer: "margin", side: "bottom" };
-  if (key === "marginLeft") return { layer: "margin", side: "left" };
+function parseSide(
+  key: string
+): { layer: "padding" | "margin"; side: Side } | null {
+  if (key === "paddingTop") {
+    return { layer: "padding", side: "top" };
+  }
+  if (key === "paddingRight") {
+    return { layer: "padding", side: "right" };
+  }
+  if (key === "paddingBottom") {
+    return { layer: "padding", side: "bottom" };
+  }
+  if (key === "paddingLeft") {
+    return { layer: "padding", side: "left" };
+  }
+  if (key === "marginTop") {
+    return { layer: "margin", side: "top" };
+  }
+  if (key === "marginRight") {
+    return { layer: "margin", side: "right" };
+  }
+  if (key === "marginBottom") {
+    return { layer: "margin", side: "bottom" };
+  }
+  if (key === "marginLeft") {
+    return { layer: "margin", side: "left" };
+  }
   return null;
+}
+
+// -----------------------------------------------------------------------
+// Format helper
+// -----------------------------------------------------------------------
+function formatValue(cssValue: string): string {
+  const num = Number(cssValue);
+  if (!Number.isNaN(num)) {
+    // Show integer if it rounds cleanly
+    return num === Math.round(num) ? String(Math.round(num)) : cssValue;
+  }
+  return cssValue;
+}
+
+// -----------------------------------------------------------------------
+// Layer label
+// -----------------------------------------------------------------------
+function makeLayerLabel(text: string): HTMLElement {
+  const el = document.createElement("span");
+  el.textContent = text;
+  el.style.cssText = `
+      font-size:9px;
+      color:${PANEL.textDim};
+      text-transform:uppercase;
+      letter-spacing:0.05em;
+      user-select:none;
+    `
+    .trim()
+    .replaceAll(/\n\s*/g, " ");
+  return el;
 }
 
 export function createBoxModel(
   descriptors: PropertyDescriptor[],
   values: Map<string, string>,
   onPreview: OnPreview,
-  onCommit: OnCommit,
+  onCommit: OnCommit
 ): PropertyControl {
   const currentValues = new Map(values);
 
@@ -51,7 +100,9 @@ export function createBoxModel(
     font-size:10px;
     color:${PANEL.textDim};
     position:relative;
-  `.trim().replace(/\n\s*/g, " ");
+  `
+    .trim()
+    .replaceAll(/\n\s*/g, " ");
 
   // -----------------------------------------------------------------------
   // Nested box layout  (margin outer, padding inner, "content" center)
@@ -75,7 +126,9 @@ export function createBoxModel(
     border-radius:${RADII.sm};
     padding:10px;
     position:relative;
-  `.trim().replace(/\n\s*/g, " ");
+  `
+    .trim()
+    .replaceAll(/\n\s*/g, " ");
 
   // Padding box
   const paddingBox = document.createElement("div");
@@ -90,7 +143,9 @@ export function createBoxModel(
     grid-template-columns:auto 1fr auto;
     align-items:center;
     gap:2px;
-  `.trim().replace(/\n\s*/g, " ");
+  `
+    .trim()
+    .replaceAll(/\n\s*/g, " ");
 
   // Content center label
   const contentCenter = document.createElement("div");
@@ -104,53 +159,10 @@ export function createBoxModel(
     background:${PANEL.surface};
     border-radius:3px;
     user-select:none;
-  `.trim().replace(/\n\s*/g, " ");
+  `
+    .trim()
+    .replaceAll(/\n\s*/g, " ");
   contentCenter.textContent = "content";
-
-  // -----------------------------------------------------------------------
-  // Track all interactive value cells
-  // -----------------------------------------------------------------------
-  interface Cell {
-    key: string;
-    span: HTMLElement;
-    descriptor: PropertyDescriptor;
-  }
-  const cells: Cell[] = [];
-
-  function makeValueCell(descriptor: PropertyDescriptor): HTMLElement {
-    const span = document.createElement("span");
-    const cssVal = currentValues.get(descriptor.key) ?? descriptor.defaultValue;
-    span.textContent = formatValue(cssVal);
-    span.title = descriptor.label;
-    span.style.cssText = `
-      cursor:pointer;
-      color:${PANEL.text};
-      font-size:10px;
-      font-family:${FONT_MONO};
-      padding:1px 4px;
-      border-radius:3px;
-      text-align:center;
-      transition:background 100ms ease;
-      display:inline-block;
-      min-width:18px;
-    `.trim().replace(/\n\s*/g, " ");
-
-    span.addEventListener("mouseenter", () => {
-      span.style.background = PANEL.surface;
-    });
-    span.addEventListener("mouseleave", () => {
-      if (document.activeElement !== editInput || editInput.dataset.key !== descriptor.key) {
-        span.style.background = "transparent";
-      }
-    });
-
-    span.addEventListener("click", () => {
-      activateEdit(descriptor, span);
-    });
-
-    cells.push({ key: descriptor.key, span, descriptor });
-    return span;
-  }
 
   // -----------------------------------------------------------------------
   // Inline edit input (shared single instance)
@@ -160,12 +172,56 @@ export function createBoxModel(
   editInput.className = "prop-input";
   editInput.style.cssText = `width:40px; text-align:center; display:none; position:absolute; z-index:10;`;
 
-  root.appendChild(editInput);
+  root.append(editInput);
 
   let editingDescriptor: PropertyDescriptor | null = null;
   let editingSpan: HTMLElement | null = null;
 
-  function activateEdit(descriptor: PropertyDescriptor, span: HTMLElement): void {
+  function commitEdit(): void {
+    if (!editingDescriptor || !editingSpan) {
+      return;
+    }
+    const raw = editInput.value.trim();
+    const descriptor = editingDescriptor;
+    const span = editingSpan;
+
+    let cssValue: string;
+    const num = Number(raw);
+    const VALID_KEYWORDS = new Set([
+      "auto",
+      "none",
+      "normal",
+      "inherit",
+      "initial",
+      "0",
+    ]);
+    if (!Number.isNaN(num)) {
+      const unitMatch = raw.match(/(?<unit>px|rem|em|%|vw|vh|ch)$/);
+      cssValue = unitMatch ? raw : `${num}px`;
+    } else if (VALID_KEYWORDS.has(raw)) {
+      cssValue = raw;
+    } else {
+      // Revert to current
+      cssValue = currentValues.get(descriptor.key) ?? descriptor.defaultValue;
+    }
+
+    currentValues.set(descriptor.key, cssValue);
+    span.textContent = formatValue(cssValue);
+    span.style.background = "transparent";
+
+    editInput.style.display = "none";
+    editInput.dataset.key = "";
+    editingDescriptor = null;
+    editingSpan = null;
+
+    onPreview(descriptor.key, cssValue);
+    onCommit();
+  }
+
+  function activateEdit(
+    descriptor: PropertyDescriptor,
+    span: HTMLElement
+  ): void {
     // Commit any pending edit first
     if (editingDescriptor && editingDescriptor !== descriptor) {
       commitEdit();
@@ -198,45 +254,15 @@ export function createBoxModel(
     editInput.select();
   }
 
-  function commitEdit(): void {
-    if (!editingDescriptor || !editingSpan) return;
-    const raw = editInput.value.trim();
-    const descriptor = editingDescriptor;
-    const span = editingSpan;
-
-    let cssValue: string;
-    const num = parseFloat(raw);
-    const VALID_KEYWORDS = new Set(["auto", "none", "normal", "inherit", "initial", "0"]);
-    if (!isNaN(num)) {
-      const unitMatch = raw.match(/(px|rem|em|%|vw|vh|ch)$/);
-      cssValue = unitMatch ? raw : `${num}px`;
-    } else if (VALID_KEYWORDS.has(raw)) {
-      cssValue = raw;
-    } else {
-      // Revert to current
-      cssValue = currentValues.get(descriptor.key) ?? descriptor.defaultValue;
-    }
-
-    currentValues.set(descriptor.key, cssValue);
-    span.textContent = formatValue(cssValue);
-    span.style.background = "transparent";
-
-    editInput.style.display = "none";
-    editInput.dataset.key = "";
-    editingDescriptor = null;
-    editingSpan = null;
-
-    onPreview(descriptor.key, cssValue);
-    onCommit();
-  }
-
   editInput.addEventListener("keydown", (e: KeyboardEvent) => {
     if (e.key === "Enter") {
       commitEdit();
     } else if (e.key === "Escape") {
       // Revert
       if (editingDescriptor && editingSpan) {
-        const cssVal = currentValues.get(editingDescriptor.key) ?? editingDescriptor.defaultValue;
+        const cssVal =
+          currentValues.get(editingDescriptor.key) ??
+          editingDescriptor.defaultValue;
         editingSpan.textContent = formatValue(cssVal);
       }
       editInput.style.display = "none";
@@ -251,31 +277,53 @@ export function createBoxModel(
   });
 
   // -----------------------------------------------------------------------
-  // Format helper
+  // Track all interactive value cells
   // -----------------------------------------------------------------------
-  function formatValue(cssValue: string): string {
-    const num = parseFloat(cssValue);
-    if (!isNaN(num)) {
-      // Show integer if it rounds cleanly
-      return num === Math.round(num) ? String(Math.round(num)) : cssValue;
-    }
-    return cssValue;
+  interface Cell {
+    key: string;
+    span: HTMLElement;
+    descriptor: PropertyDescriptor;
   }
+  const cells: Cell[] = [];
 
-  // -----------------------------------------------------------------------
-  // Layer label
-  // -----------------------------------------------------------------------
-  function makeLayerLabel(text: string): HTMLElement {
-    const el = document.createElement("span");
-    el.textContent = text;
-    el.style.cssText = `
-      font-size:9px;
-      color:${PANEL.textDim};
-      text-transform:uppercase;
-      letter-spacing:0.05em;
-      user-select:none;
-    `.trim().replace(/\n\s*/g, " ");
-    return el;
+  function makeValueCell(descriptor: PropertyDescriptor): HTMLElement {
+    const span = document.createElement("span");
+    const cssVal = currentValues.get(descriptor.key) ?? descriptor.defaultValue;
+    span.textContent = formatValue(cssVal);
+    span.title = descriptor.label;
+    span.style.cssText = `
+      cursor:pointer;
+      color:${PANEL.text};
+      font-size:10px;
+      font-family:${FONT_MONO};
+      padding:1px 4px;
+      border-radius:3px;
+      text-align:center;
+      transition:background 100ms ease;
+      display:inline-block;
+      min-width:18px;
+    `
+      .trim()
+      .replaceAll(/\n\s*/g, " ");
+
+    span.addEventListener("mouseenter", () => {
+      span.style.background = PANEL.surface;
+    });
+    span.addEventListener("mouseleave", () => {
+      if (
+        document.activeElement !== editInput ||
+        editInput.dataset.key !== descriptor.key
+      ) {
+        span.style.background = "transparent";
+      }
+    });
+
+    span.addEventListener("click", () => {
+      activateEdit(descriptor, span);
+    });
+
+    cells.push({ key: descriptor.key, span, descriptor });
+    return span;
   }
 
   // -----------------------------------------------------------------------
@@ -284,7 +332,10 @@ export function createBoxModel(
   //   row 2: [pad-left] [content] [pad-right]
   //   row 3: [empty] [pad-bottom] [empty]
   // -----------------------------------------------------------------------
-  function getByKeyword(layer: "padding" | "margin", side: Side): SpacingEntry | undefined {
+  function getByKeyword(
+    layer: "padding" | "margin",
+    side: Side
+  ): SpacingEntry | undefined {
     return entries.find((e) => e.layer === layer && e.side === side);
   }
 
@@ -321,11 +372,11 @@ export function createBoxModel(
   contentCenter.style.gridRow = "2";
   contentCenter.style.gridColumn = "2";
 
-  paddingBox.appendChild(padTop);
-  paddingBox.appendChild(padLeft);
-  paddingBox.appendChild(contentCenter);
-  paddingBox.appendChild(padRight);
-  paddingBox.appendChild(padBottom);
+  paddingBox.append(padTop);
+  paddingBox.append(padLeft);
+  paddingBox.append(contentCenter);
+  paddingBox.append(padRight);
+  paddingBox.append(padBottom);
 
   // Margin grid (outer) - similar layout wrapping the padding box
   const marginGrid = document.createElement("div");
@@ -335,7 +386,9 @@ export function createBoxModel(
     grid-template-columns:auto 1fr auto;
     align-items:center;
     gap:2px;
-  `.trim().replace(/\n\s*/g, " ");
+  `
+    .trim()
+    .replaceAll(/\n\s*/g, " ");
 
   const mTop = makeCell("margin", "top");
   mTop.style.gridRow = "1";
@@ -358,13 +411,13 @@ export function createBoxModel(
   // Center cell of margin grid = padding box
   const paddingWrapper = document.createElement("div");
   paddingWrapper.style.cssText = `grid-row:2; grid-column:2;`;
-  paddingWrapper.appendChild(paddingBox);
+  paddingWrapper.append(paddingBox);
 
-  marginGrid.appendChild(mTop);
-  marginGrid.appendChild(mLeft);
-  marginGrid.appendChild(paddingWrapper);
-  marginGrid.appendChild(mRight);
-  marginGrid.appendChild(mBottom);
+  marginGrid.append(mTop);
+  marginGrid.append(mLeft);
+  marginGrid.append(paddingWrapper);
+  marginGrid.append(mRight);
+  marginGrid.append(mBottom);
 
   // -----------------------------------------------------------------------
   // Assemble labels + margin box
@@ -374,20 +427,22 @@ export function createBoxModel(
 
   const labelRow = document.createElement("div");
   labelRow.style.cssText = `display:flex; gap:8px; padding:0 4px;`;
-  labelRow.appendChild(marginLabel);
-  labelRow.appendChild(paddingLabel);
+  labelRow.append(marginLabel);
+  labelRow.append(paddingLabel);
 
-  marginBox.appendChild(marginGrid);
-  boxWrapper.appendChild(marginBox);
+  marginBox.append(marginGrid);
+  boxWrapper.append(marginBox);
 
-  root.appendChild(labelRow);
-  root.appendChild(boxWrapper);
+  root.append(labelRow);
+  root.append(boxWrapper);
 
   return {
     element: root,
     setValue(key: string, cssValue: string): void {
       const parsed = parseSide(key);
-      if (!parsed) return;
+      if (!parsed) {
+        return;
+      }
       currentValues.set(key, cssValue);
       const cell = cells.find((c) => c.key === key);
       if (cell) {

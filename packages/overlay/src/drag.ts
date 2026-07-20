@@ -1,23 +1,23 @@
-// packages/overlay/src/drag.ts
-import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
 import type { ComponentInfo, SiblingInfo } from "@themelab/shared";
+// packages/overlay/src/drag.ts
+import { getFiberFromHostInstance, isCompositeFiber } from "bippy";
+
 import { send, onMessage } from "./bridge.js";
-import { getDebugSource } from "./tools/resolve-helper.js";
 import { addPendingReorderOperation } from "./canvas-state.js";
 import { clearSelection, setDragCallbacks } from "./selection.js";
 import { getShadowRoot, showToast } from "./toolbar.js";
+import { getDebugSource } from "./utils/fiber-debug-source.js";
 
 // Drag state — preview is created immediately, siblings arrive async
 let preview: HTMLDivElement | null = null;
 let dropIndicator: HTMLDivElement | null = null;
 let dragSelection: ComponentInfo | null = null;
-let dragElement: HTMLElement | null = null;
 let isDragging = false;
 let dragStartPos: { x: number; y: number } | null = null;
 
 // Sibling data — populated asynchronously after getSiblings response
 let siblings: SiblingInfo[] = [];
-let siblingElements: Map<number, { el: HTMLElement; rect: DOMRect }> = new Map();
+let siblingElements = new Map<number, { el: HTMLElement; rect: DOMRect }>();
 let siblingsReady = false;
 
 const DRAG_STYLES = `
@@ -56,33 +56,26 @@ const DRAG_STYLES = `
 
 let dropTarget: SiblingInfo | null = null;
 
-export function initDrag(): void {
-  const shadowRoot = getShadowRoot();
-  if (!shadowRoot) return;
-
-  const style = document.createElement("style");
-  style.textContent = DRAG_STYLES;
-  shadowRoot.appendChild(style);
-
-  // Register drag callbacks with selection.ts (no separate event listeners)
-  setDragCallbacks({
-    onStart: handleDragStart,
-    onMove: handleDragMove,
-    onEnd: handleDragEnd,
-  });
-
-  // Listen for reorder completion
-  onMessage((msg) => {
-    if (msg.type === "reorderComplete") {
-      cleanupDrag();
-      clearSelection();
-    }
-  });
+function cleanupDrag(): void {
+  preview?.remove();
+  dropIndicator?.remove();
+  preview = null;
+  dropIndicator = null;
+  dragSelection = null;
+  isDragging = false;
+  dragStartPos = null;
+  siblingsReady = false;
+  siblings = [];
+  siblingElements = new Map();
+  dropTarget = null;
 }
 
-function handleDragStart(e: MouseEvent, el: HTMLElement, selection: ComponentInfo): void {
+function handleDragStart(
+  e: MouseEvent,
+  el: HTMLElement,
+  selection: ComponentInfo
+): void {
   dragSelection = selection;
-  dragElement = el;
   dragStartPos = { x: e.clientX, y: e.clientY };
   isDragging = false;
   siblingsReady = false;
@@ -91,7 +84,9 @@ function handleDragStart(e: MouseEvent, el: HTMLElement, selection: ComponentInf
   dropTarget = null;
 
   const shadowRoot = getShadowRoot();
-  if (!shadowRoot) return;
+  if (!shadowRoot) {
+    return;
+  }
 
   // Create preview element immediately (shown once drag threshold met)
   preview = document.createElement("div");
@@ -100,14 +95,14 @@ function handleDragStart(e: MouseEvent, el: HTMLElement, selection: ComponentInf
   preview.style.width = `${rect.width}px`;
   preview.style.height = `${rect.height}px`;
   preview.innerHTML = el.outerHTML;
-  shadowRoot.appendChild(preview);
+  shadowRoot.append(preview);
 
   dropIndicator = document.createElement("div");
   dropIndicator.className = "drop-indicator";
-  shadowRoot.appendChild(dropIndicator);
+  shadowRoot.append(dropIndicator);
 
   // Request siblings asynchronously (drop indicators appear when ready)
-  const parentStack = selection.stack[1];
+  const [, parentStack] = selection.stack;
   if (!parentStack?.filePath) {
     showToast("Can't reorder this element");
     cleanupDrag();
@@ -121,17 +116,23 @@ function handleDragStart(e: MouseEvent, el: HTMLElement, selection: ComponentInf
   });
 
   const unsubscribe = onMessage((msg) => {
-    if (msg.type !== "siblingsList") return;
+    if (msg.type !== "siblingsList") {
+      return;
+    }
     unsubscribe();
 
-    siblings = msg.siblings;
+    ({ siblings } = msg);
 
     // Match siblings to DOM elements using bippy fiber walking
     const allElements = document.querySelectorAll("*");
     for (const sibEl of allElements) {
-      if (sibEl.closest("#themelab-root")) continue;
+      if (sibEl.closest("#themelab-root")) {
+        continue;
+      }
       const fiber = getFiberFromHostInstance(sibEl);
-      if (!fiber) continue;
+      if (!fiber) {
+        continue;
+      }
 
       // Walk up to find the nearest composite fiber with source info
       let current: typeof fiber | null = fiber;
@@ -162,11 +163,15 @@ function handleDragStart(e: MouseEvent, el: HTMLElement, selection: ComponentInf
 }
 
 function handleDragMove(e: MouseEvent): void {
-  if (!dragStartPos) return;
+  if (!dragStartPos) {
+    return;
+  }
 
   const dx = Math.abs(e.clientX - dragStartPos.x);
   const dy = Math.abs(e.clientY - dragStartPos.y);
-  if (dx < 5 && dy < 5) return;
+  if (dx < 5 && dy < 5) {
+    return;
+  }
 
   isDragging = true;
 
@@ -178,7 +183,9 @@ function handleDragMove(e: MouseEvent): void {
   }
 
   // Only show drop indicators once sibling data has arrived
-  if (!siblingsReady || !dragSelection) return;
+  if (!siblingsReady || !dragSelection) {
+    return;
+  }
 
   let closestSibling: SiblingInfo | null = null;
   let closestDistance = Infinity;
@@ -187,10 +194,14 @@ function handleDragMove(e: MouseEvent): void {
   let indicatorWidth = 0;
 
   for (const sibling of siblings) {
-    if (sibling.lineNumber === dragSelection.lineNumber) continue;
+    if (sibling.lineNumber === dragSelection.lineNumber) {
+      continue;
+    }
 
     const sibData = siblingElements.get(sibling.lineNumber);
-    if (!sibData) continue;
+    if (!sibData) {
+      continue;
+    }
 
     const sibRect = sibData.rect;
     const midY = sibRect.top + sibRect.height / 2;
@@ -199,11 +210,7 @@ function handleDragMove(e: MouseEvent): void {
     if (distance < closestDistance) {
       closestDistance = distance;
       closestSibling = sibling;
-      if (e.clientY < midY) {
-        indicatorY = sibRect.top - 2;
-      } else {
-        indicatorY = sibRect.bottom + 2;
-      }
+      indicatorY = e.clientY < midY ? sibRect.top - 2 : sibRect.bottom + 2;
       indicatorLeft = sibRect.left;
       indicatorWidth = sibRect.width;
     }
@@ -221,7 +228,7 @@ function handleDragMove(e: MouseEvent): void {
   }
 }
 
-function handleDragEnd(e: MouseEvent): void {
+function handleDragEnd(_e: MouseEvent): void {
   if (!isDragging || !dropTarget || !dragSelection) {
     cleanupDrag();
     return;
@@ -240,25 +247,36 @@ function handleDragEnd(e: MouseEvent): void {
       file: dragSelection.filePath,
       fromLine: dragSelection.lineNumber,
       toLine: dropTarget.lineNumber,
-    },
+    }
   );
 
   cleanupDrag();
 }
 
-function cleanupDrag(): void {
-  preview?.remove();
-  dropIndicator?.remove();
-  preview = null;
-  dropIndicator = null;
-  dragSelection = null;
-  dragElement = null;
-  isDragging = false;
-  dragStartPos = null;
-  siblingsReady = false;
-  siblings = [];
-  siblingElements = new Map();
-  dropTarget = null;
+export function initDrag(): void {
+  const shadowRoot = getShadowRoot();
+  if (!shadowRoot) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.textContent = DRAG_STYLES;
+  shadowRoot.append(style);
+
+  // Register drag callbacks with selection.ts (no separate event listeners)
+  setDragCallbacks({
+    onStart: handleDragStart,
+    onMove: handleDragMove,
+    onEnd: handleDragEnd,
+  });
+
+  // Listen for reorder completion
+  onMessage((msg) => {
+    if (msg.type === "reorderComplete") {
+      cleanupDrag();
+      clearSelection();
+    }
+  });
 }
 
 export function deactivateDrag(): void {

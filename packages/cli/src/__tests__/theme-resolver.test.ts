@@ -1,20 +1,33 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { parseCssVarBlock, resolveTheme } from "../theme-resolver.js";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-const fixturesDir = path.join(__dirname, "fixtures");
+import { describe, it, expect, afterEach } from "vitest";
 
-const cleanups: Array<() => void> = [];
+import { parseCssVarBlock, resolveTheme } from "../theme-resolver.js";
+
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
+
+const cleanups: (() => void)[] = [];
 afterEach(() => {
-  for (const c of cleanups) c();
+  for (const c of cleanups) {
+    c();
+  }
   cleanups.length = 0;
 });
 
 function tempProject(files: Record<string, string>): string {
-  const root = path.join(fixturesDir, `_tmptheme_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  const root = path.join(
+    fixturesDir,
+    `_tmptheme_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  );
   fs.mkdirSync(root, { recursive: true });
-  cleanups.push(() => { try { fs.rmSync(root, { recursive: true, force: true }); } catch {} });
+  cleanups.push(() => {
+    try {
+      fs.rmSync(root, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup; ignore failures (e.g. already removed).
+    }
+  });
   for (const [rel, content] of Object.entries(files)) {
     const full = path.join(root, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -25,7 +38,9 @@ function tempProject(files: Record<string, string>): string {
 
 describe("parseCssVarBlock", () => {
   it("extracts custom properties without the leading --", () => {
-    expect(parseCssVarBlock("  --primary: oklch(0.6 0.2 250); --radius: 0.5rem; ")).toEqual({
+    expect(
+      parseCssVarBlock("  --primary: oklch(0.6 0.2 250); --radius: 0.5rem; ")
+    ).toEqual({
       primary: "oklch(0.6 0.2 250)",
       radius: "0.5rem",
     });
@@ -55,14 +70,16 @@ describe("resolveTheme", () => {
   it("parses :root (light) and .dark blocks from a shadcn globals.css", () => {
     const root = tempProject({ "src/app/globals.css": SHADCN_GLOBALS });
     const resolved = resolveTheme(root);
+    if (!resolved) {
+      throw new Error("expected resolveTheme to return a theme");
+    }
 
-    expect(resolved).not.toBeNull();
-    expect(resolved!.theme.light.primary).toBe("oklch(0.21 0.006 285)");
-    expect(resolved!.theme.light.radius).toBe("0.625rem");
-    expect(resolved!.theme.light["font-sans"]).toBe("Inter, sans-serif");
-    expect(resolved!.theme.dark.primary).toBe("oklch(0.92 0.004 286)");
-    expect(resolved!.source.darkSelector).toBe(".dark");
-    expect(resolved!.source.filePath).toContain("globals.css");
+    expect(resolved.theme.light.primary).toBe("oklch(0.21 0.006 285)");
+    expect(resolved.theme.light.radius).toBe("0.625rem");
+    expect(resolved.theme.light["font-sans"]).toBe("Inter, sans-serif");
+    expect(resolved.theme.dark.primary).toBe("oklch(0.92 0.004 286)");
+    expect(resolved.source.darkSelector).toBe(".dark");
+    expect(resolved.source.filePath).toContain("globals.css");
   });
 
   it("supports [data-theme=dark] as the dark selector", () => {
@@ -70,15 +87,23 @@ describe("resolveTheme", () => {
 [data-theme="dark"] { --primary: #eee; }`;
     const root = tempProject({ "styles/index.css": css });
     const resolved = resolveTheme(root);
-    expect(resolved!.theme.dark.primary).toBe("#eee");
-    expect(resolved!.source.darkSelector).toBe('[data-theme="dark"]');
+    if (!resolved) {
+      throw new Error("expected resolveTheme to return a theme");
+    }
+    expect(resolved.theme.dark.primary).toBe("#eee");
+    expect(resolved.source.darkSelector).toBe('[data-theme="dark"]');
   });
 
   it("returns light-only theme (null darkSelector) when no dark block exists", () => {
-    const root = tempProject({ "src/index.css": ":root { --primary: #111; --radius: 8px; }" });
+    const root = tempProject({
+      "src/index.css": ":root { --primary: #111; --radius: 8px; }",
+    });
     const resolved = resolveTheme(root);
-    expect(resolved!.theme.dark).toEqual({});
-    expect(resolved!.source.darkSelector).toBeNull();
+    if (!resolved) {
+      throw new Error("expected resolveTheme to return a theme");
+    }
+    expect(resolved.theme.dark).toEqual({});
+    expect(resolved.source.darkSelector).toBeNull();
   });
 
   it("picks the CSS file with the most :root vars (the real theme file)", () => {
@@ -87,8 +112,11 @@ describe("resolveTheme", () => {
       "src/app/globals.css": SHADCN_GLOBALS,
     });
     const resolved = resolveTheme(root);
-    expect(resolved!.source.filePath).toContain("globals.css");
-    expect(Object.keys(resolved!.theme.light).length).toBeGreaterThan(1);
+    if (!resolved) {
+      throw new Error("expected resolveTheme to return a theme");
+    }
+    expect(resolved.source.filePath).toContain("globals.css");
+    expect(Object.keys(resolved.theme.light).length).toBeGreaterThan(1);
   });
 
   it("returns null when no CSS file declares :root custom properties", () => {

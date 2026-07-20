@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { addMove, getMoveContainingElement, hasMoveForElement, resetCanvas } from "../canvas-state.js";
+
+import {
+  addMove,
+  getMoveContainingElement,
+  hasMoveForElement,
+  resetCanvas,
+} from "../canvas-state.js";
 import type { MoveEntry } from "../move-state.js";
 
 function createFakeElement(): HTMLElement {

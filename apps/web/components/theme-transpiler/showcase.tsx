@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 // The preview content — a spread of real shadcn components plus a swatch grid,
 // all reading the CSS variables the preview pane scopes onto them. Kept to
@@ -11,23 +11,39 @@ import {
   CurrencyDollarIcon,
   PulseIcon,
   WarningIcon,
-} from "@phosphor-icons/react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback, AvatarGroup } from "@/components/ui/avatar";
-import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@phosphor-icons/react"
+
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Avatar, AvatarFallback, AvatarGroup } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardAction,
+} from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Progress,
+  ProgressLabel,
+  ProgressValue,
+} from "@/components/ui/progress"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
 import {
   Table,
   TableBody,
@@ -35,21 +51,34 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { THEME_TOKENS } from "@/lib/theme-engine";
+} from "@/components/ui/table"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { THEME_TOKENS } from "@/lib/theme-engine"
 
 const STATS = [
-  { label: "Revenue", value: "$48,120", delta: "+12.4%", up: true, icon: CurrencyDollarIcon },
-  { label: "Active users", value: "2,318", delta: "+4.1%", up: true, icon: UsersIcon },
+  {
+    label: "Revenue",
+    value: "$48,120",
+    delta: "+12.4%",
+    up: true,
+    icon: CurrencyDollarIcon,
+  },
+  {
+    label: "Active users",
+    value: "2,318",
+    delta: "+4.1%",
+    up: true,
+    icon: UsersIcon,
+  },
   { label: "Churn", value: "1.8%", delta: "-0.6%", up: false, icon: PulseIcon },
-];
+]
 
 const ROWS = [
   { name: "Ablaze", levels: 8, verdict: "Pass", mode: "Dark" },
   { name: "Apollo", levels: 7, verdict: "Pass", mode: "Dark" },
   { name: "Marble", levels: 6, verdict: "Pass", mode: "Light" },
   { name: "Aeriform", levels: 4, verdict: "Partial", mode: "Dark" },
-];
+]
 
 export function Showcase() {
   return (
@@ -73,7 +102,11 @@ export function Showcase() {
             </CardHeader>
             <CardContent>
               <Badge variant={s.up ? "default" : "destructive"}>
-                {s.up ? <TrendUpIcon weight="bold" /> : <TrendDownIcon weight="bold" />}
+                {s.up ? (
+                  <TrendUpIcon weight="bold" />
+                ) : (
+                  <TrendDownIcon weight="bold" />
+                )}
                 {s.delta}
               </Badge>
             </CardContent>
@@ -147,10 +180,17 @@ export function Showcase() {
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="activity">Activity</TabsTrigger>
               </TabsList>
-              <TabsContent value="overview" className="pt-3 text-sm text-muted-foreground">
-                Primary, secondary and accent surfaces are derived from the nine Hundred Rabbits colors.
+              <TabsContent
+                value="overview"
+                className="pt-3 text-sm text-muted-foreground"
+              >
+                Primary, secondary and accent surfaces are derived from the nine
+                Hundred Rabbits colors.
               </TabsContent>
-              <TabsContent value="activity" className="pt-3 text-sm text-muted-foreground">
+              <TabsContent
+                value="activity"
+                className="pt-3 text-sm text-muted-foreground"
+              >
                 Mid-tones are interpolated in OKLCH; the ends may be synthetic.
               </TabsContent>
             </Tabs>
@@ -159,7 +199,8 @@ export function Showcase() {
               <AccordionItem value="a">
                 <AccordionTrigger>What is a token?</AccordionTrigger>
                 <AccordionContent className="text-muted-foreground">
-                  A named CSS variable like <code>--primary</code> that components read.
+                  A named CSS variable like <code>--primary</code> that
+                  components read.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="b">
@@ -244,7 +285,11 @@ export function Showcase() {
                   <TableCell>{r.levels}</TableCell>
                   <TableCell>{r.mode}</TableCell>
                   <TableCell className="text-right">
-                    <Badge variant={r.verdict === "Pass" ? "default" : "secondary"}>{r.verdict}</Badge>
+                    <Badge
+                      variant={r.verdict === "Pass" ? "default" : "secondary"}
+                    >
+                      {r.verdict}
+                    </Badge>
                   </TableCell>
                 </TableRow>
               ))}
@@ -254,19 +299,26 @@ export function Showcase() {
       </Card>
       {/* Token grid */}
       <div>
-        <h3 className="mb-2 text-sm font-medium text-muted-foreground">All 31 tokens</h3>
+        <h3 className="mb-2 text-sm font-medium text-muted-foreground">
+          All 31 tokens
+        </h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {THEME_TOKENS.map((token) => (
-            <div key={token} className="flex items-center gap-2 rounded-md border border-border p-2">
+            <div
+              key={token}
+              className="flex items-center gap-2 rounded-md border border-border p-2"
+            >
               <span
                 className="size-6 shrink-0 rounded border border-border"
                 style={{ backgroundColor: `var(--${token})` }}
               />
-              <span className="truncate text-xs text-muted-foreground">{token}</span>
+              <span className="truncate text-xs text-muted-foreground">
+                {token}
+              </span>
             </div>
           ))}
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -31,7 +31,7 @@ export function computeSnap(
   rawDx: number,
   rawDy: number,
   threshold: number,
-  canvasScale: number,
+  canvasScale: number
 ): SnapResult {
   const elemCenterX = elemRect.left + elemRect.width / 2;
   const elemCenterY = elemRect.top + elemRect.height / 2;

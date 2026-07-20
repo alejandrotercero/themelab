@@ -1,10 +1,11 @@
-"use client";
+"use client"
 
 // Small controlled dialog to name a theme — reused for the first Save (pre-filled
 // with the source label) and for Rename. Confirms on Enter. Portaled content gets
 // `tl-overlay` so it keeps the studio skin (Dialog renders at <body>).
 
-import { useEffect, useState } from "react";
+import { useState } from "react"
+
 import {
   Dialog,
   DialogContent,
@@ -12,17 +13,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 
 interface NameThemeDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  initialName: string;
-  title?: string;
-  description?: string;
-  confirmLabel?: string;
-  onConfirm: (name: string) => void;
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  initialName: string
+  title?: string
+  description?: string
+  confirmLabel?: string
+  onConfirm: (name: string) => void
 }
 
 export function NameThemeDialog({
@@ -34,20 +35,27 @@ export function NameThemeDialog({
   confirmLabel = "Save",
   onConfirm,
 }: NameThemeDialogProps) {
-  const [name, setName] = useState(initialName);
+  const [name, setName] = useState(initialName)
 
   // Reset the field whenever the dialog (re)opens with a new starting name.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- controlled dialog reset: sync local name when dialog opens with a new initialName
-    if (open) setName(initialName);
-  }, [open, initialName]);
+  // Adjusted during render (React's documented "adjusting state when a prop
+  // changes" pattern) instead of an effect, since it only depends on props.
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) {
+      setName(initialName)
+    }
+  }
 
   const submit = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    onConfirm(trimmed);
-    onOpenChange(false);
-  };
+    const trimmed = name.trim()
+    if (!trimmed) {
+      return
+    }
+    onConfirm(trimmed)
+    onOpenChange(false)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -62,22 +70,31 @@ export function NameThemeDialog({
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
+              e.preventDefault()
+              submit()
             }
           }}
           placeholder="My theme"
           aria-label="Theme name"
         />
         <DialogFooter>
-          <button type="button" className="ov-btn" onClick={() => onOpenChange(false)}>
+          <button
+            type="button"
+            className="ov-btn"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </button>
-          <button type="button" className="ov-btn ov-btn-primary" onClick={submit} disabled={!name.trim()}>
+          <button
+            type="button"
+            className="ov-btn ov-btn-primary"
+            onClick={submit}
+            disabled={!name.trim()}
+          >
             {confirmLabel}
           </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  )
 }

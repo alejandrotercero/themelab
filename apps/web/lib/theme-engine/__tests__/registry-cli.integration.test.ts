@@ -2,9 +2,11 @@ import { execFile } from "node:child_process"
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import path from "node:path"
 import { promisify } from "node:util"
+
 import { afterEach, describe, expect, it } from "vitest"
+
 import { encodeInstallPayload } from "../install-payload"
 import { installPayloadToRegistryItem } from "../registry"
 import { paletteToThemeStyles } from "../transpile"
@@ -22,13 +24,13 @@ afterEach(async () => {
 
 describe("shadcn CLI registry installation", () => {
   it("installs both CSS modes, radius, and root DESIGN.md into a Tailwind v4 project", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "themelab-registry-"))
+    const directory = await mkdtemp(path.join(tmpdir(), "themelab-registry-"))
     cleanup.push(directory)
-    await mkdir(join(directory, "app"), { recursive: true })
+    await mkdir(path.join(directory, "app"), { recursive: true })
 
     await Promise.all([
       writeFile(
-        join(directory, "package.json"),
+        path.join(directory, "package.json"),
         JSON.stringify({
           name: "themelab-registry-fixture",
           private: true,
@@ -41,7 +43,7 @@ describe("shadcn CLI registry installation", () => {
         })
       ),
       writeFile(
-        join(directory, "components.json"),
+        path.join(directory, "components.json"),
         JSON.stringify({
           $schema: "https://ui.shadcn.com/schema.json",
           style: "new-york",
@@ -64,12 +66,15 @@ describe("shadcn CLI registry installation", () => {
         })
       ),
       writeFile(
-        join(directory, "tsconfig.json"),
+        path.join(directory, "tsconfig.json"),
         JSON.stringify({
           compilerOptions: { baseUrl: ".", paths: { "@/*": ["./*"] } },
         })
       ),
-      writeFile(join(directory, "app/globals.css"), '@import "tailwindcss";\n'),
+      writeFile(
+        path.join(directory, "app/globals.css"),
+        '@import "tailwindcss";\n'
+      ),
     ])
 
     const theme = paletteToThemeStyles("#f97316", "#6b7280")
@@ -83,16 +88,18 @@ describe("shadcn CLI registry installation", () => {
       response.writeHead(200, { "Content-Type": "application/json" })
       response.end(JSON.stringify(item))
     })
-    await new Promise<void>((resolveListen) =>
-      server.listen(0, "127.0.0.1", resolveListen)
-    )
+    // oxlint-disable-next-line promise/avoid-new -- wraps a callback-based Node API (server.listen); no promise-returning alternative
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve)
+    })
 
     try {
       const address = server.address()
-      if (!address || typeof address === "string")
+      if (!address || typeof address === "string") {
         throw new Error("Registry fixture did not bind.")
+      }
       await execFileAsync(
-        resolve("node_modules/.bin/shadcn"),
+        path.resolve("node_modules/.bin/shadcn"),
         [
           "add",
           `http://127.0.0.1:${address.port}/theme.json`,
@@ -103,14 +110,21 @@ describe("shadcn CLI registry installation", () => {
         { timeout: 45_000, env: { ...process.env, NO_COLOR: "1" } }
       )
     } finally {
-      await new Promise<void>((resolveClose, reject) =>
-        server.close((error) => (error ? reject(error) : resolveClose()))
-      )
+      // oxlint-disable-next-line promise/avoid-new -- wraps a callback-based Node API (server.close); no promise-returning alternative
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
+      })
     }
 
     const [css, designMd] = await Promise.all([
-      readFile(join(directory, "app/globals.css"), "utf8"),
-      readFile(join(directory, "DESIGN.md"), "utf8"),
+      readFile(path.join(directory, "app/globals.css"), "utf-8"),
+      readFile(path.join(directory, "DESIGN.md"), "utf-8"),
     ])
     expect(css).toContain("--radius: 0.75rem")
     expect(css).toContain(`--primary: ${item.cssVars.light.primary}`)

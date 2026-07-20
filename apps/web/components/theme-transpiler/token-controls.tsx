@@ -1,44 +1,66 @@
-"use client";
+"use client"
 
 // Editable per-token controls, grouped, in the overlay's panel style. The
 // light/dark toggle is a sticky header (like the overlay theme panel); radius is
 // a normal variable; each color row can be overridden from the 9 SVG colors.
 
-import { ColorPicker, type SourceColor } from "./color-picker";
+import { ColorPicker } from "./color-picker"
+import type { SourceColor } from "./color-picker"
 
 const GROUPS: { label: string; tokens: string[] }[] = [
   { label: "Base", tokens: ["background", "foreground"] },
   { label: "Primary", tokens: ["primary", "primary-foreground"] },
   { label: "Secondary", tokens: ["secondary", "secondary-foreground"] },
   { label: "Accent", tokens: ["accent", "accent-foreground"] },
-  { label: "Card & Popover", tokens: ["card", "card-foreground", "popover", "popover-foreground"] },
+  {
+    label: "Card & Popover",
+    tokens: ["card", "card-foreground", "popover", "popover-foreground"],
+  },
   { label: "Muted", tokens: ["muted", "muted-foreground"] },
   { label: "Destructive", tokens: ["destructive", "destructive-foreground"] },
   { label: "Border · Input · Ring", tokens: ["border", "input", "ring"] },
-  { label: "Charts", tokens: ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"] },
+  {
+    label: "Charts",
+    tokens: ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"],
+  },
   {
     label: "Sidebar",
     tokens: [
-      "sidebar", "sidebar-foreground", "sidebar-primary", "sidebar-primary-foreground",
-      "sidebar-accent", "sidebar-accent-foreground", "sidebar-border", "sidebar-ring",
+      "sidebar",
+      "sidebar-foreground",
+      "sidebar-primary",
+      "sidebar-primary-foreground",
+      "sidebar-accent",
+      "sidebar-accent-foreground",
+      "sidebar-border",
+      "sidebar-ring",
     ],
   },
-];
+]
 
 interface TokenControlsProps {
-  vars: Record<string, string>;
+  vars: Record<string, string>
   /** Tokens overridden in the current mode (label rendered in accent). */
-  edited: Set<string>;
-  mode: "light" | "dark";
-  radius: string;
+  edited: Set<string>
+  mode: "light" | "dark"
+  radius: string
   /** The 9 HR source colors, for one-click overrides. */
-  palette: SourceColor[];
-  onMode: (mode: "light" | "dark") => void;
-  onToken: (token: string, value: string) => void;
-  onRadius: (value: string) => void;
+  palette: SourceColor[]
+  onMode: (mode: "light" | "dark") => void
+  onToken: (token: string, value: string) => void
+  onRadius: (value: string) => void
 }
 
-export function TokenControls({ vars, edited, mode, radius, palette, onMode, onToken, onRadius }: TokenControlsProps) {
+export function TokenControls({
+  vars,
+  edited,
+  mode,
+  radius,
+  palette,
+  onMode,
+  onToken,
+  onRadius,
+}: TokenControlsProps) {
   return (
     <div className="flex min-w-0 flex-col">
       {/* Light/dark toggle, like the overlay theme panel's header. */}
@@ -62,7 +84,7 @@ export function TokenControls({ vars, edited, mode, radius, palette, onMode, onT
 
       <div className="flex min-w-0 flex-col gap-4 p-3">
         <div className="flex flex-col gap-1">
-          <h4 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--ov-text-ghost)]">
+          <h4 className="px-1 text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
             Radius
           </h4>
           <div className="ov-row">
@@ -70,7 +92,9 @@ export function TokenControls({ vars, edited, mode, radius, palette, onMode, onT
               className="size-[18px] shrink-0 border border-[var(--ov-border)]"
               style={{ borderRadius: radius }}
             />
-            <span className="w-28 shrink-0 truncate text-[11px] text-[var(--ov-text-dim)]">radius</span>
+            <span className="w-28 shrink-0 truncate text-[11px] text-[var(--ov-text-dim)]">
+              radius
+            </span>
             <input
               type="text"
               value={radius}
@@ -83,7 +107,7 @@ export function TokenControls({ vars, edited, mode, radius, palette, onMode, onT
 
         {GROUPS.map((group) => (
           <div key={group.label} className="flex flex-col gap-1">
-            <h4 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--ov-text-ghost)]">
+            <h4 className="px-1 text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
               {group.label}
             </h4>
             <div className="flex flex-col">
@@ -102,5 +126,5 @@ export function TokenControls({ vars, edited, mode, radius, palette, onMode, onT
         ))}
       </div>
     </div>
-  );
+  )
 }

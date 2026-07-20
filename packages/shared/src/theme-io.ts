@@ -3,8 +3,6 @@
 // accepted formats — the studio's CSS export (`:root {…}` + `.dark {…}`) and its
 // dual-mode JSON export (`{ "root": {…}, "dark": {…} }`).
 
-import type { ThemeStyles } from "./types";
-
 /** Token maps for both modes; keys are token names without the `--` prefix. */
 export interface ParsedTheme {
   light: Record<string, string>;
@@ -18,9 +16,13 @@ function stripPrefix(key: string): string {
 /** Coerce an arbitrary object into a `{ token: value }` map of string values. */
 function normalizeMap(input: unknown): Record<string, string> {
   const out: Record<string, string> = {};
-  if (!input || typeof input !== "object") return out;
+  if (!input || typeof input !== "object") {
+    return out;
+  }
   for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
-    if (typeof v === "string") out[stripPrefix(k.trim())] = v.trim();
+    if (typeof v === "string") {
+      out[stripPrefix(k.trim())] = v.trim();
+    }
   }
   return out;
 }
@@ -32,7 +34,9 @@ function parseJson(text: string): ParsedTheme | null {
   } catch {
     return null;
   }
-  if (!obj || typeof obj !== "object") return null;
+  if (!obj || typeof obj !== "object") {
+    return null;
+  }
   const rec = obj as Record<string, unknown>;
 
   // Dual-mode shape: { root|light: {…}, dark: {…} } — our canonical export.
@@ -41,7 +45,9 @@ function parseJson(text: string): ParsedTheme | null {
   if (typeof rootBlock === "object" || typeof darkBlock === "object") {
     const light = normalizeMap(rootBlock);
     const dark = normalizeMap(darkBlock);
-    if (!Object.keys(light).length && !Object.keys(dark).length) return null;
+    if (!Object.keys(light).length && !Object.keys(dark).length) {
+      return null;
+    }
     return { light, dark };
   }
 
@@ -53,7 +59,9 @@ function parseJson(text: string): ParsedTheme | null {
 
 // A flat (non-nested) CSS rule: `selector { … }`. Our exports never nest, so a
 // brace-free body is the right, simple shape to match.
+// oxlint-disable-next-line eslint/prefer-named-capture-group -- named groups compile to TS1503 for consumers on an ES2017 target (apps/web); this package's positional groups must stay index-based
 const BLOCK_RE = /([^{}]+)\{([^{}]*)\}/g;
+// oxlint-disable-next-line eslint/prefer-named-capture-group -- named groups compile to TS1503 for consumers on an ES2017 target (apps/web); this package's positional groups must stay index-based
 const VAR_RE = /--([\w-]+)\s*:\s*([^;]+);/g;
 
 function parseCss(text: string): ParsedTheme | null {
@@ -67,8 +75,14 @@ function parseCss(text: string): ParsedTheme | null {
     // Skip at-rules (`@theme inline`, `@media`, …).
     if (!selector.includes("@")) {
       const isDark = /\.dark\b|\[data-[^\]]*dark/i.test(selector);
-      const target = isDark ? dark : /:root\b/.test(selector) ? light : null;
+      let target: Record<string, string> | null = null;
+      if (isDark) {
+        target = dark;
+      } else if (/:root\b/.test(selector)) {
+        target = light;
+      }
       if (target) {
+        // oxlint-disable-next-line prefer-destructuring -- destructuring here needs two leading ignored slots, which is less readable than indexed access (unicorn/no-unreadable-array-destructuring agrees)
         const body = block[2];
         VAR_RE.lastIndex = 0;
         let v: RegExpExecArray | null = VAR_RE.exec(body);
@@ -81,7 +95,9 @@ function parseCss(text: string): ParsedTheme | null {
     block = BLOCK_RE.exec(text);
   }
 
-  if (!Object.keys(light).length && !Object.keys(dark).length) return null;
+  if (!Object.keys(light).length && !Object.keys(dark).length) {
+    return null;
+  }
   return { light, dark };
 }
 
@@ -93,6 +109,8 @@ function parseCss(text: string): ParsedTheme | null {
  */
 export function parseThemeInput(input: string): ParsedTheme | null {
   const text = input.trim();
-  if (!text) return null;
+  if (!text) {
+    return null;
+  }
   return text.startsWith("{") ? parseJson(text) : parseCss(text);
 }

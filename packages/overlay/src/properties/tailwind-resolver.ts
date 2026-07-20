@@ -43,18 +43,28 @@ export interface SnapPoint {
  */
 function normalizeColorToHex(cssValue: string): string {
   const v = cssValue.trim().toLowerCase();
-  if (v === "transparent") return "transparent";
-  if (/^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
-  const ctx = document.createElement("canvas").getContext("2d")!;
+  if (v === "transparent") {
+    return "transparent";
+  }
+  if (/^#[0-9a-fA-F]{3,8}$/.test(v)) {
+    return v;
+  }
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) {
+    return cssValue; // fallback to original
+  }
   ctx.fillStyle = "#000000";
   ctx.fillStyle = v;
   const result = ctx.fillStyle;
-  if (result.startsWith("#")) return result;
-  const m = result.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (m) {
-    const r = parseInt(m[1], 10);
-    const g = parseInt(m[2], 10);
-    const b = parseInt(m[3], 10);
+  if (result.startsWith("#")) {
+    return result;
+  }
+  const m = result.match(/rgba?\((?<r>\d+),\s*(?<g>\d+),\s*(?<b>\d+)/);
+  if (m?.groups) {
+    const r = Math.trunc(Number(m.groups.r));
+    const g = Math.trunc(Number(m.groups.g));
+    const b = Math.trunc(Number(m.groups.b));
+    // oxlint-disable-next-line no-bitwise -- intentional bit-packing of RGB channels into a hex string
     return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
   }
   return cssValue; // fallback to original
@@ -63,6 +73,21 @@ function normalizeColorToHex(cssValue: string): string {
 // ---------------------------------------------------------------------------
 // CSS custom property reading
 // ---------------------------------------------------------------------------
+
+function addToken(
+  record: Record<string, string>,
+  reverseRecord: Record<string, string>,
+  token: string,
+  value: string
+): void {
+  record[token] = value;
+  reverseRecord[value] = token;
+}
+
+/** Extract the named `token` capture from a `--prefix-{token}` property match. */
+function matchTokenName(prop: string, re: RegExp): string | null {
+  return re.exec(prop)?.groups?.token ?? null;
+}
 
 /**
  * Reads Tailwind-shaped CSS custom properties from the document root and
@@ -76,16 +101,19 @@ export function readCSSCustomProperties(): Partial<TailwindTokenMap> {
   }
 
   const style = getComputedStyle(document.documentElement);
-  const propertyNames = Array.from(document.styleSheets)
+  const propertyNames = [...document.styleSheets]
     .flatMap((sheet) => {
       try {
-        return Array.from(sheet.cssRules);
+        return [...sheet.cssRules];
       } catch {
         return [];
       }
     })
-    .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText === ":root")
-    .flatMap((rule) => Array.from(rule.style))
+    .filter(
+      (rule): rule is CSSStyleRule =>
+        rule instanceof CSSStyleRule && rule.selectorText === ":root"
+    )
+    .flatMap((rule) => [...rule.style])
     .filter((prop) => prop.startsWith("--"));
 
   const spacing: Record<string, string> = {};
@@ -108,82 +136,76 @@ export function readCSSCustomProperties(): Partial<TailwindTokenMap> {
   const letterSpacingReverse: Record<string, string> = {};
   const lineHeightReverse: Record<string, string> = {};
 
-  const addToken = (
-    record: Record<string, string>,
-    reverseRecord: Record<string, string>,
-    token: string,
-    value: string,
-  ) => {
-    record[token] = value;
-    reverseRecord[value] = token;
-  };
-
   for (const prop of propertyNames) {
     const value = style.getPropertyValue(prop).trim();
-    if (!value) continue;
+    if (!value) {
+      continue;
+    }
 
     // --spacing-{token}
-    const spacingMatch = prop.match(/^--spacing-(.+)$/);
-    if (spacingMatch) {
-      addToken(spacing, spacingReverse, spacingMatch[1], value);
+    const spacingToken = matchTokenName(prop, /^--spacing-(?<token>.+)$/);
+    if (spacingToken !== null) {
+      addToken(spacing, spacingReverse, spacingToken, value);
       continue;
     }
 
     // --color-{token}
-    const colorMatch = prop.match(/^--color-(.+)$/);
-    if (colorMatch) {
-      const token = colorMatch[1];
-      colors[token] = value;
-      colorsReverse[normalizeColorToHex(value)] = token;
+    const colorToken = matchTokenName(prop, /^--color-(?<token>.+)$/);
+    if (colorToken !== null) {
+      colors[colorToken] = value;
+      colorsReverse[normalizeColorToHex(value)] = colorToken;
       continue;
     }
 
     // --font-size-{token}
-    const fontSizeMatch = prop.match(/^--font-size-(.+)$/);
-    if (fontSizeMatch) {
-      addToken(fontSize, fontSizeReverse, fontSizeMatch[1], value);
+    const fontSizeToken = matchTokenName(prop, /^--font-size-(?<token>.+)$/);
+    if (fontSizeToken !== null) {
+      addToken(fontSize, fontSizeReverse, fontSizeToken, value);
       continue;
     }
 
     // --font-weight-{token}
-    const fontWeightMatch = prop.match(/^--font-weight-(.+)$/);
-    if (fontWeightMatch) {
-      addToken(fontWeight, fontWeightReverse, fontWeightMatch[1], value);
+    const fontWeightToken = matchTokenName(
+      prop,
+      /^--font-weight-(?<token>.+)$/
+    );
+    if (fontWeightToken !== null) {
+      addToken(fontWeight, fontWeightReverse, fontWeightToken, value);
       continue;
     }
 
     // --radius-{token}
-    const radiusMatch = prop.match(/^--radius-(.+)$/);
-    if (radiusMatch) {
-      addToken(borderRadius, borderRadiusReverse, radiusMatch[1], value);
+    const radiusToken = matchTokenName(prop, /^--radius-(?<token>.+)$/);
+    if (radiusToken !== null) {
+      addToken(borderRadius, borderRadiusReverse, radiusToken, value);
       continue;
     }
 
     // --border-{token} (excluding --border-* that map to other scales)
-    const borderMatch = prop.match(/^--border-(.+)$/);
-    if (borderMatch) {
-      addToken(borderWidth, borderWidthReverse, borderMatch[1], value);
+    const borderToken = matchTokenName(prop, /^--border-(?<token>.+)$/);
+    if (borderToken !== null) {
+      addToken(borderWidth, borderWidthReverse, borderToken, value);
       continue;
     }
 
     // --opacity-{token}
-    const opacityMatch = prop.match(/^--opacity-(.+)$/);
-    if (opacityMatch) {
-      addToken(opacity, opacityReverse, opacityMatch[1], value);
+    const opacityToken = matchTokenName(prop, /^--opacity-(?<token>.+)$/);
+    if (opacityToken !== null) {
+      addToken(opacity, opacityReverse, opacityToken, value);
       continue;
     }
 
     // --tracking-{token}
-    const trackingMatch = prop.match(/^--tracking-(.+)$/);
-    if (trackingMatch) {
-      addToken(letterSpacing, letterSpacingReverse, trackingMatch[1], value);
+    const trackingToken = matchTokenName(prop, /^--tracking-(?<token>.+)$/);
+    if (trackingToken !== null) {
+      addToken(letterSpacing, letterSpacingReverse, trackingToken, value);
       continue;
     }
 
     // --leading-{token}
-    const leadingMatch = prop.match(/^--leading-(.+)$/);
-    if (leadingMatch) {
-      addToken(lineHeight, lineHeightReverse, leadingMatch[1], value);
+    const leadingToken = matchTokenName(prop, /^--leading-(?<token>.+)$/);
+    if (leadingToken !== null) {
+      addToken(lineHeight, lineHeightReverse, leadingToken, value);
       continue;
     }
   }
@@ -235,15 +257,13 @@ const SCALE_KEYS = [
   "lineHeightReverse",
 ] as const;
 
-type ScaleKey = (typeof SCALE_KEYS)[number];
-
 /**
  * Merges browser-read tokens and CLI-supplied tokens into a Map-based
  * structure. CLI values win on conflict.
  */
 export function mergeTokenMaps(
   browserTokens: Partial<TailwindTokenMap>,
-  cliTokens: Partial<TailwindTokenMap>,
+  cliTokens: Partial<TailwindTokenMap>
 ): MergedTokenMap {
   const result = {} as MergedTokenMap;
 
@@ -270,49 +290,9 @@ export function mergeTokenMaps(
  */
 export function resolveTokenForValue(
   cssValue: string,
-  reverseMap: Map<string, string>,
+  reverseMap: Map<string, string>
 ): string | null {
   return reverseMap.get(cssValue) ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Snap points
-// ---------------------------------------------------------------------------
-
-/**
- * Returns sorted snap points from a scale Map. The current arbitrary value is
- * included if it is not already present in the scale.
- */
-export function getSnapPoints(
-  scaleName: keyof MergedTokenMap,
-  currentValue: string,
-  tokenMap?: MergedTokenMap,
-): SnapPoint[] {
-  const map = tokenMap ?? getTokenMap();
-  const scale = map[scaleName];
-
-  const points: SnapPoint[] = [];
-
-  for (const [token, cssValue] of scale.entries()) {
-    const num = parseFloat(cssValue);
-    if (!isNaN(num)) {
-      points.push({ numericValue: num, token, cssValue });
-    }
-  }
-
-  // If the currentValue is not already represented in the scale, add it as a
-  // token-less arbitrary snap point.
-  const currentNum = parseFloat(currentValue);
-  if (!isNaN(currentNum)) {
-    const alreadyPresent = points.some((p) => p.cssValue === currentValue);
-    if (!alreadyPresent) {
-      points.push({ numericValue: currentNum, token: null, cssValue: currentValue });
-    }
-  }
-
-  points.sort((a, b) => a.numericValue - b.numericValue);
-
-  return points;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,21 +324,77 @@ export function getTokenMap(): MergedTokenMap {
   return mergedMap;
 }
 
+// ---------------------------------------------------------------------------
+// Snap points
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns sorted snap points from a scale Map. The current arbitrary value is
+ * included if it is not already present in the scale.
+ */
+export function getSnapPoints(
+  scaleName: keyof MergedTokenMap,
+  currentValue: string,
+  tokenMap?: MergedTokenMap
+): SnapPoint[] {
+  const map = tokenMap ?? getTokenMap();
+  const scale = map[scaleName];
+
+  const points: SnapPoint[] = [];
+
+  for (const [token, cssValue] of scale.entries()) {
+    const num = Number(cssValue);
+    if (!Number.isNaN(num)) {
+      points.push({ numericValue: num, token, cssValue });
+    }
+  }
+
+  // If the currentValue is not already represented in the scale, add it as a
+  // token-less arbitrary snap point.
+  const currentNum = Number(currentValue);
+  if (!Number.isNaN(currentNum)) {
+    const alreadyPresent = points.some((p) => p.cssValue === currentValue);
+    if (!alreadyPresent) {
+      points.push({
+        numericValue: currentNum,
+        token: null,
+        cssValue: currentValue,
+      });
+    }
+  }
+
+  points.sort((a, b) => a.numericValue - b.numericValue);
+
+  return points;
+}
+
 /**
  * Returns custom/overridden project colors from the CLI-supplied Tailwind config.
  * Filters to colors with non-standard token names (not part of Tailwind's default palette).
  * Returns array of { token, hex } suitable for color picker swatches.
  */
-export function getProjectColors(): Array<{ token: string; hex: string }> {
-  if (!cliTokens?.colors) return [];
+export function getProjectColors(): { token: string; hex: string }[] {
+  if (!cliTokens?.colors) {
+    return [];
+  }
 
-  const colors: Array<{ token: string; hex: string }> = [];
+  const colors: { token: string; hex: string }[] = [];
   for (const [token, hex] of Object.entries(cliTokens.colors)) {
-    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) continue;
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      continue;
+    }
     // Standard Tailwind tokens match pattern: colorFamily-shade (e.g., "blue-500")
     // Custom tokens often don't (e.g., "brand", "primary", "accent-foreground")
-    const isStandardPattern = /^(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+$/.test(token);
-    if (!isStandardPattern && token !== "white" && token !== "black" && token !== "transparent") {
+    const isStandardPattern =
+      /^(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+$/.test(
+        token
+      );
+    if (
+      !isStandardPattern &&
+      token !== "white" &&
+      token !== "black" &&
+      token !== "transparent"
+    ) {
       colors.push({ token, hex });
     }
   }

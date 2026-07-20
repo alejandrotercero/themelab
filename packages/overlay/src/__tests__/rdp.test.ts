@@ -1,12 +1,18 @@
 // packages/overlay/src/__tests__/rdp.test.ts
 import { describe, it, expect } from "vitest";
+
 import { simplifyPoints } from "../utils/rdp.js";
 
 describe("simplifyPoints (RDP)", () => {
   it("returns input unchanged for 0, 1, or 2 points", () => {
     expect(simplifyPoints([])).toEqual([]);
     expect(simplifyPoints([{ x: 0, y: 0 }])).toEqual([{ x: 0, y: 0 }]);
-    expect(simplifyPoints([{ x: 0, y: 0 }, { x: 10, y: 10 }])).toEqual([
+    expect(
+      simplifyPoints([
+        { x: 0, y: 0 },
+        { x: 10, y: 10 },
+      ])
+    ).toEqual([
       { x: 0, y: 0 },
       { x: 10, y: 10 },
     ]);
@@ -19,7 +25,10 @@ describe("simplifyPoints (RDP)", () => {
       { x: 10, y: 0 },
     ];
     const result = simplifyPoints(points, 1);
-    expect(result).toEqual([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+    expect(result).toEqual([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ]);
   });
 
   it("preserves points that deviate beyond epsilon", () => {
@@ -42,6 +51,6 @@ describe("simplifyPoints (RDP)", () => {
     const result = simplifyPoints(points, 2);
     expect(result.length).toBeLessThan(points.length);
     expect(result[0]).toEqual(points[0]);
-    expect(result[result.length - 1]).toEqual(points[points.length - 1]);
+    expect(result.at(-1)).toEqual(points.at(-1));
   });
 });

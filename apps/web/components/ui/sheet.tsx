@@ -1,11 +1,11 @@
 "use client"
 
-import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
-
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
 import { XIcon } from "@phosphor-icons/react"
+import * as React from "react"
+
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
@@ -70,8 +70,7 @@ function SheetContent({
               />
             }
           >
-            <XIcon
-            />
+            <XIcon />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
         )}
@@ -104,10 +103,7 @@ function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
   return (
     <SheetPrimitive.Title
       data-slot="sheet-title"
-      className={cn(
-        "text-base font-medium text-foreground",
-        className
-      )}
+      className={cn("text-base font-medium text-foreground", className)}
       {...props}
     />
   )

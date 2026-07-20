@@ -1,20 +1,21 @@
-"use client";
+"use client"
 
 // Compact quality grader for the boom bar: verdict + native mode + metrics, and
 // a single L* track with a tick per slot (dark → light).
 
-import { oklchToHex, toOklch, type LuminanceReport } from "@/lib/theme-engine";
+import { oklchToHex, toOklch } from "@/lib/theme-engine"
+import type { LuminanceReport } from "@/lib/theme-engine"
 
 const VERDICT_LABEL: Record<LuminanceReport["verdict"], string> = {
   pass: "Passes",
   partial: "Partial",
   fail: "Too sparse",
-};
+}
 
 export function ValidationReadout({ report }: { report: LuminanceReport }) {
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ov-text-ghost)]">
+      <h3 className="text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
         Theme benchmark
       </h3>
       <div className="flex flex-wrap items-center gap-2">
@@ -24,14 +25,16 @@ export function ValidationReadout({ report }: { report: LuminanceReport }) {
         <span className="ov-chip">{report.nativeMode}-native</span>
         <span className="ov-chip">{report.uniqueCount} levels</span>
         <span className="ov-chip">range {report.range}</span>
-        <span className="ml-auto text-xs text-[var(--ov-text-dim)]">quality {report.score}/100</span>
+        <span className="ml-auto text-xs text-[var(--ov-text-dim)]">
+          quality {report.score}/100
+        </span>
       </div>
 
       {/* L* track — a tick per slot positioned by perceptual lightness. */}
       <div className="relative h-6 rounded-[var(--ov-radius-sm)] border border-[var(--ov-border)] bg-[var(--ov-surface)]">
         {report.levels.map((lvl, i) => {
-          const o = toOklch(lvl.hex);
-          const hex = o ? oklchToHex(o) : lvl.hex;
+          const o = toOklch(lvl.hex)
+          const hex = o ? oklchToHex(o) : lvl.hex
           return (
             <span
               key={`${lvl.slot}-${i}`}
@@ -39,13 +42,15 @@ export function ValidationReadout({ report }: { report: LuminanceReport }) {
               className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--ov-bg)]"
               style={{ left: `${lvl.lStar}%`, backgroundColor: hex }}
             />
-          );
+          )
         })}
       </div>
 
       {report.notes[0] && (
-        <p className="text-[11px] leading-relaxed text-[var(--ov-text-dim)]">{report.notes[0]}</p>
+        <p className="text-[11px] leading-relaxed text-[var(--ov-text-dim)]">
+          {report.notes[0]}
+        </p>
       )}
     </div>
-  );
+  )
 }

@@ -22,13 +22,16 @@ const MAX_CONCURRENT_SOURCE_FETCHES = 3;
 export const SOURCE_FETCH_TIMEOUT_MS = 8000;
 
 let activeFetchCount = 0;
-const waitingForSlot: Array<() => void> = [];
+const waitingForSlot: (() => void)[] = [];
 
 const acquireSlot = (): Promise<void> => {
   if (activeFetchCount < MAX_CONCURRENT_SOURCE_FETCHES) {
     activeFetchCount += 1;
     return Promise.resolve();
   }
+  // Semaphore pattern: `resolve` must be stashed and invoked later by
+  // releaseSlot() from an unrelated call stack — no promise/async equivalent.
+  // oxlint-disable-next-line promise/avoid-new -- see comment above
   return new Promise<void>((resolve) => {
     waitingForSlot.push(resolve);
   });
@@ -55,12 +58,15 @@ const releaseSlot = (): void => {
 export const runQueuedSourceFetch = async <T>(
   task: (signal: AbortSignal) => Promise<T>,
   fallback: T,
-  timeoutMs: number = SOURCE_FETCH_TIMEOUT_MS,
+  timeoutMs: number = SOURCE_FETCH_TIMEOUT_MS
 ): Promise<T> => {
   await acquireSlot();
 
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  // Wraps a setTimeout callback into a promise so it can race against
+  // taskPromise; no async/await form of "resolve from a timer callback" exists.
+  // oxlint-disable-next-line promise/avoid-new -- see comment above
   const timeout = new Promise<T>((resolve) => {
     timeoutId = setTimeout(() => {
       controller.abort();
@@ -70,8 +76,13 @@ export const runQueuedSourceFetch = async <T>(
 
   const taskPromise = task(controller.signal);
   // Swallow a late rejection from a fetch that already lost the timeout race, so
-  // an aborted request never surfaces as an unhandled rejection.
-  taskPromise.catch(() => {});
+  // an aborted request never surfaces as an unhandled rejection. Intentionally
+  // NOT awaited here — awaiting would block on taskPromise before the race below
+  // even starts, defeating the timeout.
+  // oxlint-disable-next-line promise/prefer-await-to-then -- fire-and-forget by design
+  taskPromise.catch(() => {
+    /* empty */
+  });
 
   try {
     return await Promise.race([taskPromise, timeout]);

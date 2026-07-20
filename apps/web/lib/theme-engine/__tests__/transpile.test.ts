@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest"
+
+import { toOklch } from "../oklch.js"
 import {
   hrToThemeStyles,
   paletteToThemeStyles,
   paletteToScales,
   THEME_TOKENS,
-} from "../transpile.js";
-import { toOklch } from "../oklch.js";
-import type { HrTheme } from "../types.js";
+} from "../transpile.js"
+import type { HrTheme } from "../types.js"
 
 // Real preset fixture from presets.ts — "Ablaze"
 const ablazeTheme: HrTheme = {
@@ -22,96 +23,96 @@ const ablazeTheme: HrTheme = {
     b_inv: "#fc533e",
   },
   tape: {},
-};
+}
 
 function allValuesParse(map: Record<string, string>): boolean {
-  return Object.values(map).every((v) => toOklch(v) !== null);
+  return Object.values(map).every((v) => toOklch(v) !== null)
 }
 
 describe("hrToThemeStyles — smoke test", () => {
-  const result = hrToThemeStyles(ablazeTheme);
+  const result = hrToThemeStyles(ablazeTheme)
 
   it("returns non-empty light map", () => {
-    expect(Object.keys(result.light).length).toBeGreaterThan(0);
-  });
+    expect(Object.keys(result.light).length).toBeGreaterThan(0)
+  })
 
   it("returns non-empty dark map", () => {
-    expect(Object.keys(result.dark).length).toBeGreaterThan(0);
-  });
+    expect(Object.keys(result.dark).length).toBeGreaterThan(0)
+  })
 
   it("all light values parse as oklch (toOklch !== null)", () => {
-    expect(allValuesParse(result.light)).toBe(true);
-  });
+    expect(allValuesParse(result.light)).toBe(true)
+  })
 
   it("all dark values parse as oklch (toOklch !== null)", () => {
-    expect(allValuesParse(result.dark)).toBe(true);
-  });
+    expect(allValuesParse(result.dark)).toBe(true)
+  })
 
   it("contains all THEME_TOKENS keys in light", () => {
     for (const token of THEME_TOKENS) {
-      expect(result.light).toHaveProperty(token);
+      expect(result.light).toHaveProperty(token)
     }
-  });
+  })
 
   it("contains all THEME_TOKENS keys in dark", () => {
     for (const token of THEME_TOKENS) {
-      expect(result.dark).toHaveProperty(token);
+      expect(result.dark).toHaveProperty(token)
     }
-  });
-});
+  })
+})
 
 describe("paletteToThemeStyles — smoke test", () => {
-  const result = paletteToThemeStyles("#3b82f6", "#71717a");
+  const result = paletteToThemeStyles("#3b82f6", "#71717a")
 
   it("returns non-empty light map", () => {
-    expect(Object.keys(result.light).length).toBeGreaterThan(0);
-  });
+    expect(Object.keys(result.light).length).toBeGreaterThan(0)
+  })
 
   it("returns non-empty dark map", () => {
-    expect(Object.keys(result.dark).length).toBeGreaterThan(0);
-  });
+    expect(Object.keys(result.dark).length).toBeGreaterThan(0)
+  })
 
   it("all light values parse as oklch", () => {
-    expect(allValuesParse(result.light)).toBe(true);
-  });
+    expect(allValuesParse(result.light)).toBe(true)
+  })
 
   it("all dark values parse as oklch", () => {
-    expect(allValuesParse(result.dark)).toBe(true);
-  });
+    expect(allValuesParse(result.dark)).toBe(true)
+  })
 
   it("contains all THEME_TOKENS keys in light", () => {
     for (const token of THEME_TOKENS) {
-      expect(result.light).toHaveProperty(token);
+      expect(result.light).toHaveProperty(token)
     }
-  });
+  })
 
   it("contains all THEME_TOKENS keys in dark", () => {
     for (const token of THEME_TOKENS) {
-      expect(result.dark).toHaveProperty(token);
+      expect(result.dark).toHaveProperty(token)
     }
-  });
-});
+  })
+})
 
 describe("paletteToScales — smoke test", () => {
-  const { primary, neutral } = paletteToScales("#3b82f6", "#71717a");
+  const { primary, neutral } = paletteToScales("#3b82f6", "#71717a")
 
   it("primary scale has 11 stops", () => {
-    expect(primary).toHaveLength(11);
-  });
+    expect(primary).toHaveLength(11)
+  })
 
   it("neutral scale has 11 stops", () => {
-    expect(neutral).toHaveLength(11);
-  });
+    expect(neutral).toHaveLength(11)
+  })
 
   it("all primary values parse as oklch", () => {
     for (const { value } of primary) {
-      expect(toOklch(value)).not.toBeNull();
+      expect(toOklch(value)).not.toBeNull()
     }
-  });
+  })
 
   it("all neutral values parse as oklch", () => {
     for (const { value } of neutral) {
-      expect(toOklch(value)).not.toBeNull();
+      expect(toOklch(value)).not.toBeNull()
     }
-  });
-});
+  })
+})

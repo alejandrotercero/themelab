@@ -1,34 +1,110 @@
 // packages/overlay/src/interaction.ts
 
-import { getCachedElement, setCachedElement, clearElementCache } from "./utils/element-cache.js";
-import { isOverlayLikeElement } from "./utils/component-filter.js";
-import { handleWheelZoom, panCanvas } from "./canvas-transform.js";
-import { isTextEditing } from "./inline-text-edit.js";
-import { isEditableFocused } from "./utils/active-element.js";
 import { getActiveTool } from "./canvas-state.js";
+import { handleWheelZoom, panCanvas } from "./canvas-transform.js";
+import { isEditableFocused } from "./utils/active-element.js";
+import { isOverlayLikeElement } from "./utils/component-filter.js";
+import {
+  getCachedElement,
+  setCachedElement,
+  clearElementCache,
+} from "./utils/element-cache.js";
 
-export type ToolEventHandler = {
+export interface ToolEventHandler {
   onMouseDown?: (e: MouseEvent) => void | Promise<void>;
   onMouseMove?: (e: MouseEvent) => void;
   onMouseUp?: (e: MouseEvent) => void | Promise<void>;
-};
+}
 
 let interactionEl: HTMLDivElement | null = null;
 let activeHandler: ToolEventHandler | null = null;
-let toolHandlers: Map<string, ToolEventHandler> = new Map();
+const toolHandlers = new Map<string, ToolEventHandler>();
 
 let isPanning = false;
 let panLastX = 0;
 let panLastY = 0;
 let prePanCursor = "";
 
-export function registerToolHandler(tool: string, handler: ToolEventHandler): void {
+// inline-text-edit.js owns the "is a text edit in progress" flag but imports
+// this module (for pointer-event control + hit-testing), so it registers its
+// getter here instead of this module importing inline-text-edit.js — avoids
+// an import cycle.
+let isTextEditing: () => boolean = () => false;
+export function registerIsTextEditing(fn: () => boolean): void {
+  isTextEditing = fn;
+}
+/** Re-exported so other modules can query text-edit state without importing
+ *  inline-text-edit.js directly (see registerIsTextEditing above). */
+export function isTextEditingActive(): boolean {
+  return isTextEditing();
+}
+
+export function registerToolHandler(
+  tool: string,
+  handler: ToolEventHandler
+): void {
   toolHandlers.set(tool, handler);
+}
+
+function onWheel(e: WheelEvent): void {
+  if (!interactionEl) {
+    return;
+  }
+  // Only zoom on Ctrl/Cmd+scroll (standard pinch-to-zoom). Regular scroll passes through.
+  if (!e.ctrlKey && !e.metaKey) {
+    return;
+  }
+  const target = e.target as HTMLElement;
+  if (target?.closest?.("#themelab-root")) {
+    return;
+  }
+  handleWheelZoom(e);
+}
+
+function onSpaceDown(e: KeyboardEvent): void {
+  if (e.key !== " ") {
+    return;
+  }
+  // Don't intercept spacebar during text editing or when typing in inputs
+  // (resolves focus through the overlay's shadow DOM).
+  if (isTextEditing()) {
+    return;
+  }
+  if (isEditableFocused()) {
+    return;
+  }
+
+  e.preventDefault();
+  if (!isPanning && interactionEl) {
+    prePanCursor = interactionEl.style.cursor;
+    interactionEl.style.cursor = "grab";
+    interactionEl.style.pointerEvents = "auto";
+    isPanning = true;
+  }
+}
+
+function onSpaceUp(e: KeyboardEvent): void {
+  if (e.key !== " ") {
+    return;
+  }
+  if (!isPanning) {
+    return;
+  }
+  e.preventDefault();
+  isPanning = false;
+  panLastX = 0;
+  panLastY = 0;
+  if (interactionEl) {
+    interactionEl.style.cursor = prePanCursor;
+    // Restore pointer-events based on current tool
+    const tool = getActiveTool();
+    interactionEl.style.pointerEvents = tool === "select" ? "none" : "auto";
+  }
 }
 
 export function initInteraction(): void {
   interactionEl = document.createElement("div");
-  interactionEl.setAttribute("data-themelab-interaction", "true");
+  interactionEl.dataset.themelabInteraction = "true";
   interactionEl.style.cssText = `
     position: fixed;
     top: 0;
@@ -39,7 +115,7 @@ export function initInteraction(): void {
     pointer-events: none;
   `;
 
-  document.body.appendChild(interactionEl);
+  document.body.append(interactionEl);
 
   document.addEventListener("scroll", clearElementCache, true);
 
@@ -47,7 +123,9 @@ export function initInteraction(): void {
     if (isPanning) {
       panLastX = e.clientX;
       panLastY = e.clientY;
-      if (interactionEl) interactionEl.style.cursor = "grabbing";
+      if (interactionEl) {
+        interactionEl.style.cursor = "grabbing";
+      }
       e.preventDefault();
       return;
     }
@@ -64,7 +142,9 @@ export function initInteraction(): void {
   });
   interactionEl.addEventListener("mouseup", (e) => {
     if (isPanning) {
-      if (interactionEl) interactionEl.style.cursor = "grab";
+      if (interactionEl) {
+        interactionEl.style.cursor = "grab";
+      }
       panLastX = 0;
       panLastY = 0;
       return;
@@ -79,47 +159,28 @@ export function initInteraction(): void {
   document.addEventListener("keyup", onSpaceUp);
 }
 
-function onWheel(e: WheelEvent): void {
-  if (!interactionEl) return;
-  // Only zoom on Ctrl/Cmd+scroll (standard pinch-to-zoom). Regular scroll passes through.
-  if (!e.ctrlKey && !e.metaKey) return;
-  const target = e.target as HTMLElement;
-  if (target?.closest?.("#themelab-root")) return;
-  handleWheelZoom(e);
+export function isPanningActive(): boolean {
+  return isPanning;
 }
 
-function onSpaceDown(e: KeyboardEvent): void {
-  if (e.key !== " ") return;
-  // Don't intercept spacebar during text editing or when typing in inputs
-  // (resolves focus through the overlay's shadow DOM).
-  if (isTextEditing()) return;
-  if (isEditableFocused()) return;
-
-  e.preventDefault();
-  if (!isPanning && interactionEl) {
-    prePanCursor = interactionEl.style.cursor;
-    interactionEl.style.cursor = "grab";
-    interactionEl.style.pointerEvents = "auto";
-    isPanning = true;
+function updateCursor(tool: string): void {
+  if (!interactionEl) {
+    return;
+  }
+  switch (tool) {
+    case "select": {
+      interactionEl.style.cursor = "default";
+      break;
+    }
+    case "text": {
+      interactionEl.style.cursor = "text";
+      break;
+    }
+    default: {
+      interactionEl.style.cursor = "default";
+    }
   }
 }
-
-function onSpaceUp(e: KeyboardEvent): void {
-  if (e.key !== " ") return;
-  if (!isPanning) return;
-  e.preventDefault();
-  isPanning = false;
-  panLastX = 0;
-  panLastY = 0;
-  if (interactionEl) {
-    interactionEl.style.cursor = prePanCursor;
-    // Restore pointer-events based on current tool
-    const tool = getActiveTool();
-    interactionEl.style.pointerEvents = tool === "select" ? "none" : "auto";
-  }
-}
-
-export function isPanningActive(): boolean { return isPanning; }
 
 export function activateInteraction(tool: string): void {
   activeHandler = toolHandlers.get(tool) || null;
@@ -129,17 +190,10 @@ export function activateInteraction(tool: string): void {
   updateCursor(tool);
 }
 
-function updateCursor(tool: string): void {
-  if (!interactionEl) return;
-  switch (tool) {
-    case "select": interactionEl.style.cursor = "default"; break;
-    case "text": interactionEl.style.cursor = "text"; break;
-    default: interactionEl.style.cursor = "default";
-  }
-}
-
 export function setInteractionCursor(cursor: string): void {
-  if (interactionEl) interactionEl.style.cursor = cursor;
+  if (interactionEl) {
+    interactionEl.style.cursor = cursor;
+  }
 }
 
 /** Temporarily disable/enable the interaction layer's pointer events.
@@ -154,21 +208,38 @@ export function setInteractionPointerEvents(enabled: boolean): void {
  * Find the actual page element at a viewport point, looking through all ThemeLab layers.
  * Uses elementsFromPoint to skip the interaction layer, shadow DOM host, and placeholder elements.
  */
-export function getPageElementAtPoint(clientX: number, clientY: number): HTMLElement | null {
+export function getPageElementAtPoint(
+  clientX: number,
+  clientY: number
+): HTMLElement | null {
   // Check cache first — avoids expensive elementsFromPoint on small mouse movements
   const cached = getCachedElement(clientX, clientY);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
 
   const elements = document.elementsFromPoint(clientX, clientY);
   let result: HTMLElement | null = null;
 
   for (const el of elements) {
-    if (!(el instanceof HTMLElement)) continue;
-    if (el.closest("#themelab-root")) continue;
-    if (el.hasAttribute("data-themelab-interaction")) continue;
-    if (el.hasAttribute("data-themelab-placeholder")) continue;
-    if (el === document.body || el === document.documentElement) continue;
-    if (isOverlayLikeElement(el)) continue;
+    if (!(el instanceof HTMLElement)) {
+      continue;
+    }
+    if (el.closest("#themelab-root")) {
+      continue;
+    }
+    if (Object.hasOwn(el.dataset, "themelabInteraction")) {
+      continue;
+    }
+    if (Object.hasOwn(el.dataset, "themelabPlaceholder")) {
+      continue;
+    }
+    if (el === document.body || el === document.documentElement) {
+      continue;
+    }
+    if (isOverlayLikeElement(el)) {
+      continue;
+    }
     result = el;
     break;
   }

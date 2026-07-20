@@ -31,12 +31,17 @@ export function onSelectionHistoryChange(fn: HistoryListener): () => void {
 }
 
 function notifyHistoryChange(): void {
-  historyListeners.forEach((fn) => fn());
+  for (const fn of historyListeners) {
+    fn();
+  }
 }
 
 // --- Public API ---
 
-export function recordSelection(element: HTMLElement, info: ComponentInfo): void {
+export function recordSelection(
+  element: HTMLElement,
+  info: ComponentInfo
+): void {
   // Re-selecting the current head just refreshes its timestamp — no duplicate rows.
   if (entries[0]?.element === element) {
     entries[0].timestamp = Date.now();
@@ -59,7 +64,9 @@ export function recordSelection(element: HTMLElement, info: ComponentInfo): void
     },
     timestamp: Date.now(),
   });
-  if (entries.length > MAX_HISTORY_ENTRIES) entries.length = MAX_HISTORY_ENTRIES;
+  if (entries.length > MAX_HISTORY_ENTRIES) {
+    entries.length = MAX_HISTORY_ENTRIES;
+  }
   notifyHistoryChange();
 }
 

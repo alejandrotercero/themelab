@@ -1,25 +1,26 @@
-"use client";
+"use client"
 
 // Mindful Palette input for the boom bar: six color swatches grouped as
 // 2 light · 2 accent · 2 dark, a preset picker, and a Generate button. Credits
 // the #MindfulPalettes format by Alex Cristache.
 
-import type { MindfulColors } from "@/lib/theme-engine";
-import { MINDFUL_PRESETS } from "@/lib/theme-engine";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { SwatchPopover } from "./swatch-popover";
+} from "@/components/ui/select"
+import type { MindfulColors } from "@/lib/theme-engine"
+import { MINDFUL_PRESETS } from "@/lib/theme-engine"
+
+import { SwatchPopover } from "./swatch-popover"
 
 interface MindfulInputProps {
-  colors: MindfulColors;
-  onColor: (key: keyof MindfulColors, hex: string) => void;
-  onPreset: (id: string) => void;
-  onGenerate: () => void;
+  colors: MindfulColors
+  onColor: (key: keyof MindfulColors, hex: string) => void
+  onPreset: (id: string) => void
+  onGenerate: () => void
 }
 
 function Group({
@@ -28,14 +29,14 @@ function Group({
   colors,
   onColor,
 }: {
-  label: string;
-  fields: { key: keyof MindfulColors; title: string }[];
-  colors: MindfulColors;
-  onColor: (key: keyof MindfulColors, hex: string) => void;
+  label: string
+  fields: { key: keyof MindfulColors; title: string }[]
+  colors: MindfulColors
+  onColor: (key: keyof MindfulColors, hex: string) => void
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ov-text-ghost)]">
+      <span className="text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
         {label}
       </span>
       {fields.map((f) => (
@@ -48,10 +49,15 @@ function Group({
         />
       ))}
     </div>
-  );
+  )
 }
 
-export function MindfulInput({ colors, onColor, onPreset, onGenerate }: MindfulInputProps) {
+export function MindfulInput({
+  colors,
+  onColor,
+  onPreset,
+  onGenerate,
+}: MindfulInputProps) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -99,7 +105,11 @@ export function MindfulInput({ colors, onColor, onPreset, onGenerate }: MindfulI
           </SelectContent>
         </Select>
 
-        <button type="button" className="ov-btn ov-btn-primary" onClick={onGenerate}>
+        <button
+          type="button"
+          className="ov-btn ov-btn-primary"
+          onClick={onGenerate}
+        >
           Generate
         </button>
       </div>
@@ -116,5 +126,5 @@ export function MindfulInput({ colors, onColor, onPreset, onGenerate }: MindfulI
         </a>
       </p>
     </div>
-  );
+  )
 }

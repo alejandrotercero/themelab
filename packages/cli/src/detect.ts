@@ -1,9 +1,10 @@
 // packages/cli/src/detect.ts
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
+
 import type { DetectionResult } from "@themelab/shared";
 
-export async function detect(cwd?: string): Promise<DetectionResult> {
+export function detect(cwd?: string): DetectionResult {
   const projectRoot = cwd || process.cwd();
 
   // Check for React dependency
@@ -34,11 +35,7 @@ export async function detect(cwd?: string): Promise<DetectionResult> {
   }
 
   // Detect framework
-  const nextConfigs = [
-    "next.config.js",
-    "next.config.ts",
-    "next.config.mjs",
-  ];
+  const nextConfigs = ["next.config.js", "next.config.ts", "next.config.mjs"];
   const viteConfigs = ["vite.config.js", "vite.config.ts"];
 
   for (const config of nextConfigs) {
@@ -62,22 +59,31 @@ export async function detect(cwd?: string): Promise<DetectionResult> {
   );
 }
 
-export async function healthCheck(port: number, host: string = "localhost"): Promise<void> {
+export async function healthCheck(
+  port: number,
+  host = "localhost"
+): Promise<void> {
   const maxRetries = 3;
   const delay = 1000;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
     try {
+      // oxlint-disable-next-line no-await-in-loop -- retries are sequential by design (probe, then wait, then probe again)
       const response = await fetch(`http://${host}:${port}`, {
         signal: AbortSignal.timeout(2000),
       });
-      if (response.ok || response.status < 500) return;
+      if (response.ok || response.status < 500) {
+        return;
+      }
     } catch {
       // Connection refused or timeout
     }
 
     if (attempt < maxRetries) {
-      await new Promise((r) => setTimeout(r, delay));
+      // oxlint-disable-next-line no-await-in-loop, promise/avoid-new -- sequential backoff between retries; a sleep requires wrapping setTimeout in a Promise
+      await new Promise((resolve) => {
+        setTimeout(resolve, delay);
+      });
     }
   }
 

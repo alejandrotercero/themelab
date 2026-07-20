@@ -1,10 +1,23 @@
 import type { ChangeEntry } from "@themelab/shared";
+
 import { send, onMessage } from "./bridge.js";
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
+import {
+  COLORS,
+  SHADOWS,
+  RADII,
+  TRANSITIONS,
+  FONT_FAMILY,
+} from "./design-tokens.js";
+import {
+  reacquireMovedElement,
+  reacquireMovedElementAsync,
+} from "./move-state.js";
+import {
+  getHistoryEntries,
+  getHistoryEntry,
+  onSelectionHistoryChange,
+} from "./selection-history.js";
 import { showToast } from "./toolbar.js";
-import { selectElement } from "./selection.js";
-import { reacquireMovedElement, reacquireMovedElementAsync } from "./move-state.js";
-import { getHistoryEntries, getHistoryEntry, onSelectionHistoryChange } from "./selection-history.js";
 
 // --- State ---
 
@@ -12,6 +25,20 @@ const entries = new Map<string, ChangeEntry>();
 let panelOpen = false;
 let activeTab: "history" | "logs" = "history";
 const pendingRevertLogEntryIds = new Set<string>();
+
+// selection.ts owns selectElement but also imports this module (to log its own
+// changes via addChangeEntry), so it registers its implementation here instead
+// of this module importing selection.js — avoids an import cycle.
+type SelectElementFn = (
+  el: HTMLElement,
+  opts?: { skipSidebar?: boolean }
+) => Promise<void>;
+let selectElement: SelectElementFn = async () => {
+  // No-op until selection.ts registers itself via registerSelectElement().
+};
+export function registerSelectElement(fn: SelectElementFn): void {
+  selectElement = fn;
+}
 
 // --- Listener pattern (matches canvas-state.ts) ---
 
@@ -26,13 +53,25 @@ export function onChangelogChange(fn: ChangelogListener): () => void {
 }
 
 function notifyChangelogChange(): void {
-  changelogListeners.forEach((fn) => fn());
+  for (const fn of changelogListeners) {
+    fn();
+  }
+}
+
+/**
+ * Run `use` with the resolved module of a dynamic import, without blocking the
+ * (synchronous) caller. Equivalent to `promise.then(use)`.
+ */
+function withModule<T>(modulePromise: Promise<T>, use: (mod: T) => void): void {
+  void (async () => {
+    use(await modulePromise);
+  })();
 }
 
 // --- Public API ---
 
 export function addChangeEntry(
-  entry: Omit<ChangeEntry, "id" | "timestamp">,
+  entry: Omit<ChangeEntry, "id" | "timestamp">
 ): string {
   const id = crypto.randomUUID();
   const fullEntry: ChangeEntry = {
@@ -47,30 +86,49 @@ export function addChangeEntry(
 
 export function updateChangeEntry(
   id: string,
-  updates: Partial<ChangeEntry>,
+  updates: Partial<ChangeEntry>
 ): void {
   const entry = entries.get(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   Object.assign(entry, updates);
   notifyChangelogChange();
 }
 
+function addRevertLogEntry(entry: ChangeEntry): void {
+  addChangeEntry({
+    type: entry.type,
+    componentName: entry.componentName,
+    filePath: entry.filePath,
+    summary: `reverted ${entry.summary}`,
+    state: "active",
+    propertyKey: entry.propertyKey,
+    elementIdentity: entry.elementIdentity,
+    revertData: { type: "noop" },
+  });
+}
+
 export function revertEntry(id: string): void {
   const entry = entries.get(id);
-  if (!entry || entry.state === "reverted") return;
+  if (!entry || entry.state === "reverted") {
+    return;
+  }
 
   switch (entry.revertData.type) {
-    case "noop":
+    case "noop": {
       return;
+    }
 
-    case "cliUndo":
+    case "cliUndo": {
       pendingRevertLogEntryIds.add(id);
       send({ type: "revertChanges", undoIds: entry.revertData.undoIds });
       break;
+    }
 
     case "moveRemove": {
       const { moveId } = entry.revertData;
-      import("./canvas-state.js").then(({ removeMove }) => {
+      withModule(import("./canvas-state.js"), ({ removeMove }) => {
         removeMove(moveId);
       });
       addRevertLogEntry(entry);
@@ -79,7 +137,7 @@ export function revertEntry(id: string): void {
 
     case "moveRestore": {
       const { moveId, previousDelta } = entry.revertData;
-      import("./canvas-state.js").then(({ restoreMoveDelta }) => {
+      withModule(import("./canvas-state.js"), ({ restoreMoveDelta }) => {
         restoreMoveDelta(moveId, previousDelta);
       });
       addRevertLogEntry(entry);
@@ -88,12 +146,12 @@ export function revertEntry(id: string): void {
 
     case "annotationRemove": {
       const { annotationId, originalInnerHTML } = entry.revertData;
-      // TODO: canvas-state.ts does not export findElementByIdentity.
+      // Note: canvas-state.ts does not export findElementByIdentity.
       // Restoring innerHTML on the live DOM element is not currently possible
       // without a DOM query by identity. The annotation is removed from state;
       // visual restoration of innerHTML is deferred until findElementByIdentity
       // (or equivalent) is available.
-      import("./canvas-state.js").then(({ removeAnnotation }) => {
+      withModule(import("./canvas-state.js"), ({ removeAnnotation }) => {
         removeAnnotation(annotationId);
         // If findElementByIdentity is added to canvas-state.ts in the future:
         // const el = findElementByIdentity(entry.revertData.elementIdentity);
@@ -106,7 +164,7 @@ export function revertEntry(id: string): void {
 
     case "cloneRemove": {
       const { cloneId } = entry.revertData;
-      import("./clone-state.js").then(({ removeClone }) => {
+      withModule(import("./clone-state.js"), ({ removeClone }) => {
         removeClone(cloneId);
       });
       addRevertLogEntry(entry);
@@ -115,10 +173,14 @@ export function revertEntry(id: string): void {
 
     case "deleteRestore": {
       const { deleteId } = entry.revertData;
-      import("./delete-state.js").then(({ restoreDeletedElement }) => {
+      withModule(import("./delete-state.js"), ({ restoreDeletedElement }) => {
         restoreDeletedElement(deleteId);
       });
       addRevertLogEntry(entry);
+      break;
+    }
+
+    default: {
       break;
     }
   }
@@ -128,7 +190,7 @@ export function revertEntry(id: string): void {
 }
 
 export function getEntries(): ChangeEntry[] {
-  return Array.from(entries.values());
+  return [...entries.values()];
 }
 
 export function getChangeCount(): number {
@@ -138,7 +200,9 @@ export function getChangeCount(): number {
 export function getActiveCount(): number {
   let count = 0;
   for (const entry of entries.values()) {
-    if (entry.state !== "reverted") count++;
+    if (entry.state !== "reverted") {
+      count += 1;
+    }
   }
   return count;
 }
@@ -165,7 +229,9 @@ export function promoteAllPending(): void {
       changed = true;
     }
   }
-  if (changed) notifyChangelogChange();
+  if (changed) {
+    notifyChangelogChange();
+  }
 }
 
 export function removeAllPending(): void {
@@ -176,7 +242,9 @@ export function removeAllPending(): void {
       changed = true;
     }
   }
-  if (changed) notifyChangelogChange();
+  if (changed) {
+    notifyChangelogChange();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -423,7 +491,9 @@ const CHANGELOG_STYLES = `
 
 function formatRelativeTime(timestamp: number): string {
   const elapsed = Math.floor((Date.now() - timestamp) / 1000);
-  if (elapsed < 10) return "just now";
+  if (elapsed < 10) {
+    return "just now";
+  }
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")} ago`;
@@ -435,10 +505,10 @@ function getBasename(filePath: string): string {
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function canSelectEntry(entry: ChangeEntry): boolean {
@@ -452,28 +522,17 @@ function canRevertEntry(entry: ChangeEntry): boolean {
 function formatSummary(entry: ChangeEntry): string {
   const summaryHtml = escapeHtml(entry.summary).replaceAll(
     " → ",
-    `<span class="arrow"> → </span>`,
+    `<span class="arrow"> → </span>`
   );
   return `<span class="component-name">${escapeHtml(entry.componentName)}</span><span class="entry-separator">•</span>${summaryHtml}`;
-}
-
-function addRevertLogEntry(entry: ChangeEntry): void {
-  addChangeEntry({
-    type: entry.type,
-    componentName: entry.componentName,
-    filePath: entry.filePath,
-    summary: `reverted ${entry.summary}`,
-    state: "active",
-    propertyKey: entry.propertyKey,
-    elementIdentity: entry.elementIdentity,
-    revertData: { type: "noop" },
-  });
 }
 
 async function focusEntryTarget(id: string): Promise<void> {
   const entry = entries.get(id);
   const identity = entry?.elementIdentity;
-  if (!entry || !identity) return;
+  if (!entry || !identity) {
+    return;
+  }
 
   let el = reacquireMovedElement(identity);
   if (!el) {
@@ -486,22 +545,20 @@ async function focusEntryTarget(id: string): Promise<void> {
   await selectElement(el, { skipSidebar: false });
 }
 
-function renderBody(): void {
-  if (activeTab === "history") {
-    renderHistory();
-  } else {
-    renderEntries();
-  }
-}
-
 async function focusHistoryTarget(id: string): Promise<void> {
   const entry = getHistoryEntry(id);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
 
   let el: HTMLElement | null = entry.element.isConnected ? entry.element : null;
   // Element replaced (HMR or re-render) — reacquire by source identity.
-  if (!el) el = reacquireMovedElement(entry.identity);
-  if (!el) el = await reacquireMovedElementAsync(entry.identity);
+  if (!el) {
+    el = reacquireMovedElement(entry.identity);
+  }
+  if (!el) {
+    el = await reacquireMovedElementAsync(entry.identity);
+  }
   if (!el) {
     showToast(`Couldn't find ${entry.identity.componentName}`);
     return;
@@ -510,7 +567,9 @@ async function focusHistoryTarget(id: string): Promise<void> {
 }
 
 function renderHistory(): void {
-  if (!bodyEl) return;
+  if (!bodyEl) {
+    return;
+  }
   const historyEntries = getHistoryEntries();
   if (historyEntries.length === 0) {
     bodyEl.innerHTML = `<div class="changelog-empty">No selections yet. Selected elements appear here.</div>`;
@@ -519,7 +578,9 @@ function renderHistory(): void {
   bodyEl.innerHTML = historyEntries
     .map((entry) => {
       const stale = !entry.element.isConnected;
-      const fileName = entry.identity.filePath ? getBasename(entry.identity.filePath) : "";
+      const fileName = entry.identity.filePath
+        ? getBasename(entry.identity.filePath)
+        : "";
       const time = formatRelativeTime(entry.timestamp);
       return `<div class="changelog-entry selectable${stale ? " stale" : ""}" data-history-id="${escapeHtml(entry.id)}">
   <span class="entry-summary"><span class="component-name">${escapeHtml(entry.identity.componentName)}</span><span class="entry-separator">•</span>&lt;${escapeHtml(entry.identity.tagName)}&gt;</span>
@@ -529,10 +590,14 @@ function renderHistory(): void {
     })
     .join("");
 
-  const entryDivs = Array.from(bodyEl.querySelectorAll(".changelog-entry")) as HTMLElement[];
+  const entryDivs = [
+    ...bodyEl.querySelectorAll<HTMLElement>(".changelog-entry"),
+  ];
   for (const entryDiv of entryDivs) {
     const id = entryDiv.dataset["historyId"];
-    if (!id) continue;
+    if (!id) {
+      continue;
+    }
     entryDiv.addEventListener("click", () => {
       void focusHistoryTarget(id);
     });
@@ -540,8 +605,15 @@ function renderHistory(): void {
 }
 
 function renderEntries(): void {
-  if (!bodyEl) return;
-  const allEntries = Array.from(entries.values()).reverse();
+  if (!bodyEl) {
+    return;
+  }
+  // Newest first (Map preserves insertion order); built without mutating any
+  // shared array.
+  const allEntries: ChangeEntry[] = [];
+  for (const entry of entries.values()) {
+    allEntries.unshift(entry);
+  }
   if (allEntries.length === 0) {
     bodyEl.innerHTML = `<div class="changelog-empty">No logs yet. Changes will appear here.</div>`;
     return;
@@ -557,9 +629,7 @@ function renderEntries(): void {
         .filter(Boolean)
         .join(" ");
 
-      const fileName = entry.filePath
-        ? getBasename(entry.filePath)
-        : "";
+      const fileName = entry.filePath ? getBasename(entry.filePath) : "";
       const time = formatRelativeTime(entry.timestamp);
 
       return `<div class="${classes}" data-entry-id="${escapeHtml(entry.id)}">
@@ -572,7 +642,9 @@ function renderEntries(): void {
     .join("");
 
   // Attach revert button listeners
-  const revertBtns = Array.from(bodyEl.querySelectorAll(".entry-revert")) as HTMLButtonElement[];
+  const revertBtns = [
+    ...bodyEl.querySelectorAll<HTMLButtonElement>(".entry-revert"),
+  ];
   for (const btn of revertBtns) {
     const entryDiv = btn.closest(".changelog-entry") as HTMLElement | null;
     const id = entryDiv?.dataset["entryId"];
@@ -584,20 +656,36 @@ function renderEntries(): void {
     }
   }
 
-  const entryDivs = Array.from(bodyEl.querySelectorAll(".changelog-entry")) as HTMLElement[];
+  const entryDivs = [
+    ...bodyEl.querySelectorAll<HTMLElement>(".changelog-entry"),
+  ];
   for (const entryDiv of entryDivs) {
     const id = entryDiv.dataset["entryId"];
-    if (!id) continue;
+    if (!id) {
+      continue;
+    }
     const entry = entries.get(id);
-    if (!entry || !canSelectEntry(entry)) continue;
+    if (!entry || !canSelectEntry(entry)) {
+      continue;
+    }
     entryDiv.addEventListener("click", () => {
       void focusEntryTarget(id);
     });
   }
 }
 
+function renderBody(): void {
+  if (activeTab === "history") {
+    renderHistory();
+  } else {
+    renderEntries();
+  }
+}
+
 function updateCount(): void {
-  if (!countEl) return;
+  if (!countEl) {
+    return;
+  }
   const active = getActiveCount();
   if (active === 0) {
     countEl.classList.add("hidden");
@@ -611,11 +699,16 @@ function updateCount(): void {
 // UI — Init / Destroy
 // ---------------------------------------------------------------------------
 
+// Internal cleanup accumulator (used by destroyChangelog)
+let destroyChangelogCleanup: () => void = () => {
+  /* empty */
+};
+
 export function initChangelog(shadowRoot: ShadowRoot): void {
   // Style
   styleEl = document.createElement("style");
   styleEl.textContent = CHANGELOG_STYLES;
-  shadowRoot.appendChild(styleEl);
+  shadowRoot.append(styleEl);
 
   // Panel
   panelEl = document.createElement("div");
@@ -653,7 +746,7 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   countEl = document.createElement("span");
   countEl.className = "changelog-badge hidden";
   countEl.textContent = "0";
-  logsTabEl.appendChild(countEl);
+  logsTabEl.append(countEl);
 
   const selectTab = (tab: "history" | "logs") => {
     activeTab = tab;
@@ -663,17 +756,21 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   };
   historyTabEl.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (!panelOpen) setChangelogOpen(true);
+    if (!panelOpen) {
+      setChangelogOpen(true);
+    }
     selectTab("history");
   });
   logsTabEl.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (!panelOpen) setChangelogOpen(true);
+    if (!panelOpen) {
+      setChangelogOpen(true);
+    }
     selectTab("logs");
   });
 
-  tabsEl.appendChild(historyTabEl);
-  tabsEl.appendChild(logsTabEl);
+  tabsEl.append(historyTabEl);
+  tabsEl.append(logsTabEl);
 
   chevronEl = document.createElement("svg");
   chevronEl.className = "changelog-chevron";
@@ -681,25 +778,27 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   chevronEl.setAttribute("fill", "currentColor");
   chevronEl.innerHTML = `<path d="M3.5 5.5L8 10l4.5-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
 
-  headerMainEl.appendChild(iconEl);
-  headerMainEl.appendChild(tabsEl);
-  headerEl.appendChild(headerMainEl);
-  headerEl.appendChild(chevronEl);
+  headerMainEl.append(iconEl);
+  headerMainEl.append(tabsEl);
+  headerEl.append(headerMainEl);
+  headerEl.append(chevronEl);
   headerEl.addEventListener("click", () => setChangelogOpen(!panelOpen));
 
-  panelEl.appendChild(headerEl);
+  panelEl.append(headerEl);
 
   // Body
   bodyEl = document.createElement("div");
   bodyEl.className = "changelog-body";
-  panelEl.appendChild(bodyEl);
+  panelEl.append(bodyEl);
 
-  shadowRoot.appendChild(panelEl);
+  shadowRoot.append(panelEl);
 
   // Re-render the History tab as selections happen (only while visible — the
   // open/close path below re-renders on next open anyway)
   const unsubscribeHistory = onSelectionHistoryChange(() => {
-    if (panelOpen && activeTab === "history") renderHistory();
+    if (panelOpen && activeTab === "history") {
+      renderHistory();
+    }
   });
 
   // Subscribe to state changes
@@ -707,7 +806,9 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
     renderBody();
     updateCount();
 
-    if (!panelEl) return;
+    if (!panelEl) {
+      return;
+    }
 
     if (panelOpen && panelEl.style.display === "none") {
       panelEl.style.display = "";
@@ -728,14 +829,20 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   cleanupMessageListener = onMessage((msg) => {
     if (msg.type === "revertComplete") {
       for (const [id, entry] of entries) {
-        if (!pendingRevertLogEntryIds.has(id)) continue;
-        const revertData = entry.revertData;
-        if (revertData.type !== "cliUndo") continue;
+        if (!pendingRevertLogEntryIds.has(id)) {
+          continue;
+        }
+        const { revertData } = entry;
+        if (revertData.type !== "cliUndo") {
+          continue;
+        }
 
         const matchedResults = msg.results.filter((result) =>
-          revertData.undoIds.includes(result.undoId),
+          revertData.undoIds.includes(result.undoId)
         );
-        if (matchedResults.length === 0) continue;
+        if (matchedResults.length === 0) {
+          continue;
+        }
 
         pendingRevertLogEntryIds.delete(id);
         if (matchedResults.every((result) => result.success)) {
@@ -765,16 +872,15 @@ export function initChangelog(shadowRoot: ShadowRoot): void {
   };
 }
 
-// Internal cleanup accumulator (used by destroyChangelog)
-let destroyChangelogCleanup: () => void = () => {};
-
 export function destroyChangelog(): void {
   if (cleanupMessageListener) {
     cleanupMessageListener();
     cleanupMessageListener = null;
   }
   destroyChangelogCleanup();
-  destroyChangelogCleanup = () => {};
+  destroyChangelogCleanup = () => {
+    /* empty */
+  };
 
   panelEl?.remove();
   panelEl = null;

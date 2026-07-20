@@ -1,32 +1,43 @@
-"use client";
+"use client"
 
 // Slim top bar: logo + title, and the Code export dialog. (Light/dark + radius
 // live in the editor; "apply to page" lives by the input.)
 
-import type { ReactNode } from "react";
-import Link from "next/link";
-import type { ThemeStyles } from "@themelab/shared";
-import type { ColorFormat } from "@/lib/theme-engine";
-import { ExportDialog } from "./export-dialog";
-import { Logo } from "@/components/logo";
+import type { ThemeStyles } from "@themelab/shared"
+import Link from "next/link"
+import type { ReactNode } from "react"
+
+import { Logo } from "@/components/logo"
+import type { ColorFormat } from "@/lib/theme-engine"
+
+import { ExportDialog } from "./export-dialog"
 
 interface ToolbarProps {
-  theme: ThemeStyles;
-  radius: string;
+  theme: ThemeStyles
+  radius: string
   /** Current generated, imported, or saved-theme display name. */
-  name: string;
-  title?: string;
+  name: string
+  title?: string
   /** Tailwind-scale generator — when set, the Code dialog gains a second tab. */
-  tailwindCss?: (format: ColorFormat) => string;
+  tailwindCss?: (format: ColorFormat) => string
   /** Figma SVG generator — when set, a "figma" tab appears in the export dialog (used by /create). */
-  figmaSvg?: () => string;
+  figmaSvg?: () => string
   /** Extra controls rendered before the Code button (e.g. the /edit Import dialog). */
-  extra?: ReactNode;
+  extra?: ReactNode
   /** When provided, the logo/title becomes a button (e.g. to reopen the intro). */
-  onShowIntro?: () => void;
+  onShowIntro?: () => void
 }
 
-export function Toolbar({ theme, radius, name, title = "100r → shadcn", tailwindCss, figmaSvg, extra, onShowIntro }: ToolbarProps) {
+export function Toolbar({
+  theme,
+  radius,
+  name,
+  title = "100r → shadcn",
+  tailwindCss,
+  figmaSvg,
+  extra,
+  onShowIntro,
+}: ToolbarProps) {
   return (
     <header className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--ov-border)] px-4 py-2.5">
       <div className="flex items-center gap-2.5 text-[var(--ov-text)]">
@@ -59,5 +70,5 @@ export function Toolbar({ theme, radius, name, title = "100r → shadcn", tailwi
         />
       </div>
     </header>
-  );
+  )
 }

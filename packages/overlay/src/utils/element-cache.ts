@@ -13,13 +13,20 @@ interface PositionCache {
 
 let cache: PositionCache | null = null;
 
-export function getCachedElement(clientX: number, clientY: number): HTMLElement | null | undefined {
-  if (!cache) return undefined; // cache miss
+export function getCachedElement(
+  clientX: number,
+  clientY: number
+): HTMLElement | null | undefined {
+  if (!cache) {
+    return undefined;
+  } // cache miss
 
   const now = performance.now();
   const dx = Math.abs(clientX - cache.clientX);
   const dy = Math.abs(clientY - cache.clientY);
-  const isPositionClose = dx <= ELEMENT_CACHE_DISTANCE_THRESHOLD_PX && dy <= ELEMENT_CACHE_DISTANCE_THRESHOLD_PX;
+  const isPositionClose =
+    dx <= ELEMENT_CACHE_DISTANCE_THRESHOLD_PX &&
+    dy <= ELEMENT_CACHE_DISTANCE_THRESHOLD_PX;
   const isWithinThrottle = now - cache.timestamp < ELEMENT_CACHE_THROTTLE_MS;
 
   if (isPositionClose || isWithinThrottle) {
@@ -29,7 +36,11 @@ export function getCachedElement(clientX: number, clientY: number): HTMLElement 
   return undefined; // cache miss (stale)
 }
 
-export function setCachedElement(clientX: number, clientY: number, element: HTMLElement | null): void {
+export function setCachedElement(
+  clientX: number,
+  clientY: number,
+  element: HTMLElement | null
+): void {
   cache = { clientX, clientY, element, timestamp: performance.now() };
 }
 

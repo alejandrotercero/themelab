@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+
 import {
   classMatchesPrefix,
   splitResponsiveVariant,
@@ -9,12 +10,21 @@ import {
 
 describe("splitResponsiveVariant", () => {
   it("returns base variant for unprefixed classes", () => {
-    expect(splitResponsiveVariant("mb-6")).toEqual({ variant: "", bare: "mb-6" });
+    expect(splitResponsiveVariant("mb-6")).toEqual({
+      variant: "",
+      bare: "mb-6",
+    });
   });
 
   it("extracts responsive breakpoint variants", () => {
-    expect(splitResponsiveVariant("md:mb-6")).toEqual({ variant: "md", bare: "mb-6" });
-    expect(splitResponsiveVariant("2xl:p-8")).toEqual({ variant: "2xl", bare: "p-8" });
+    expect(splitResponsiveVariant("md:mb-6")).toEqual({
+      variant: "md",
+      bare: "mb-6",
+    });
+    expect(splitResponsiveVariant("2xl:p-8")).toEqual({
+      variant: "2xl",
+      bare: "p-8",
+    });
   });
 
   it("treats state and stacked variants as non-viewport-editable (null)", () => {
@@ -24,9 +34,9 @@ describe("splitResponsiveVariant", () => {
   });
 });
 
-describe("pickWinningVariant", () => {
-  const matchesMb = (bare: string) => classMatchesPrefix(bare, "mb");
+const matchesMb = (bare: string) => classMatchesPrefix(bare, "mb");
 
+describe("pickWinningVariant", () => {
   it("picks the largest breakpoint <= viewport width", () => {
     const classes = ["mb-0", "md:mb-6"];
     // desktop (>= md): md:mb-6 wins → edit the md variant
@@ -45,47 +55,72 @@ describe("pickWinningVariant", () => {
 
   it("ignores state variants when choosing the winner", () => {
     // hover:mb-2 is not viewport-editable; md:mb-6 still wins at desktop
-    expect(pickWinningVariant(["mb-0", "hover:mb-2", "md:mb-6"], matchesMb, 1440)).toBe("md");
+    expect(
+      pickWinningVariant(["mb-0", "hover:mb-2", "md:mb-6"], matchesMb, 1440)
+    ).toBe("md");
   });
 
   it("chooses the highest applicable breakpoint among several", () => {
     const classes = ["mb-0", "sm:mb-2", "md:mb-4", "xl:mb-8"];
     expect(pickWinningVariant(classes, matchesMb, 1280)).toBe("xl"); // >= xl
-    expect(pickWinningVariant(classes, matchesMb, 800)).toBe("md");  // md <= 800 < lg
-    expect(pickWinningVariant(classes, matchesMb, 700)).toBe("sm");  // sm <= 700 < md
+    expect(pickWinningVariant(classes, matchesMb, 800)).toBe("md"); // md <= 800 < lg
+    expect(pickWinningVariant(classes, matchesMb, 700)).toBe("sm"); // sm <= 700 < md
   });
 });
 
 describe("decomposeClass", () => {
   it("splits variant tokens from the bare utility", () => {
-    expect(decomposeClass("md:bg-red-500")).toEqual({ variants: ["md"], utility: "bg-red-500" });
-    expect(decomposeClass("dark:md:bg-red-500")).toEqual({ variants: ["dark", "md"], utility: "bg-red-500" });
+    expect(decomposeClass("md:bg-red-500")).toEqual({
+      variants: ["md"],
+      utility: "bg-red-500",
+    });
+    expect(decomposeClass("dark:md:bg-red-500")).toEqual({
+      variants: ["dark", "md"],
+      utility: "bg-red-500",
+    });
   });
 
   it("returns no variants for a base class", () => {
-    expect(decomposeClass("bg-red-500")).toEqual({ variants: [], utility: "bg-red-500" });
+    expect(decomposeClass("bg-red-500")).toEqual({
+      variants: [],
+      utility: "bg-red-500",
+    });
   });
 
   it("ignores colons inside arbitrary values", () => {
-    expect(decomposeClass("bg-[url(http://x/y)]")).toEqual({ variants: [], utility: "bg-[url(http://x/y)]" });
-    expect(decomposeClass("dark:bg-[url(http://x)]")).toEqual({ variants: ["dark"], utility: "bg-[url(http://x)]" });
+    expect(decomposeClass("bg-[url(http://x/y)]")).toEqual({
+      variants: [],
+      utility: "bg-[url(http://x/y)]",
+    });
+    expect(decomposeClass("dark:bg-[url(http://x)]")).toEqual({
+      variants: ["dark"],
+      utility: "bg-[url(http://x)]",
+    });
   });
 });
 
-describe("findClassForVariant", () => {
-  const matchesBg = (bare: string) => classMatchesPrefix(bare, "bg");
+const matchesBg = (bare: string) => classMatchesPrefix(bare, "bg");
 
+describe("findClassForVariant", () => {
   it("finds the class for an exact single-variant target", () => {
     const classes = ["bg-white", "dark:bg-black", "md:bg-red-500"];
-    expect(findClassForVariant(classes, matchesBg, ["dark"])).toBe("dark:bg-black");
-    expect(findClassForVariant(classes, matchesBg, ["md"])).toBe("md:bg-red-500");
+    expect(findClassForVariant(classes, matchesBg, ["dark"])).toBe(
+      "dark:bg-black"
+    );
+    expect(findClassForVariant(classes, matchesBg, ["md"])).toBe(
+      "md:bg-red-500"
+    );
     expect(findClassForVariant(classes, matchesBg, [])).toBe("bg-white");
   });
 
   it("matches a stacked variant regardless of token order (order-independent)", () => {
     const classes = ["md:dark:bg-slate-800"];
-    expect(findClassForVariant(classes, matchesBg, ["dark", "md"])).toBe("md:dark:bg-slate-800");
-    expect(findClassForVariant(classes, matchesBg, ["md", "dark"])).toBe("md:dark:bg-slate-800");
+    expect(findClassForVariant(classes, matchesBg, ["dark", "md"])).toBe(
+      "md:dark:bg-slate-800"
+    );
+    expect(findClassForVariant(classes, matchesBg, ["md", "dark"])).toBe(
+      "md:dark:bg-slate-800"
+    );
   });
 
   it("does not match a partial variant set", () => {
@@ -95,6 +130,8 @@ describe("findClassForVariant", () => {
   });
 
   it("returns empty when no class is declared for the target", () => {
-    expect(findClassForVariant(["bg-white", "md:bg-red-500"], matchesBg, ["xl"])).toBe("");
+    expect(
+      findClassForVariant(["bg-white", "md:bg-red-500"], matchesBg, ["xl"])
+    ).toBe("");
   });
 });

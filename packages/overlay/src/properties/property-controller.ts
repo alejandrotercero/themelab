@@ -1,44 +1,109 @@
-import type { ComponentInfo, ElementIdentity, PropertyGroup, PropertyDescriptor } from "@themelab/shared";
-import { ALL_DESCRIPTORS } from "./property-descriptors.js";
-const DESCRIPTOR_MAP = new Map(ALL_DESCRIPTORS.map(d => [d.key, d]));
-import { renderSections, isGroupCollapsed, onSectionExpand } from "./section-renderer.js";
-import { createSidebar } from "./property-sidebar.js";
-import { getTokenMap, resolveTokenForValue } from "./tailwind-resolver.js";
-import type { MergedTokenMap } from "./tailwind-resolver.js";
-import { send, onMessage, requestFileDiscovery, requestFileStat } from "../bridge.js";
-import { getElementVisibleText } from "../text-model.js";
-import { getCachedFilePath, setCachedFilePath } from "../file-discovery-cache.js";
-import { addChangeEntry } from "../changelog.js";
-import { maybeShowOptimizeAction, hideOptimizeAction } from "../settings-panel.js";
-import { showToast } from "../toolbar.js";
-import type { PropertyControl, ControlContext } from "./controls/types.js";
-import { addPendingPropertyOperation, pushUndoAction, type PropertyChangeRuntime } from "../canvas-state.js";
-import { dismissOnboarding } from "../onboarding.js";
-import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
-import { resolveFrameFilePath } from "../utils/source-resolve.js";
-import { getResolvedOwnerStack } from "../utils/server-symbolication.js";
-import { computeNthOfType } from "../utils/nth-of-type.js";
-import { classMatchesPrefix, pickWinningVariant, findClassForVariant, decomposeClass, countDistinctBreakpoints } from "../utils/class-matches-prefix.js";
-import * as variantTargetModule from "./variant-target.js";
-const { getVariantString, getVariantTokens, resetVariantTargetOnSelect, resetVariantTargetOnDeselect, onVariantTargetChange, setActiveElementClasses } = variantTargetModule;
-import { setStyle, clearStyle } from "../utils/style-access.js";
-import { navigate, getNavAvailability, moveSelectedSibling } from "../selection.js";
-import { getValue as getThemeValue, getColorTokenNames } from "../theme-state.js";
-import { toRenderableCss } from "../utils/color-format.js";
+import type {
+  ComponentInfo,
+  ElementIdentity,
+  PropertyGroup,
+  PropertyDescriptor,
+} from "@themelab/shared";
+import {
+  getFiberFromHostInstance,
+  isCompositeFiber,
+  getDisplayName,
+} from "bippy";
 
-// Display values that enable flex layout controls
-const FLEX_DISPLAYS = new Set(["flex", "inline-flex"]);
+import { onMessage, requestFileDiscovery, requestFileStat } from "../bridge.js";
+import {
+  addPendingPropertyOperation,
+  pushUndoAction,
+} from "../canvas-state.js";
+import type { PropertyChangeRuntime } from "../canvas-state.js";
+import { addChangeEntry } from "../changelog.js";
+import {
+  getCachedFilePath,
+  setCachedFilePath,
+} from "../file-discovery-cache.js";
+import { dismissOnboarding } from "../onboarding.js";
+import {
+  navigate,
+  getNavAvailability,
+  moveSelectedSibling,
+  registerPropertyPanelBridge,
+} from "../selection.js";
+import {
+  maybeShowOptimizeAction,
+  hideOptimizeAction,
+} from "../settings-panel.js";
+import { getElementVisibleText } from "../text-model.js";
+import {
+  getValue as getThemeValue,
+  getColorTokenNames,
+} from "../theme-state.js";
+import { showToast } from "../toolbar.js";
+import {
+  classMatchesPrefix,
+  pickWinningVariant,
+  findClassForVariant,
+  decomposeClass,
+  countDistinctBreakpoints,
+} from "../utils/class-matches-prefix.js";
+import { toRenderableCss } from "../utils/color-format.js";
+import { computeNthOfType } from "../utils/nth-of-type.js";
+import { getResolvedOwnerStack } from "../utils/server-symbolication.js";
+import { resolveFrameFilePath } from "../utils/source-resolve.js";
+import { setStyle, clearStyle } from "../utils/style-access.js";
+import type { PropertyControl, ControlContext } from "./controls/types.js";
+import { ALL_DESCRIPTORS } from "./property-descriptors.js";
+import { createSidebar } from "./property-sidebar.js";
+import {
+  renderSections,
+  isGroupCollapsed,
+  onSectionExpand,
+} from "./section-renderer.js";
+import {
+  getTokenMap,
+  resolveTokenForValue,
+  setCliTokens,
+} from "./tailwind-resolver.js";
+import type { MergedTokenMap } from "./tailwind-resolver.js";
+import * as variantTargetModule from "./variant-target.js";
+
+const DESCRIPTOR_MAP = new Map(ALL_DESCRIPTORS.map((d) => [d.key, d]));
+const {
+  getVariantString,
+  getVariantTokens,
+  resetVariantTargetOnSelect,
+  resetVariantTargetOnDeselect,
+  onVariantTargetChange,
+  setActiveElementClasses,
+} = variantTargetModule;
 
 // Groups whose CSS properties are read immediately on inspect
-const ESSENTIAL_GROUPS: Set<PropertyGroup> = new Set(["layout", "spacing", "size"]);
+const ESSENTIAL_GROUPS = new Set<PropertyGroup>(["layout", "spacing", "size"]);
 
 // Groups whose CSS properties are deferred until the section is expanded
-const DEFERRED_GROUPS: Set<PropertyGroup> = new Set(["typography", "background", "border"]);
+const DEFERRED_GROUPS = new Set<PropertyGroup>([
+  "typography",
+  "background",
+  "border",
+]);
 
 // Tags that are inherently text-oriented
 const TEXT_TAGS = new Set([
-  "h1","h2","h3","h4","h5","h6","p","span","a",
-  "button","label","li","td","th","blockquote","figcaption",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "p",
+  "span",
+  "a",
+  "button",
+  "label",
+  "li",
+  "td",
+  "th",
+  "blockquote",
+  "figcaption",
 ]);
 
 /**
@@ -47,21 +112,31 @@ const TEXT_TAGS = new Set([
  * Future: for multi-select, compute intersection of relevant groups across all elements
  */
 function getRelevantGroups(element: HTMLElement): Set<PropertyGroup> {
-  const groups = new Set<PropertyGroup>(["spacing", "size", "background", "border"] as PropertyGroup[]);
+  const groups = new Set<PropertyGroup>([
+    "spacing",
+    "size",
+    "background",
+    "border",
+  ] as PropertyGroup[]);
   const computed = getComputedStyle(element);
 
   // Layout: flex/grid containers or elements with children (potential containers)
-  const display = computed.display;
-  if (display === "flex" || display === "inline-flex" ||
-      display === "grid" || display === "inline-grid" ||
-      element.children.length > 0) {
+  const { display } = computed;
+  if (
+    display === "flex" ||
+    display === "inline-flex" ||
+    display === "grid" ||
+    display === "inline-grid" ||
+    element.children.length > 0
+  ) {
     groups.add("layout");
   }
 
   // Typography: text elements or elements with direct text nodes
   const tagName = element.tagName.toLowerCase();
-  const hasDirectText = Array.from(element.childNodes).some(
-    n => n.nodeType === Node.TEXT_NODE && (n.textContent?.trim() ?? "").length > 0,
+  const hasDirectText = [...element.childNodes].some(
+    (n) =>
+      n.nodeType === Node.TEXT_NODE && (n.textContent?.trim() ?? "").length > 0
   );
   if (hasDirectText || TEXT_TAGS.has(tagName)) {
     groups.add("typography");
@@ -69,9 +144,6 @@ function getRelevantGroups(element: HTMLElement): Set<PropertyGroup> {
 
   return groups;
 }
-
-// Timeout for commit result — if no response arrives, assume success
-const COMMIT_RESULT_TIMEOUT_MS = 5_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,7 +196,7 @@ let inflightCommit: {
 // (onCommitResult fires before onMessage, clearing inflightCommit — so we snapshot here)
 let lastCommitSnapshot: {
   componentInfo: ComponentInfo;
-  batch: Array<{ cssProperty: string; originalValue: string; value: string }>;
+  batch: { cssProperty: string; originalValue: string; value: string }[];
 } | null = null;
 
 // Cleanup for section-expand listener
@@ -134,187 +206,7 @@ let cleanupExpandListener: (() => void) | null = null;
 let cleanupChangelogListener: (() => void) | null = null;
 let cleanupCommitListener: (() => void) | null = null;
 let cleanupVariantListener: (() => void) | null = null;
-
-// ---------------------------------------------------------------------------
-// HMR survival observer
-// ---------------------------------------------------------------------------
-
-const observer = typeof MutationObserver !== "undefined"
-  ? new MutationObserver(() => {
-      if (state.selectedElement && !document.contains(state.selectedElement)) {
-        clearTimeout(reacquireTimer);
-        reacquireTimer = setTimeout(() => {
-          reacquireElement();
-        }, 80);
-      }
-    })
-  : null;
-
-/**
- * After HMR replaces the DOM, find the new element matching the stored
- * elementIdentity by walking fibers to match componentName + source location.
- * Re-inspects without slide animation if found; deselects if not.
- *
- * Uses a dual strategy:
- * 1. Synchronous fiber walk with _debugSource (React 18)
- * 2. Async getOwnerStack from bippy/source (React 19, where _debugSource is absent)
- */
-function reacquireElement(): void {
-  const identity = state.elementIdentity;
-  const info = state.componentInfo;
-  if (!identity || !info) {
-    deselect();
-    return;
-  }
-
-  // Strategy 1: synchronous _debugSource fiber walk (React 18)
-  const matched = reacquireViaDebugSource(identity);
-  if (matched) {
-    resolveFreshComponentInfo(matched, info).then((freshInfo) => {
-      inspect(matched, freshInfo);
-    });
-    return;
-  }
-
-  // Strategy 2: async getOwnerStack (React 19)
-  reacquireViaOwnerStack(identity).then(async (asyncMatched) => {
-    if (asyncMatched) {
-      const freshInfo = await resolveFreshComponentInfo(asyncMatched, info);
-      inspect(asyncMatched, freshInfo);
-    } else {
-      deselect();
-    }
-  });
-}
-
-/** Synchronous reacquisition via _debugSource (React 18). */
-function reacquireViaDebugSource(identity: ElementIdentity): HTMLElement | null {
-  const candidates = document.querySelectorAll(identity.tagName);
-
-  for (const el of candidates) {
-    if (!(el instanceof HTMLElement)) continue;
-    try {
-      let fiber = getFiberFromHostInstance(el);
-      while (fiber) {
-        if (isCompositeFiber(fiber)) {
-          const source = fiber._debugSource;
-          const name = getDisplayName(fiber);
-          if (
-            source &&
-            name === identity.componentName &&
-            source.fileName?.endsWith(identity.filePath) &&
-            source.lineNumber === identity.lineNumber
-          ) {
-            return el;
-          }
-        }
-        fiber = fiber.return;
-      }
-    } catch {
-      // fiber walk may fail
-    }
-  }
-
-  return null;
-}
-
-/** Async reacquisition via getOwnerStack (React 19). */
-async function reacquireViaOwnerStack(identity: ElementIdentity): Promise<HTMLElement | null> {
-  const candidates = document.querySelectorAll(identity.tagName);
-
-  for (const el of candidates) {
-    if (!(el instanceof HTMLElement)) continue;
-    try {
-      const fiber = getFiberFromHostInstance(el);
-      if (!fiber) continue;
-
-      const frames = await getResolvedOwnerStack(fiber);
-      if (!frames || frames.length === 0) continue;
-
-      for (const frame of frames) {
-        if (!frame.functionName) continue;
-        const name = frame.functionName;
-        if (name !== identity.componentName) continue;
-
-        const filePath = resolveFrameFilePath(frame.fileName);
-
-        if (
-          filePath &&
-          identity.filePath.endsWith(filePath) &&
-          (frame.lineNumber ?? 0) === identity.lineNumber
-        ) {
-          return el;
-        }
-      }
-    } catch {
-      // getOwnerStack may fail — continue to next candidate
-    }
-  }
-
-  return null;
-}
-
-/**
- * Re-resolve fresh ComponentInfo from a DOM element's fiber.
- * Used after HMR to get updated line:col from the new fiber tree.
- */
-async function resolveFreshComponentInfo(
-  element: HTMLElement,
-  fallbackInfo: ComponentInfo
-): Promise<ComponentInfo> {
-  const fiber = getFiberFromHostInstance(element);
-  if (!fiber) return fallbackInfo;
-
-  // Try getOwnerStack (React 19)
-  try {
-    const frames = await getResolvedOwnerStack(fiber);
-    if (frames && frames.length > 0) {
-      for (const frame of frames) {
-        if (!frame.functionName) continue;
-        const name = frame.functionName;
-        if (name[0] !== name[0].toUpperCase()) continue;
-        if (name === fallbackInfo.componentName || !fallbackInfo.componentName) {
-          const filePath = resolveFrameFilePath(frame.fileName);
-
-          if (filePath) {
-            const rect = element.getBoundingClientRect();
-            return {
-              ...fallbackInfo,
-              filePath,
-              lineNumber: frame.lineNumber ?? fallbackInfo.lineNumber,
-              columnNumber: frame.columnNumber ?? fallbackInfo.columnNumber,
-              boundingRect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-            };
-          }
-        }
-      }
-    }
-  } catch {
-    // Fall through
-  }
-
-  // Try _debugSource (React 18)
-  let current: typeof fiber | null = fiber;
-  while (current) {
-    if (isCompositeFiber(current)) {
-      const name = getDisplayName(current.type);
-      const debugSource = current._debugSource || current._debugOwner?._debugSource;
-      if (name === fallbackInfo.componentName && debugSource?.fileName) {
-        const rect = element.getBoundingClientRect();
-        return {
-          ...fallbackInfo,
-          filePath: debugSource.fileName,
-          lineNumber: debugSource.lineNumber ?? fallbackInfo.lineNumber,
-          columnNumber: debugSource.columnNumber ?? fallbackInfo.columnNumber,
-          boundingRect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-        };
-      }
-    }
-    current = current.return;
-  }
-
-  return fallbackInfo;
-}
+let cleanupTailwindTokensListener: (() => void) | null = null;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -334,27 +226,37 @@ async function resolveFreshComponentInfo(
  */
 function valueForActiveVariant(
   element: HTMLElement,
-  desc: PropertyDescriptor,
+  desc: PropertyDescriptor
 ): string | null {
   const tokens = getVariantTokens();
   // Only synthetic-read off-viewport breakpoints; base/dark fall through to computed.
-  if (tokens.length === 0 || (tokens.length === 1 && tokens[0] === "dark")) return null;
-  const classes = (element.getAttribute("class") || "").split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || (tokens.length === 1 && tokens[0] === "dark")) {
+    return null;
+  }
+  const classes = (element.getAttribute("class") || "")
+    .split(/\s+/)
+    .filter(Boolean);
   const pattern = desc.classPattern;
   const matchesBare = pattern
     ? (bare: string) => new RegExp(pattern).test(bare)
     : (bare: string) => classMatchesPrefix(bare, desc.tailwindPrefix);
   const declared = findClassForVariant(classes, matchesBare, tokens);
-  if (!declared) return null;
-  const utility = decomposeClass(declared).utility;
+  if (!declared) {
+    return null;
+  }
+  const { utility } = decomposeClass(declared);
   // Extract the token portion (after `prefix-`) — e.g. "p-8" → "8", "text-lg" → "lg".
   const token = utility.startsWith(`${desc.tailwindPrefix}-`)
     ? utility.slice(desc.tailwindPrefix.length + 1)
     : null;
-  if (!token) return null;
+  if (!token) {
+    return null;
+  }
   const map = getTokenMap();
   const scale = desc.tailwindScale
-    ? (map as unknown as Record<string, Record<string, string>>)[desc.tailwindScale]
+    ? (map as unknown as Record<string, Record<string, string>>)[
+        desc.tailwindScale
+      ]
     : undefined;
   return scale?.[token] ?? null;
 }
@@ -366,7 +268,7 @@ function valueForActiveVariant(
  */
 function readComputedValues(
   element: HTMLElement,
-  onlyGroups?: Set<PropertyGroup>,
+  onlyGroups?: Set<PropertyGroup>
 ): Map<string, string> {
   const computed = getComputedStyle(element);
   const values = new Map<string, string>();
@@ -389,13 +291,19 @@ function readComputedValues(
  * Reads deferred computed values for a specific group and updates state + controls.
  */
 function readDeferredGroup(group: string): void {
-  if (!state.selectedElement) return;
+  if (!state.selectedElement) {
+    return;
+  }
 
   const computed = getComputedStyle(state.selectedElement);
   for (const desc of ALL_DESCRIPTORS) {
-    if (desc.group !== group) continue;
+    if (desc.group !== group) {
+      continue;
+    }
     // Skip properties that already have active overrides
-    if (state.activeOverrides.has(desc.key)) continue;
+    if (state.activeOverrides.has(desc.key)) {
+      continue;
+    }
 
     const value = computed.getPropertyValue(desc.cssProperty).trim();
     const variantValue = valueForActiveVariant(state.selectedElement, desc);
@@ -422,46 +330,38 @@ function destroyControls(): void {
 }
 
 /**
- * Re-renders sections (e.g., when display changes and flex controls need to appear/disappear).
+ * Nearby static text to anchor the AI locator when the element's own text is a
+ * computed value (e.g. {count}). Walk up a few levels and take the richest
+ * ancestor text, so labels like a card's title ("Total Parts") are available.
  */
-/** Context passed to control factories — currently the selected element's
- *  className (for theme-binding detection) + the bind callback. */
-function buildControlContext(): ControlContext {
-  return {
-    selectedClassName: state.selectedElement?.className || undefined,
-    onBindToken: bindToken,
-    onPickTailwind: pickTailwindColor,
-  };
+function captureContextText(el: HTMLElement): string | undefined {
+  const own = getElementVisibleText(el).trim();
+  let cur: HTMLElement | null = el.parentElement;
+  let best = "";
+  for (let i = 0; i < 4 && cur; i += 1, cur = cur.parentElement) {
+    const t = getElementVisibleText(cur).replaceAll(/\s+/g, " ").trim();
+    if (t.length > best.length) {
+      best = t;
+    }
+    if (best.length > own.length + 12) {
+      break;
+    } // enough surrounding context
+  }
+  return best.length > own.length + 2 ? best.slice(0, 160) : undefined;
 }
 
-function rerenderSections(): void {
-  if (!state.selectedElement || !state.componentInfo) return;
-  destroyControls();
-
-  const relevantGroups = state.showAllGroups
-    ? null
-    : getRelevantGroups(state.selectedElement);
-  const descriptorsToRender = relevantGroups
-    ? ALL_DESCRIPTORS.filter(d => relevantGroups.has(d.group))
-    : ALL_DESCRIPTORS;
-
-  const isFiltered = relevantGroups !== null && descriptorsToRender.length < ALL_DESCRIPTORS.length;
-  const onShowAll = isFiltered ? () => setShowAllGroups(true) : undefined;
-
-  const { container, controls: newControls } = renderSections(
-    descriptorsToRender,
-    state.currentValues,
-    preview,
-    scheduledCommit,
-    onShowAll,
-    buildControlContext(),
-  );
-  controls = newControls;
-  sidebar.replaceContent(container);
-}
-
+/**
+ * Builds the pending "updateClass" batch operation from the current pending
+ * batch and sends it through the merge queue.
+ */
 function addPendingFromCurrentState(): void {
-  if (!state.selectedElement || !state.componentInfo || state.pendingBatch.size === 0) return;
+  if (
+    !state.selectedElement ||
+    !state.componentInfo ||
+    state.pendingBatch.size === 0
+  ) {
+    return;
+  }
 
   const el = state.selectedElement;
   const info = state.componentInfo;
@@ -469,57 +369,6 @@ function addPendingFromCurrentState(): void {
 
   const originalClassName = el.getAttribute("class") || "";
   const classes = originalClassName.split(/\s+/).filter(Boolean);
-  const updates: Array<{
-    cssProperty: string;
-    tailwindPrefix: string;
-    tailwindToken: string | null;
-    value: string;
-    oldClass: string;
-    newClass: string;
-    relatedOldClasses: string[];
-  }> = [];
-
-  for (const [cssProperty, entry] of state.pendingBatch) {
-    const desc = DESCRIPTOR_MAP.get(entry.property);
-
-    // Variant-aware lookup: when an explicit target (Base+dark toggle) is active,
-    // read the class declared for *that* variant set first (e.g. the `dark:bg-*`
-    // value while Dark is on). Falls back to the base class when none is declared
-    // for the target yet. This makes the sidebar reflect the variant being edited.
-    const variantTokens = getVariantTokens();
-    const pattern = desc?.classPattern;
-    const matchesBare = pattern
-      ? (bare: string) => new RegExp(pattern).test(bare)
-      : (bare: string) => classMatchesPrefix(bare, entry.tailwindPrefix);
-
-    let oldClass = "";
-    if (variantTokens.length > 0) {
-      // Explicit target active: find the class for this exact variant set.
-      oldClass = findClassForVariant(classes, matchesBare, variantTokens);
-    }
-    if (!oldClass) {
-      // Base fallback: match only declared base classes (skip any `:` variant).
-      oldClass = classes.find((c) => classMatchesPrefix(c, entry.tailwindPrefix)) || "";
-    }
-
-    // Layer 2: Find related shorthand classes (e.g. p-4 when changing pt), base layer.
-    const relatedOldClasses: string[] = [];
-    for (const rp of entry.relatedPrefixes ?? []) {
-      const found = classes.find((c) => classMatchesPrefix(c, rp));
-      if (found) relatedOldClasses.push(found);
-    }
-
-    const newClass = entry.tailwindToken || "";
-    updates.push({
-      cssProperty,
-      tailwindPrefix: entry.tailwindPrefix,
-      tailwindToken: entry.tailwindToken,
-      value: entry.value,
-      oldClass,
-      newClass,
-      relatedOldClasses,
-    });
-  }
 
   const mergeKey = [
     info.filePath,
@@ -551,14 +400,21 @@ function addPendingFromCurrentState(): void {
       fileSize: state.componentInfo?.fileSize,
       updates: [...state.pendingBatch.values()].map((entry) => {
         const desc = DESCRIPTOR_MAP.get(entry.property);
-        const matchesBare = desc?.classPattern
-          ? (bare: string) => new RegExp(desc.classPattern!).test(bare)
+        // Capture the narrowed classPattern in a local const so the closure below
+        // doesn't need a non-null assertion to use it.
+        const classPattern = desc?.classPattern;
+        const matchesBare = classPattern
+          ? (bare: string) => new RegExp(classPattern).test(bare)
           : (bare: string) => classMatchesPrefix(bare, entry.tailwindPrefix);
         // Honor the explicit variant target (breakpoint + dark toggle) from the
         // sidebar header. Falls back to the viewport-winning breakpoint only when the
         // user left the target at Base + dark off — preserving the pre-feature default.
         const explicitVariant = getVariantString();
-        const fallback = pickWinningVariant(classes, matchesBare, window.innerWidth);
+        const fallback = pickWinningVariant(
+          classes,
+          matchesBare,
+          window.innerWidth
+        );
         const variant = explicitVariant ?? (fallback || undefined);
         return {
           tailwindPrefix: entry.tailwindPrefix,
@@ -571,8 +427,61 @@ function addPendingFromCurrentState(): void {
         };
       }),
     },
-    [...state.pendingBatch.values()].map((entry) => entry.property),
+    [...state.pendingBatch.values()].map((entry) => entry.property)
   );
+}
+
+/**
+ * Sends all pending property changes to the CLI via WebSocket.
+ */
+export function commit(): void {
+  if (state.pendingBatch.size === 0) {
+    return;
+  }
+  if (!state.componentInfo) {
+    return;
+  }
+
+  const filePath = state.componentInfo.filePath || "";
+  const { lineNumber } = state.componentInfo;
+  const columnNumber = state.componentInfo.columnNumber - 1;
+  const el = state.selectedElement;
+
+  const mergeKey = [
+    filePath,
+    lineNumber,
+    columnNumber,
+    el?.tagName.toLowerCase() || "",
+    el?.id || "",
+    el ? computeNthOfType(el) : 0,
+  ].join(":");
+
+  addPendingFromCurrentState();
+
+  // Push to canvas undo stack
+  if (el && state.elementIdentity) {
+    pushUndoAction({
+      type: "propertyChange",
+      elementIdentity: state.elementIdentity,
+      element: el,
+      pendingMergeKey: mergeKey,
+      pendingPropertyKeys: [...state.pendingBatch.values()].map(
+        (u) => u.property
+      ),
+      overrides: [...state.pendingBatch.values()].map((u) => ({
+        cssProperty: u.cssProperty,
+        previousValue: u.originalValue,
+        newValue: u.value,
+      })),
+    } as PropertyChangeRuntime);
+  }
+
+  // Update originalValues so next change is relative to this one
+  for (const [key, update] of state.pendingBatch) {
+    state.originalValues.set(key, update.value);
+  }
+
+  state.pendingBatch.clear();
 }
 
 /**
@@ -580,223 +489,42 @@ function addPendingFromCurrentState(): void {
  * Batches multiple calls within COMMIT_DEBOUNCE_MS into a single commit.
  */
 export function scheduledCommit(): void {
-  if (commitTimer) clearTimeout(commitTimer);
+  if (commitTimer) {
+    clearTimeout(commitTimer);
+  }
   commitTimer = setTimeout(() => {
     commitTimer = null;
     commit();
   }, COMMIT_DEBOUNCE_MS);
 }
 
-function resetState(): void {
-  if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
-  if (cleanupExpandListener) { cleanupExpandListener(); cleanupExpandListener = null; }
-  if (inflightCommit) { clearTimeout(inflightCommit.timeoutId); inflightCommit = null; }
-  state = {
-    selectedElement: null,
-    componentInfo: null,
-    elementIdentity: null,
-    currentValues: new Map(),
-    originalValues: new Map(),
-    activeOverrides: new Map(),
-    pendingBatch: new Map(),
-    showAllGroups: false,
-    readOnly: false,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /**
- * Initialises the property controller. Call once during overlay setup.
+ * Reverts all inline style overrides and clears the pending batch.
  */
-export function initPropertyController(shadowRoot: ShadowRoot): void {
-  sidebar = createSidebar(shadowRoot, () => {
-    // Close button pressed — cancel overrides and clear state
-    cancel();
-    destroyControls();
-    resetState();
-  }, (dir) => {
-    // Hierarchy nav buttons — delegate to the selection module.
-    navigate(dir);
-  }, (dir) => {
-    // Move-sibling buttons — reorder the element in source.
-    moveSelectedSibling(dir);
-  });
-
-  const handleCommitResult = (success: boolean, errorCode?: string, errorMessage?: string) => {
-    if (sidebar) sidebar.hideSaving();
-
-    if (inflightCommit) {
-      clearTimeout(inflightCommit.timeoutId);
-
-      if (success) {
-        inflightCommit = null;
-        // Surface "Optimize for mobile" when the edited element spans 2+ breakpoints.
-        if (state.selectedElement && state.componentInfo) {
-          const classes = (state.selectedElement.getAttribute("class") || "").split(/\s+/).filter(Boolean);
-          // Refresh the breakpoint-override markers — an edit may add a new variant.
-          setActiveElementClasses(classes);
-          const breakpointCount = countDistinctBreakpoints(classes);
-          const parentEl = state.selectedElement.parentElement;
-          maybeShowOptimizeAction(
-            {
-              filePath: state.componentInfo.filePath,
-              lineNumber: state.componentInfo.lineNumber,
-              columnNumber: state.componentInfo.columnNumber,
-              componentName: state.componentInfo.componentName,
-              tagName: state.selectedElement.tagName.toLowerCase(),
-              className: state.selectedElement.className || undefined,
-              parentTagName: parentEl?.tagName.toLowerCase(),
-              parentClassName: parentEl?.className || undefined,
-              nthOfType: computeNthOfType(state.selectedElement),
-              id: state.selectedElement.id || undefined,
-              jsxPath: state.componentInfo.jsxPath,
-              fileMtime: state.componentInfo.fileMtime,
-              fileSize: state.componentInfo.fileSize,
-            },
-            breakpointCount,
-          );
-        }
-      } else {
-        const { batch, previousOriginals } = inflightCommit;
-        inflightCommit = null;
-
-        for (const [key] of batch) {
-          const prev = previousOriginals.get(key);
-          if (prev !== undefined) {
-            state.originalValues.set(key, prev);
-          }
-        }
-
-        if (state.selectedElement) {
-          for (const [key] of batch) {
-            clearStyle(state.selectedElement, key);
-            state.activeOverrides.delete(key);
-            const orig = state.originalValues.get(key);
-            if (orig !== undefined) {
-              state.currentValues.set(key, orig);
-            }
-          }
-
-          for (const ctrl of controls) {
-            for (const [key] of batch) {
-              const orig = state.originalValues.get(key);
-              if (orig !== undefined) ctrl.setValue(key, orig);
-            }
-          }
-        }
-
-        lastCommitSnapshot = null;
-
-        if (sidebar) {
-          const friendlyMessages: Record<string, string> = {
-            DYNAMIC_CLASSNAME: "Cannot modify dynamic className expression",
-            CONFLICTING_CLASS: "Conflicting conditional class detected",
-            ELEMENT_NOT_FOUND: "Could not find element in source",
-            FILE_CHANGED: "File changed since selection — re-select the element",
-            AMBIGUOUS: "Couldn't pinpoint the element — re-select it",
-          };
-          const msg = friendlyMessages[errorCode || ""] || errorMessage || "Failed to write changes";
-          sidebar.showWarning(msg, "Dismiss", () => sidebar.clearWarning());
-        }
-      }
-    } else if (!success && sidebar) {
-      const friendlyMessages: Record<string, string> = {
-        DYNAMIC_CLASSNAME: "Cannot modify dynamic className expression",
-        CONFLICTING_CLASS: "Conflicting conditional class detected",
-        ELEMENT_NOT_FOUND: "Could not find element in source",
-        FILE_CHANGED: "File changed since selection — re-select the element",
-        AMBIGUOUS: "Couldn't pinpoint the element — re-select it",
-      };
-      const msg = friendlyMessages[errorCode || ""] || errorMessage || "Failed to write changes";
-      sidebar.showWarning(msg, "Dismiss", () => sidebar.clearWarning());
-    }
-  };
-
-  cleanupCommitListener = onMessage((msg) => {
-    if (msg.type !== "commitBatchComplete" || !inflightCommit) return;
-
-    const propertyResult = msg.results.find((result) => result.op === "updateClass");
-    if (!propertyResult) return;
-
-    const errorCodeMatch = propertyResult.error?.match(
-      /^(DYNAMIC_CLASSNAME|FILE_CHANGED|MAPPED_ELEMENT|CONFLICTING_CLASS|ELEMENT_NOT_FOUND|AMBIGUOUS)/
-    );
-
-    handleCommitResult(
-      propertyResult.success,
-      errorCodeMatch?.[1],
-      propertyResult.error || msg.error,
-    );
-
-    // Our own write changed the file — refresh the staleness baseline so the
-    // next edit on this same selection isn't rejected as stale.
-    if (propertyResult.success) captureStaleBaseline();
-  });
-
-  // Listen for successful commits to add changelog entries
-  cleanupChangelogListener = onMessage((msg) => {
-    if (msg.type === "commitBatchComplete" && msg.success && lastCommitSnapshot) {
-      const { componentInfo, batch } = lastCommitSnapshot;
-      const undoId = msg.results.find((result) => result.op === "updateClass")?.undoId ?? msg.undoIds[0];
-      if (!undoId) return;
-      const identity = {
-        componentName: componentInfo.componentName,
-        filePath: componentInfo.filePath,
-        lineNumber: componentInfo.lineNumber,
-        columnNumber: componentInfo.columnNumber,
-        tagName: componentInfo.tagName,
-      };
-
-      for (const update of batch) {
-        addChangeEntry({
-          type: "property",
-          componentName: componentInfo.componentName,
-          filePath: componentInfo.filePath,
-          summary: `${update.cssProperty}: ${update.originalValue} → ${update.value}`,
-          state: "active",
-          propertyKey: update.cssProperty,
-          elementIdentity: identity,
-          revertData: { type: "cliUndo", undoIds: [undoId] },
-        });
-      }
-      lastCommitSnapshot = null;
-    }
-  });
-
-  // When the active variant target (breakpoint / Dark toggle) changes, re-read the
-  // selected element's values so controls reflect the variant being edited rather
-  // than the rendered base. Dark also re-renders via the preview toggle.
-  cleanupVariantListener = onVariantTargetChange(() => {
-    if (!state.selectedElement) return;
-    const el = state.selectedElement;
-    const groups = new Set<PropertyGroup>(ESSENTIAL_GROUPS);
-    for (const g of DEFERRED_GROUPS) if (!isGroupCollapsed(g)) groups.add(g);
-    const refreshed = readComputedValues(el, groups);
-    for (const [key, value] of refreshed) {
-      state.currentValues.set(key, value);
-      for (const ctrl of controls) ctrl.setValue(key, value);
-    }
-  });
-}
-
-/**
- * Nearby static text to anchor the AI locator when the element's own text is a
- * computed value (e.g. {count}). Walk up a few levels and take the richest
- * ancestor text, so labels like a card's title ("Total Parts") are available.
- */
-function captureContextText(el: HTMLElement): string | undefined {
-  const own = getElementVisibleText(el).trim();
-  let cur: HTMLElement | null = el.parentElement;
-  let best = "";
-  for (let i = 0; i < 4 && cur; i++, cur = cur.parentElement) {
-    const t = getElementVisibleText(cur).replace(/\s+/g, " ").trim();
-    if (t.length > best.length) best = t;
-    if (best.length > own.length + 12) break; // enough surrounding context
+export function cancel(): void {
+  if (!state.selectedElement) {
+    return;
   }
-  return best.length > own.length + 2 ? best.slice(0, 160) : undefined;
+
+  // Revert inline style overrides
+  for (const [key] of state.activeOverrides) {
+    clearStyle(state.selectedElement, key);
+  }
+
+  // Restore currentValues to originals
+  for (const [key, value] of state.originalValues) {
+    state.currentValues.set(key, value);
+  }
+
+  // Update control displays
+  for (const ctrl of controls) {
+    for (const [key, value] of state.originalValues) {
+      ctrl.setValue(key, value);
+    }
+  }
+
+  state.activeOverrides.clear();
+  state.pendingBatch.clear();
 }
 
 /**
@@ -805,132 +533,158 @@ function captureContextText(el: HTMLElement): string | undefined {
  * writes so iterative edits on the same element aren't flagged stale. File-level
  * stat, so it's guarded only on the filePath being unchanged when it resolves.
  */
-function captureStaleBaseline(): void {
+async function captureStaleBaseline(): Promise<void> {
   const filePath = state.componentInfo?.filePath;
-  if (!filePath) return;
-  requestFileStat(filePath)
-    .then(({ mtime, size }) => {
-      if (mtime <= 0) return; // stat failed / file unresolved
-      if (state.componentInfo?.filePath !== filePath) return; // selection moved on
-      state.componentInfo.fileMtime = mtime;
-      state.componentInfo.fileSize = size;
-    })
-    .catch(() => {});
+  if (!filePath) {
+    return;
+  }
+  try {
+    const { mtime, size } = await requestFileStat(filePath);
+    if (mtime <= 0) {
+      return;
+    } // stat failed / file unresolved
+    if (state.componentInfo?.filePath !== filePath) {
+      return;
+    } // selection moved on
+    state.componentInfo.fileMtime = mtime;
+    state.componentInfo.fileSize = size;
+  } catch {
+    /* empty */
+  }
 }
 
 /**
- * Inspect an element: read its computed styles, render controls, show sidebar.
- * If there are pending changes from a previous selection, commits them first.
+ * Bind a color property to a shadcn theme token (e.g. write `bg-primary`
+ * instead of a raw color). The element references the token, so editing the
+ * token in the Theme panel updates it everywhere — and it survives dark mode.
  */
-export function inspect(element: HTMLElement, info: ComponentInfo): void {
-  // Commit any pending changes from previous selection
-  if (state.pendingBatch.size > 0) {
-    commit();
+export function bindToken(key: string, token: string): void {
+  const desc = DESCRIPTOR_MAP.get(key);
+  if (!desc || !state.selectedElement) {
+    return;
   }
 
-  dismissOnboarding();
+  // Live-preview with the token's *resolved* color. We can't preview with a bare
+  // `var(--token)` because shadcn stores colors as HSL/RGB channel triples
+  // (e.g. `222 47% 11%`) consumed via `hsl(var(--token))` — `var(--token)` alone
+  // is invalid for background-color and wouldn't render. The committed class
+  // (`bg-primary`) resolves correctly and tracks light/dark after write.
+  const themeVal = getThemeValue(token);
+  const cssValue =
+    (themeVal ? toRenderableCss(themeVal) : null) ?? `var(--${token})`;
+  setStyle(state.selectedElement, desc.key, cssValue);
+  state.activeOverrides.set(key, cssValue);
+  state.currentValues.set(key, cssValue);
 
-  // Clean up previous controls
-  destroyControls();
-
-  // Set up new state — reset showAllGroups so new selections start with contextual filtering
-  state.showAllGroups = false;
-  state.readOnly = false; // Reset — previous selection may have been read-only
-  state.selectedElement = element;
-  state.componentInfo = info;
-
-  // If filePath is empty (React 19), try file discovery by component name
-  if (!info.filePath && info.componentName) {
-    const cached = getCachedFilePath(info.componentName);
-    if (cached) {
-      state.componentInfo = { ...info, filePath: cached };
-    } else {
-      requestFileDiscovery(info.componentName).then((discovered) => {
-        if (discovered) {
-          setCachedFilePath(info.componentName, discovered);
-          if (state.componentInfo?.componentName === info.componentName) {
-            state.componentInfo = { ...state.componentInfo, filePath: discovered };
-            captureStaleBaseline();
-          }
-        }
-      });
-    }
+  // The `color` descriptor's classPattern only matches Tailwind scale colors
+  // (text-red-500) and keywords — not semantic tokens (text-foreground). For an
+  // overloaded prefix like `text-` we can't fall back to bare prefix matching
+  // (it'd clobber text-lg/text-center), so widen the pattern to also match the
+  // known theme color tokens, ensuring an existing `text-foreground` is replaced
+  // rather than left behind. bg has no classPattern → prefix match already works.
+  let classPatternOverride: string | undefined;
+  if (desc.classPattern) {
+    const tokenAlt = getColorTokenNames()
+      .map((t) => t.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    const extra = tokenAlt ? `|${tokenAlt}` : "";
+    classPatternOverride = `^${desc.tailwindPrefix}-(\\w+-\\d+|black|white|transparent|current|inherit${extra}|\\[.+\\])$`;
   }
 
-  // Snapshot the file's mtime/size as the staleness baseline for this selection.
-  captureStaleBaseline();
-
-  state.elementIdentity = {
-    componentName: info.componentName,
-    filePath: info.filePath,
-    lineNumber: info.lineNumber,
-    columnNumber: info.columnNumber,
-    tagName: info.tagName,
-  };
-
-  // Read essential groups immediately; defer collapsed groups
-  const groupsToRead = new Set<PropertyGroup>(ESSENTIAL_GROUPS);
-  for (const g of DEFERRED_GROUPS) {
-    if (!isGroupCollapsed(g)) groupsToRead.add(g);
-  }
-  // Seed the variant target to the viewport-winning breakpoint + current dark state,
-  // and record the element's classes so the selector can mark its breakpoint overrides.
-  const elementClasses = (element.getAttribute("class") || "").split(/\s+/).filter(Boolean);
-  resetVariantTargetOnSelect(elementClasses, () => true);
-  setActiveElementClasses(elementClasses);
-  const values = readComputedValues(element, groupsToRead);
-  state.currentValues = values;
-  state.originalValues = new Map(values);
-  state.activeOverrides = new Map();
-  state.pendingBatch = new Map();
-  if (!info.filePath) {
-    state.readOnly = true;
-  }
-
-  // Listen for section expansions to lazily read deferred values
-  if (cleanupExpandListener) cleanupExpandListener();
-  cleanupExpandListener = onSectionExpand((group) => {
-    if (DEFERRED_GROUPS.has(group as PropertyGroup)) {
-      readDeferredGroup(group);
-    }
+  // Pending update carries the token explicitly → buildClass writes `${prefix}-${token}`.
+  state.pendingBatch.set(key, {
+    property: key,
+    cssProperty: desc.cssProperty,
+    value: cssValue,
+    tailwindPrefix: desc.tailwindPrefix,
+    tailwindToken: token,
+    relatedPrefixes: desc.relatedPrefixes,
+    originalValue: state.originalValues.get(key) || desc.defaultValue,
+    classPatternOverride,
   });
 
-  // Determine which groups are relevant for this element
+  showToast(`Bound ${desc.label ?? key} → ${desc.tailwindPrefix}-${token}`);
+  scheduledCommit();
+}
+
+/**
+ * Apply a Tailwind palette color to a property — writes the token class
+ * (e.g. `bg-red-500`) rather than an arbitrary `bg-[#hex]`. `css` is the
+ * renderable color used for the live inline preview only.
+ */
+export function pickTailwindColor(
+  key: string,
+  token: string,
+  css: string
+): void {
+  const desc = DESCRIPTOR_MAP.get(key);
+  if (!desc || !state.selectedElement) {
+    return;
+  }
+
+  setStyle(state.selectedElement, desc.key, css);
+  state.activeOverrides.set(key, css);
+  state.currentValues.set(key, css);
+
+  // Scale tokens (red-500) already satisfy the color descriptors' classPattern
+  // (`\w+-\d+`), and bg has no pattern → prefix match replaces. No override needed.
+  state.pendingBatch.set(key, {
+    property: key,
+    cssProperty: desc.cssProperty,
+    value: css,
+    tailwindPrefix: desc.tailwindPrefix,
+    tailwindToken: token,
+    relatedPrefixes: desc.relatedPrefixes,
+    originalValue: state.originalValues.get(key) || desc.defaultValue,
+  });
+
+  showToast(`${desc.label ?? key} → ${desc.tailwindPrefix}-${token}`);
+  scheduledCommit();
+}
+
+/** Context passed to control factories — currently the selected element's
+ *  className (for theme-binding detection) + the bind callback. */
+function buildControlContext(): ControlContext {
+  return {
+    selectedClassName: state.selectedElement?.className || undefined,
+    onBindToken: bindToken,
+    onPickTailwind: pickTailwindColor,
+  };
+}
+
+/**
+ * Re-renders sections (e.g., when display changes and flex controls need to appear/disappear).
+ */
+function rerenderSections(): void {
+  if (!state.selectedElement || !state.componentInfo) {
+    return;
+  }
+  destroyControls();
+
   const relevantGroups = state.showAllGroups
     ? null
-    : getRelevantGroups(element);
-
-  // Filter descriptors to only relevant groups
+    : getRelevantGroups(state.selectedElement);
   const descriptorsToRender = relevantGroups
-    ? ALL_DESCRIPTORS.filter(d => relevantGroups.has(d.group))
+    ? ALL_DESCRIPTORS.filter((d) => relevantGroups.has(d.group))
     : ALL_DESCRIPTORS;
 
-  // Render sections
-  const isFiltered = relevantGroups !== null && descriptorsToRender.length < ALL_DESCRIPTORS.length;
+  const isFiltered =
+    relevantGroups !== null &&
+    descriptorsToRender.length < ALL_DESCRIPTORS.length;
+  // oxlint-disable-next-line no-use-before-define -- rerenderSections and setShowAllGroups are mutually recursive (setShowAllGroups calls rerenderSections); both are hoisted function declarations
   const onShowAll = isFiltered ? () => setShowAllGroups(true) : undefined;
 
   const { container, controls: newControls } = renderSections(
     descriptorsToRender,
     state.currentValues,
+    // oxlint-disable-next-line no-use-before-define -- preview and rerenderSections are mutually recursive (preview calls rerenderSections); both are hoisted function declarations
     preview,
     scheduledCommit,
     onShowAll,
-    buildControlContext(),
+    buildControlContext()
   );
   controls = newControls;
-
-  // Reconnect observer scoped to selected element's parent
-  observer?.disconnect();
-  observer?.observe(element.parentElement || document.body, { childList: true, subtree: true });
-
-  // Show sidebar
-  sidebar.show(info.componentName, info.filePath, info.lineNumber, container);
-  sidebar.updateNav(getNavAvailability());
-  if (!info.filePath) {
-    sidebar.showWarning("Source file couldn't be resolved for this element", "Dismiss", () => sidebar.clearWarning());
-  } else {
-    sidebar.clearWarning();
-  }
+  sidebar.replaceContent(container);
 }
 
 /**
@@ -939,7 +693,9 @@ export function inspect(element: HTMLElement, info: ComponentInfo): void {
  */
 export function preview(key: string, cssValue: string): void {
   const desc = DESCRIPTOR_MAP.get(key);
-  if (!desc || !state.selectedElement) return;
+  if (!desc || !state.selectedElement) {
+    return;
+  }
 
   // Layer 1: instant inline style override
   setStyle(state.selectedElement, desc.key, cssValue);
@@ -948,13 +704,17 @@ export function preview(key: string, cssValue: string): void {
 
   // Resolve Tailwind token from the merged token map
   const tokens = getTokenMap();
-  const reverseScaleKey = (desc.tailwindScale + "Reverse") as keyof MergedTokenMap;
+  const reverseScaleKey = `${
+    desc.tailwindScale
+  }Reverse` as keyof MergedTokenMap;
   const reverseMap = tokens[reverseScaleKey] as Map<string, string> | undefined;
-  let tailwindToken = reverseMap ? resolveTokenForValue(cssValue, reverseMap) : null;
+  let tailwindToken = reverseMap
+    ? resolveTokenForValue(cssValue, reverseMap)
+    : null;
 
   // For enum properties with enumValues, use the tailwindValue directly
   if (!tailwindToken && desc.enumValues) {
-    const enumMatch = desc.enumValues.find(e => e.value === cssValue);
+    const enumMatch = desc.enumValues.find((e) => e.value === cssValue);
     if (enumMatch) {
       tailwindToken = enumMatch.tailwindValue;
     }
@@ -1001,171 +761,524 @@ export function preview(key: string, cssValue: string): void {
   }
 }
 
-/**
- * Bind a color property to a shadcn theme token (e.g. write `bg-primary`
- * instead of a raw color). The element references the token, so editing the
- * token in the Theme panel updates it everywhere — and it survives dark mode.
- */
-export function bindToken(key: string, token: string): void {
-  const desc = DESCRIPTOR_MAP.get(key);
-  if (!desc || !state.selectedElement) return;
-
-  // Live-preview with the token's *resolved* color. We can't preview with a bare
-  // `var(--token)` because shadcn stores colors as HSL/RGB channel triples
-  // (e.g. `222 47% 11%`) consumed via `hsl(var(--token))` — `var(--token)` alone
-  // is invalid for background-color and wouldn't render. The committed class
-  // (`bg-primary`) resolves correctly and tracks light/dark after write.
-  const themeVal = getThemeValue(token);
-  const cssValue = (themeVal ? toRenderableCss(themeVal) : null) ?? `var(--${token})`;
-  setStyle(state.selectedElement, desc.key, cssValue);
-  state.activeOverrides.set(key, cssValue);
-  state.currentValues.set(key, cssValue);
-
-  // The `color` descriptor's classPattern only matches Tailwind scale colors
-  // (text-red-500) and keywords — not semantic tokens (text-foreground). For an
-  // overloaded prefix like `text-` we can't fall back to bare prefix matching
-  // (it'd clobber text-lg/text-center), so widen the pattern to also match the
-  // known theme color tokens, ensuring an existing `text-foreground` is replaced
-  // rather than left behind. bg has no classPattern → prefix match already works.
-  let classPatternOverride: string | undefined;
-  if (desc.classPattern) {
-    const tokenAlt = getColorTokenNames()
-      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join("|");
-    const extra = tokenAlt ? `|${tokenAlt}` : "";
-    classPatternOverride = `^${desc.tailwindPrefix}-(\\w+-\\d+|black|white|transparent|current|inherit${extra}|\\[.+\\])$`;
-  }
-
-  // Pending update carries the token explicitly → buildClass writes `${prefix}-${token}`.
-  state.pendingBatch.set(key, {
-    property: key,
-    cssProperty: desc.cssProperty,
-    value: cssValue,
-    tailwindPrefix: desc.tailwindPrefix,
-    tailwindToken: token,
-    relatedPrefixes: desc.relatedPrefixes,
-    originalValue: state.originalValues.get(key) || desc.defaultValue,
-    classPatternOverride,
-  });
-
-  showToast(`Bound ${desc.label ?? key} → ${desc.tailwindPrefix}-${token}`);
-  scheduledCommit();
+export function setShowAllGroups(showAll: boolean): void {
+  state.showAllGroups = showAll;
+  rerenderSections();
 }
 
-/**
- * Apply a Tailwind palette color to a property — writes the token class
- * (e.g. `bg-red-500`) rather than an arbitrary `bg-[#hex]`. `css` is the
- * renderable color used for the live inline preview only.
- */
-export function pickTailwindColor(key: string, token: string, css: string): void {
-  const desc = DESCRIPTOR_MAP.get(key);
-  if (!desc || !state.selectedElement) return;
-
-  setStyle(state.selectedElement, desc.key, css);
-  state.activeOverrides.set(key, css);
-  state.currentValues.set(key, css);
-
-  // Scale tokens (red-500) already satisfy the color descriptors' classPattern
-  // (`\w+-\d+`), and bg has no pattern → prefix match replaces. No override needed.
-  state.pendingBatch.set(key, {
-    property: key,
-    cssProperty: desc.cssProperty,
-    value: css,
-    tailwindPrefix: desc.tailwindPrefix,
-    tailwindToken: token,
-    relatedPrefixes: desc.relatedPrefixes,
-    originalValue: state.originalValues.get(key) || desc.defaultValue,
-  });
-
-  showToast(`${desc.label ?? key} → ${desc.tailwindPrefix}-${token}`);
-  scheduledCommit();
+function resetState(): void {
+  if (commitTimer) {
+    clearTimeout(commitTimer);
+    commitTimer = null;
+  }
+  if (cleanupExpandListener) {
+    cleanupExpandListener();
+    cleanupExpandListener = null;
+  }
+  if (inflightCommit) {
+    clearTimeout(inflightCommit.timeoutId);
+    inflightCommit = null;
+  }
+  state = {
+    selectedElement: null,
+    componentInfo: null,
+    elementIdentity: null,
+    currentValues: new Map(),
+    originalValues: new Map(),
+    activeOverrides: new Map(),
+    pendingBatch: new Map(),
+    showAllGroups: false,
+    readOnly: false,
+  };
 }
 
-/**
- * Sends all pending property changes to the CLI via WebSocket.
- */
-export function commit(): void {
-  if (state.pendingBatch.size === 0) return;
-  if (!state.componentInfo) return;
+// ---------------------------------------------------------------------------
+// Commit-result handling (used by initPropertyController's message listener)
+// ---------------------------------------------------------------------------
 
-  const filePath = state.componentInfo.filePath || "";
-  const lineNumber = state.componentInfo.lineNumber;
-  const columnNumber = state.componentInfo.columnNumber - 1;
-  const el = state.selectedElement;
+const FRIENDLY_COMMIT_ERRORS: Record<string, string> = {
+  DYNAMIC_CLASSNAME: "Cannot modify dynamic className expression",
+  CONFLICTING_CLASS: "Conflicting conditional class detected",
+  ELEMENT_NOT_FOUND: "Could not find element in source",
+  FILE_CHANGED: "File changed since selection — re-select the element",
+  AMBIGUOUS: "Couldn't pinpoint the element — re-select it",
+};
 
-  // Build the batch operation with identity hints for React 19 resolution
-  const updates = [...state.pendingBatch.values()].map(u => {
-    const desc = DESCRIPTOR_MAP.get(u.property);
-    return {
-      tailwindPrefix: u.tailwindPrefix,
-      tailwindToken: u.tailwindToken,
-      value: u.value,
-      relatedPrefixes: u.relatedPrefixes,
-      classPattern: u.classPatternOverride ?? desc?.classPattern,
-      standalone: desc?.standalone,
-    };
-  });
-
-  const mergeKey = [
-    filePath,
-    lineNumber,
-    columnNumber,
-    el?.tagName.toLowerCase() || "",
-    el?.id || "",
-    el ? computeNthOfType(el) : 0,
-  ].join(":");
-
-  addPendingFromCurrentState();
-
-  // Push to canvas undo stack
-  if (el && state.elementIdentity) {
-    pushUndoAction({
-      type: "propertyChange",
-      elementIdentity: state.elementIdentity,
-      element: el,
-      pendingMergeKey: mergeKey,
-      pendingPropertyKeys: [...state.pendingBatch.values()].map(u => u.property),
-      overrides: [...state.pendingBatch.values()].map(u => ({
-        cssProperty: u.cssProperty,
-        previousValue: u.originalValue,
-        newValue: u.value,
-      })),
-    } as PropertyChangeRuntime);
-  }
-
-  // Update originalValues so next change is relative to this one
-  for (const [key, update] of state.pendingBatch) {
-    state.originalValues.set(key, update.value);
-  }
-
-  state.pendingBatch.clear();
+function friendlyCommitErrorMessage(
+  errorCode?: string,
+  errorMessage?: string
+): string {
+  return (
+    FRIENDLY_COMMIT_ERRORS[errorCode || ""] ||
+    errorMessage ||
+    "Failed to write changes"
+  );
 }
 
-/**
- * Reverts all inline style overrides and clears the pending batch.
- */
-export function cancel(): void {
-  if (!state.selectedElement) return;
-
-  // Revert inline style overrides
-  for (const [key] of state.activeOverrides) {
-    clearStyle(state.selectedElement, key);
+function showCommitFailureWarning(
+  errorCode?: string,
+  errorMessage?: string
+): void {
+  if (!sidebar) {
+    return;
   }
+  const msg = friendlyCommitErrorMessage(errorCode, errorMessage);
+  sidebar.showWarning(msg, "Dismiss", () => sidebar.clearWarning());
+}
 
-  // Restore currentValues to originals
-  for (const [key, value] of state.originalValues) {
-    state.currentValues.set(key, value);
+/** Surfaces "Optimize for mobile" when the edited element spans 2+ breakpoints. */
+function surfaceOptimizeAction(): void {
+  if (!state.selectedElement || !state.componentInfo) {
+    return;
   }
+  const classes = (state.selectedElement.getAttribute("class") || "")
+    .split(/\s+/)
+    .filter(Boolean);
+  // Refresh the breakpoint-override markers — an edit may add a new variant.
+  setActiveElementClasses(classes);
+  const breakpointCount = countDistinctBreakpoints(classes);
+  const parentEl = state.selectedElement.parentElement;
+  maybeShowOptimizeAction(
+    {
+      filePath: state.componentInfo.filePath,
+      lineNumber: state.componentInfo.lineNumber,
+      columnNumber: state.componentInfo.columnNumber,
+      componentName: state.componentInfo.componentName,
+      tagName: state.selectedElement.tagName.toLowerCase(),
+      className: state.selectedElement.className || undefined,
+      parentTagName: parentEl?.tagName.toLowerCase(),
+      parentClassName: parentEl?.className || undefined,
+      nthOfType: computeNthOfType(state.selectedElement),
+      id: state.selectedElement.id || undefined,
+      jsxPath: state.componentInfo.jsxPath,
+      fileMtime: state.componentInfo.fileMtime,
+      fileSize: state.componentInfo.fileSize,
+    },
+    breakpointCount
+  );
+}
 
-  // Update control displays
-  for (const ctrl of controls) {
-    for (const [key, value] of state.originalValues) {
-      ctrl.setValue(key, value);
+/** Reverts state for a failed commit batch — undoes inline overrides and restores originals. */
+function revertFailedCommit(
+  batch: Map<string, PendingUpdate>,
+  previousOriginals: Map<string, string>
+): void {
+  for (const [key] of batch) {
+    const prev = previousOriginals.get(key);
+    if (prev !== undefined) {
+      state.originalValues.set(key, prev);
     }
   }
 
-  state.activeOverrides.clear();
-  state.pendingBatch.clear();
+  if (state.selectedElement) {
+    for (const [key] of batch) {
+      clearStyle(state.selectedElement, key);
+      state.activeOverrides.delete(key);
+      const orig = state.originalValues.get(key);
+      if (orig !== undefined) {
+        state.currentValues.set(key, orig);
+      }
+    }
+
+    for (const ctrl of controls) {
+      for (const [key] of batch) {
+        const orig = state.originalValues.get(key);
+        if (orig !== undefined) {
+          ctrl.setValue(key, orig);
+        }
+      }
+    }
+  }
+
+  lastCommitSnapshot = null;
+}
+
+function handleCommitResult(
+  success: boolean,
+  errorCode?: string,
+  errorMessage?: string
+): void {
+  if (sidebar) {
+    sidebar.hideSaving();
+  }
+
+  if (!inflightCommit) {
+    if (!success && sidebar) {
+      showCommitFailureWarning(errorCode, errorMessage);
+    }
+    return;
+  }
+
+  clearTimeout(inflightCommit.timeoutId);
+
+  if (success) {
+    inflightCommit = null;
+    surfaceOptimizeAction();
+    return;
+  }
+
+  const { batch, previousOriginals } = inflightCommit;
+  inflightCommit = null;
+  revertFailedCommit(batch, previousOriginals);
+  showCommitFailureWarning(errorCode, errorMessage);
+}
+
+// ---------------------------------------------------------------------------
+// HMR reacquisition — after a hot reload replaces the DOM, find the new
+// element matching the stored elementIdentity and re-inspect it.
+// ---------------------------------------------------------------------------
+
+/** Synchronous reacquisition via _debugSource (React 18). */
+function reacquireViaDebugSource(
+  identity: ElementIdentity
+): HTMLElement | null {
+  const candidates = document.querySelectorAll(identity.tagName);
+
+  for (const el of candidates) {
+    if (!(el instanceof HTMLElement)) {
+      continue;
+    }
+    try {
+      let fiber = getFiberFromHostInstance(el);
+      while (fiber) {
+        if (isCompositeFiber(fiber)) {
+          const source = fiber._debugSource;
+          const name = getDisplayName(fiber);
+          if (
+            source &&
+            name === identity.componentName &&
+            source.fileName?.endsWith(identity.filePath) &&
+            source.lineNumber === identity.lineNumber
+          ) {
+            return el;
+          }
+        }
+        fiber = fiber.return;
+      }
+    } catch {
+      // fiber walk may fail
+    }
+  }
+
+  return null;
+}
+
+/** Async reacquisition via getOwnerStack (React 19). */
+async function reacquireViaOwnerStack(
+  identity: ElementIdentity
+): Promise<HTMLElement | null> {
+  const candidates = document.querySelectorAll(identity.tagName);
+
+  for (const el of candidates) {
+    if (!(el instanceof HTMLElement)) {
+      continue;
+    }
+    try {
+      const fiber = getFiberFromHostInstance(el);
+      if (!fiber) {
+        continue;
+      }
+
+      // Sequential by design: this is a search with early return once a match
+      // is found, over a small set of same-tag candidates. Parallelizing with
+      // Promise.all would await every candidate's owner stack even after a
+      // match is already found, defeating the early exit.
+      // oxlint-disable-next-line no-await-in-loop -- intentional sequential search with early return, see comment above
+      const frames = await getResolvedOwnerStack(fiber);
+      if (!frames || frames.length === 0) {
+        continue;
+      }
+
+      for (const frame of frames) {
+        if (!frame.functionName) {
+          continue;
+        }
+        const name = frame.functionName;
+        if (name !== identity.componentName) {
+          continue;
+        }
+
+        const filePath = resolveFrameFilePath(frame.fileName);
+
+        if (
+          filePath &&
+          identity.filePath.endsWith(filePath) &&
+          (frame.lineNumber ?? 0) === identity.lineNumber
+        ) {
+          return el;
+        }
+      }
+    } catch {
+      // getOwnerStack may fail — continue to next candidate
+    }
+  }
+
+  return null;
+}
+
+type ResolvedFiber = NonNullable<ReturnType<typeof getFiberFromHostInstance>>;
+
+/** Try getOwnerStack (React 19) to re-resolve fresh ComponentInfo. */
+async function resolveViaOwnerStack(
+  fiber: ResolvedFiber,
+  element: HTMLElement,
+  fallbackInfo: ComponentInfo
+): Promise<ComponentInfo | null> {
+  try {
+    const frames = await getResolvedOwnerStack(fiber);
+    if (!frames || frames.length === 0) {
+      return null;
+    }
+    for (const frame of frames) {
+      if (!frame.functionName) {
+        continue;
+      }
+      const name = frame.functionName;
+      if (name[0] !== name[0].toUpperCase()) {
+        continue;
+      }
+      if (name !== fallbackInfo.componentName && fallbackInfo.componentName) {
+        continue;
+      }
+      const filePath = resolveFrameFilePath(frame.fileName);
+      if (!filePath) {
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      return {
+        ...fallbackInfo,
+        filePath,
+        lineNumber: frame.lineNumber ?? fallbackInfo.lineNumber,
+        columnNumber: frame.columnNumber ?? fallbackInfo.columnNumber,
+        boundingRect: {
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        },
+      };
+    }
+    return null;
+  } catch {
+    // Fall through
+    return null;
+  }
+}
+
+/** Try _debugSource (React 18) to re-resolve fresh ComponentInfo. */
+function resolveViaDebugSource(
+  fiber: ResolvedFiber,
+  element: HTMLElement,
+  fallbackInfo: ComponentInfo
+): ComponentInfo {
+  let current: typeof fiber | null = fiber;
+  while (current) {
+    if (isCompositeFiber(current)) {
+      const name = getDisplayName(current.type);
+      const debugSource =
+        current._debugSource || current._debugOwner?._debugSource;
+      if (name === fallbackInfo.componentName && debugSource?.fileName) {
+        const rect = element.getBoundingClientRect();
+        return {
+          ...fallbackInfo,
+          filePath: debugSource.fileName,
+          lineNumber: debugSource.lineNumber ?? fallbackInfo.lineNumber,
+          columnNumber: debugSource.columnNumber ?? fallbackInfo.columnNumber,
+          boundingRect: {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+          },
+        };
+      }
+    }
+    current = current.return;
+  }
+
+  return fallbackInfo;
+}
+
+/**
+ * Re-resolve fresh ComponentInfo from a DOM element's fiber.
+ * Used after HMR to get updated line:col from the new fiber tree.
+ */
+async function resolveFreshComponentInfo(
+  element: HTMLElement,
+  fallbackInfo: ComponentInfo
+): Promise<ComponentInfo> {
+  const fiber = getFiberFromHostInstance(element);
+  if (!fiber) {
+    return fallbackInfo;
+  }
+
+  const viaOwnerStack = await resolveViaOwnerStack(
+    fiber,
+    element,
+    fallbackInfo
+  );
+  if (viaOwnerStack) {
+    return viaOwnerStack;
+  }
+
+  return resolveViaDebugSource(fiber, element, fallbackInfo);
+}
+
+// ---------------------------------------------------------------------------
+// HMR survival observer
+// ---------------------------------------------------------------------------
+
+const observer =
+  typeof MutationObserver === "undefined"
+    ? null
+    : new MutationObserver(() => {
+        if (
+          state.selectedElement &&
+          !document.contains(state.selectedElement)
+        ) {
+          clearTimeout(reacquireTimer);
+          reacquireTimer = setTimeout(() => {
+            // oxlint-disable-next-line no-use-before-define -- observer and reacquireElement are mutually referential (reacquireElement re-inspects and reconnects observer); both are hoisted, so this is safe
+            reacquireElement();
+          }, 80);
+        }
+      });
+
+/**
+ * Inspect an element: read its computed styles, render controls, show sidebar.
+ * If there are pending changes from a previous selection, commits them first.
+ */
+export function inspect(element: HTMLElement, info: ComponentInfo): void {
+  // Commit any pending changes from previous selection
+  if (state.pendingBatch.size > 0) {
+    commit();
+  }
+
+  dismissOnboarding();
+
+  // Clean up previous controls
+  destroyControls();
+
+  // Set up new state — reset showAllGroups so new selections start with contextual filtering
+  state.showAllGroups = false;
+  state.readOnly = false; // Reset — previous selection may have been read-only
+  state.selectedElement = element;
+  state.componentInfo = info;
+
+  // If filePath is empty (React 19), try file discovery by component name
+  if (!info.filePath && info.componentName) {
+    const cached = getCachedFilePath(info.componentName);
+    if (cached) {
+      state.componentInfo = { ...info, filePath: cached };
+    } else {
+      // Fire-and-forget: discovery shouldn't block the rest of inspect() from
+      // rendering immediately. Wrapped in an async IIFE so we can use await
+      // instead of .then() while preserving that non-blocking behavior.
+      void (async () => {
+        const discovered = await requestFileDiscovery(info.componentName);
+        if (discovered) {
+          setCachedFilePath(info.componentName, discovered);
+          if (state.componentInfo?.componentName === info.componentName) {
+            state.componentInfo = {
+              ...state.componentInfo,
+              filePath: discovered,
+            };
+            captureStaleBaseline();
+          }
+        }
+      })();
+    }
+  }
+
+  // Snapshot the file's mtime/size as the staleness baseline for this selection.
+  captureStaleBaseline();
+
+  state.elementIdentity = {
+    componentName: info.componentName,
+    filePath: info.filePath,
+    lineNumber: info.lineNumber,
+    columnNumber: info.columnNumber,
+    tagName: info.tagName,
+  };
+
+  // Read essential groups immediately; defer collapsed groups
+  const groupsToRead = new Set<PropertyGroup>(ESSENTIAL_GROUPS);
+  for (const g of DEFERRED_GROUPS) {
+    if (!isGroupCollapsed(g)) {
+      groupsToRead.add(g);
+    }
+  }
+  // Seed the variant target to the viewport-winning breakpoint + current dark state,
+  // and record the element's classes so the selector can mark its breakpoint overrides.
+  const elementClasses = (element.getAttribute("class") || "")
+    .split(/\s+/)
+    .filter(Boolean);
+  resetVariantTargetOnSelect(elementClasses, () => true);
+  setActiveElementClasses(elementClasses);
+  const values = readComputedValues(element, groupsToRead);
+  state.currentValues = values;
+  state.originalValues = new Map(values);
+  state.activeOverrides = new Map();
+  state.pendingBatch = new Map();
+  if (!info.filePath) {
+    state.readOnly = true;
+  }
+
+  // Listen for section expansions to lazily read deferred values
+  if (cleanupExpandListener) {
+    cleanupExpandListener();
+  }
+  cleanupExpandListener = onSectionExpand((group) => {
+    if (DEFERRED_GROUPS.has(group as PropertyGroup)) {
+      readDeferredGroup(group);
+    }
+  });
+
+  // Determine which groups are relevant for this element
+  const relevantGroups = state.showAllGroups
+    ? null
+    : getRelevantGroups(element);
+
+  // Filter descriptors to only relevant groups
+  const descriptorsToRender = relevantGroups
+    ? ALL_DESCRIPTORS.filter((d) => relevantGroups.has(d.group))
+    : ALL_DESCRIPTORS;
+
+  // Render sections
+  const isFiltered =
+    relevantGroups !== null &&
+    descriptorsToRender.length < ALL_DESCRIPTORS.length;
+  const onShowAll = isFiltered ? () => setShowAllGroups(true) : undefined;
+
+  const { container, controls: newControls } = renderSections(
+    descriptorsToRender,
+    state.currentValues,
+    preview,
+    scheduledCommit,
+    onShowAll,
+    buildControlContext()
+  );
+  controls = newControls;
+
+  // Reconnect observer scoped to selected element's parent
+  observer?.disconnect();
+  observer?.observe(element.parentElement || document.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  // Show sidebar
+  sidebar.show(info.componentName, info.filePath, info.lineNumber, container);
+  sidebar.updateNav(getNavAvailability());
+  if (info.filePath) {
+    sidebar.clearWarning();
+  } else {
+    sidebar.showWarning(
+      "Source file couldn't be resolved for this element",
+      "Dismiss",
+      () => sidebar.clearWarning()
+    );
+  }
 }
 
 /**
@@ -1173,7 +1286,10 @@ export function cancel(): void {
  * Used by Escape key and Clear All (revert to original).
  */
 export function deselect(): void {
-  if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
+  if (commitTimer) {
+    clearTimeout(commitTimer);
+    commitTimer = null;
+  }
   observer?.disconnect();
   cancel();
   resetVariantTargetOnDeselect();
@@ -1186,11 +1302,49 @@ export function deselect(): void {
 }
 
 /**
+ * After HMR replaces the DOM, find the new element matching the stored
+ * elementIdentity by walking fibers to match componentName + source location.
+ * Re-inspects without slide animation if found; deselects if not.
+ *
+ * Uses a dual strategy:
+ * 1. Synchronous fiber walk with _debugSource (React 18)
+ * 2. Async getOwnerStack from bippy/source (React 19, where _debugSource is absent)
+ */
+async function reacquireElement(): Promise<void> {
+  const identity = state.elementIdentity;
+  const info = state.componentInfo;
+  if (!identity || !info) {
+    deselect();
+    return;
+  }
+
+  // Strategy 1: synchronous _debugSource fiber walk (React 18)
+  const matched = reacquireViaDebugSource(identity);
+  if (matched) {
+    const freshInfo = await resolveFreshComponentInfo(matched, info);
+    inspect(matched, freshInfo);
+    return;
+  }
+
+  // Strategy 2: async getOwnerStack (React 19)
+  const asyncMatched = await reacquireViaOwnerStack(identity);
+  if (asyncMatched) {
+    const freshInfo = await resolveFreshComponentInfo(asyncMatched, info);
+    inspect(asyncMatched, freshInfo);
+  } else {
+    deselect();
+  }
+}
+
+/**
  * Commits pending changes, hides the sidebar, and clears all state.
  * Used when clicking outside the sidebar (click-away = confirm).
  */
 export function commitAndDeselect(): void {
-  if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
+  if (commitTimer) {
+    clearTimeout(commitTimer);
+    commitTimer = null;
+  }
   observer?.disconnect();
   commit();
   resetVariantTargetOnDeselect();
@@ -1210,9 +1364,142 @@ export function hasActiveOverrides(): boolean {
   return state.activeOverrides.size > 0;
 }
 
-export function setShowAllGroups(showAll: boolean): void {
-  state.showAllGroups = showAll;
-  rerenderSections();
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialises the property controller. Call once during overlay setup.
+ */
+export function initPropertyController(shadowRoot: ShadowRoot): void {
+  registerPropertyPanelBridge({
+    inspect,
+    deselect,
+    commitAndDeselect,
+    cancel,
+    hasActiveOverrides,
+    preview,
+    scheduledCommit,
+  });
+
+  sidebar = createSidebar(
+    shadowRoot,
+    () => {
+      // Close button pressed — cancel overrides and clear state
+      cancel();
+      destroyControls();
+      resetState();
+    },
+    (dir) => {
+      // Hierarchy nav buttons — delegate to the selection module.
+      navigate(dir);
+    },
+    (dir) => {
+      // Move-sibling buttons — reorder the element in source.
+      moveSelectedSibling(dir);
+    }
+  );
+
+  // Tailwind metadata (tokens, breakpoints, dark-mode strategy) from the CLI.
+  // Owned here (rather than bridge.js) so bridge stays a dependency-free leaf.
+  cleanupTailwindTokensListener = onMessage((msg) => {
+    if (msg.type !== "tailwindTokens") {
+      return;
+    }
+    setCliTokens(msg.tokens);
+    // Feed the resolver's breakpoints + dark-mode strategy to the variant target.
+    variantTargetModule.setTailwindMeta(msg.tokens);
+  });
+
+  cleanupCommitListener = onMessage((msg) => {
+    if (msg.type !== "commitBatchComplete" || !inflightCommit) {
+      return;
+    }
+
+    const propertyResult = msg.results.find(
+      (result) => result.op === "updateClass"
+    );
+    if (!propertyResult) {
+      return;
+    }
+
+    const errorCodeMatch = propertyResult.error?.match(
+      /^(?<code>DYNAMIC_CLASSNAME|FILE_CHANGED|MAPPED_ELEMENT|CONFLICTING_CLASS|ELEMENT_NOT_FOUND|AMBIGUOUS)/
+    );
+
+    handleCommitResult(
+      propertyResult.success,
+      errorCodeMatch?.groups?.code,
+      propertyResult.error || msg.error
+    );
+
+    // Our own write changed the file — refresh the staleness baseline so the
+    // next edit on this same selection isn't rejected as stale.
+    if (propertyResult.success) {
+      captureStaleBaseline();
+    }
+  });
+
+  // Listen for successful commits to add changelog entries
+  cleanupChangelogListener = onMessage((msg) => {
+    if (
+      msg.type === "commitBatchComplete" &&
+      msg.success &&
+      lastCommitSnapshot
+    ) {
+      const { componentInfo, batch } = lastCommitSnapshot;
+      const undoId =
+        msg.results.find((result) => result.op === "updateClass")?.undoId ??
+        msg.undoIds[0];
+      if (!undoId) {
+        return;
+      }
+      const identity = {
+        componentName: componentInfo.componentName,
+        filePath: componentInfo.filePath,
+        lineNumber: componentInfo.lineNumber,
+        columnNumber: componentInfo.columnNumber,
+        tagName: componentInfo.tagName,
+      };
+
+      for (const update of batch) {
+        addChangeEntry({
+          type: "property",
+          componentName: componentInfo.componentName,
+          filePath: componentInfo.filePath,
+          summary: `${update.cssProperty}: ${update.originalValue} → ${update.value}`,
+          state: "active",
+          propertyKey: update.cssProperty,
+          elementIdentity: identity,
+          revertData: { type: "cliUndo", undoIds: [undoId] },
+        });
+      }
+      lastCommitSnapshot = null;
+    }
+  });
+
+  // When the active variant target (breakpoint / Dark toggle) changes, re-read the
+  // selected element's values so controls reflect the variant being edited rather
+  // than the rendered base. Dark also re-renders via the preview toggle.
+  cleanupVariantListener = onVariantTargetChange(() => {
+    if (!state.selectedElement) {
+      return;
+    }
+    const el = state.selectedElement;
+    const groups = new Set<PropertyGroup>(ESSENTIAL_GROUPS);
+    for (const g of DEFERRED_GROUPS) {
+      if (!isGroupCollapsed(g)) {
+        groups.add(g);
+      }
+    }
+    const refreshed = readComputedValues(el, groups);
+    for (const [key, value] of refreshed) {
+      state.currentValues.set(key, value);
+      for (const ctrl of controls) {
+        ctrl.setValue(key, value);
+      }
+    }
+  });
 }
 
 /**
@@ -1231,6 +1518,10 @@ export function destroyPropertyController(): void {
   if (cleanupVariantListener) {
     cleanupVariantListener();
     cleanupVariantListener = null;
+  }
+  if (cleanupTailwindTokensListener) {
+    cleanupTailwindTokensListener();
+    cleanupTailwindTokensListener = null;
   }
   lastCommitSnapshot = null;
   deselect();

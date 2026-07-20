@@ -1,5 +1,7 @@
+import { cva } from "class-variance-authority"
+import type { VariantProps } from "class-variance-authority"
 import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
+
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
@@ -19,22 +21,20 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
         outline:
           "border border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost:
-          "text-foreground hover:bg-accent hover:text-accent-foreground",
+        ghost: "text-foreground hover:bg-accent hover:text-accent-foreground",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
+          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         link: "text-primary underline-offset-4 hover:underline",
 
         // ── Relume compatibility variants (for dark/inverted backgrounds) ──
         "outline-alt":
-          "border border-border-alternative text-text-alternative bg-transparent hover:bg-text-alternative/10",
-        "link-alt":
-          "text-text-alternative underline-offset-4 hover:underline",
+          "border border-border-alternative bg-transparent text-text-alternative hover:bg-text-alternative/10",
+        "link-alt": "text-text-alternative underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2",
@@ -54,26 +54,26 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  },
+  }
 )
 
 interface ButtonBaseProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   iconLeft?: React.ReactNode
   iconRight?: React.ReactNode
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonBaseProps>(
-  ({ className, variant, size, ...props }, ref) => {
-    return (
-      <button
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    )
-  },
+  ({ className, variant, size, ...props }, ref) => (
+    <button
+      type="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      ref={ref}
+      {...props}
+    />
+  )
 )
 Button.displayName = "Button"
 

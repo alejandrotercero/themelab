@@ -1,3 +1,10 @@
+function camelToKebab(s: string): string {
+  if (s.includes("-")) {
+    return s;
+  }
+  return s.replaceAll(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+}
+
 /**
  * Set a CSS property value on an element's inline style.
  * Handles both camelCase JS properties and kebab-case CSS properties.
@@ -18,9 +25,4 @@ export function getStyle(el: HTMLElement, prop: string): string {
  */
 export function clearStyle(el: HTMLElement, prop: string): void {
   el.style.removeProperty(camelToKebab(prop));
-}
-
-function camelToKebab(s: string): string {
-  if (s.includes("-")) return s;
-  return s.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 }

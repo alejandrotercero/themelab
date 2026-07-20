@@ -1,11 +1,12 @@
 import { registryItemSchema, registrySchema } from "shadcn/schema"
 import { describe, expect, it } from "vitest"
-import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
+
 import { encodeInstallPayload } from "../install-payload"
 import {
   createRegistryCatalog,
   installPayloadToRegistryItem,
 } from "../registry"
+import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
 
 const theme = paletteToThemeStyles("#0ea5e9", "#737373")
 
@@ -29,7 +30,7 @@ describe("ThemeLab registry", () => {
       }),
     ])
     expect(item.files[0].content).toContain('name: "Sky Theme"')
-    expect(item.files[0].content).toMatch(/^  primary: "oklch\(/m)
+    expect(item.files[0].content).toMatch(/^ {2}primary: "oklch\(/m)
 
     for (const token of THEME_TOKENS) {
       expect(item.cssVars.light[token]).toMatch(/^oklch\(/u)

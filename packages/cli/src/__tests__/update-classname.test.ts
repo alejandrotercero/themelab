@@ -1,16 +1,23 @@
-import { describe, it, expect } from "vitest";
-import { updateClassName } from "../transform.js";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-const fixturesDir = path.join(__dirname, "fixtures");
+import { describe, it, expect } from "vitest";
 
-function findElement(fixture: string, tag: string): { line: number; col: number } {
+import { updateClassName } from "../transform.js";
+
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
+
+function findElement(
+  fixture: string,
+  tag: string
+): { line: number; col: number } {
   const content = fs.readFileSync(path.join(fixturesDir, fixture), "utf-8");
   const lines = content.split("\n");
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i += 1) {
     const col = lines[i].indexOf(`<${tag}`);
-    if (col !== -1) return { line: i + 1, col }; // 0-indexed col
+    if (col !== -1) {
+      return { line: i + 1, col };
+    } // 0-indexed col
   }
   throw new Error(`<${tag}> not found in ${fixture}`);
 }
@@ -20,12 +27,14 @@ describe("updateClassName", () => {
     it("replaces an existing Tailwind class", () => {
       const fixture = path.join(fixturesDir, "classname-string.tsx");
       const { line, col } = findElement("classname-string.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "6",
-        value: "24px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-6");
       expect(result).not.toContain("p-4");
     });
@@ -33,12 +42,14 @@ describe("updateClassName", () => {
     it("splits px shorthand when editing one side", () => {
       const fixture = path.join(fixturesDir, "classname-template.tsx");
       const { line, col } = findElement("classname-template.tsx", "span");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "pl",
-        tailwindToken: "6",
-        value: "24px",
-        relatedPrefixes: ["p", "px"],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "pl",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: ["p", "px"],
+        },
+      ]);
       expect(result).toContain("pl-6");
       expect(result).toContain("pr-4");
       expect(result).not.toContain("px-4");
@@ -47,12 +58,14 @@ describe("updateClassName", () => {
     it("writes arbitrary value when no token match", () => {
       const fixture = path.join(fixturesDir, "classname-string.tsx");
       const { line, col } = findElement("classname-string.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: null,
-        value: "13px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: null,
+          value: "13px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-[13px]");
       expect(result).not.toContain("p-4");
     });
@@ -62,12 +75,14 @@ describe("updateClassName", () => {
     it("modifies the correct string argument", () => {
       const fixture = path.join(fixturesDir, "classname-cn.tsx");
       const { line, col } = findElement("classname-cn.tsx", "button");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "6",
-        value: "24px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-6");
       expect(result).not.toContain("p-4");
     });
@@ -75,12 +90,16 @@ describe("updateClassName", () => {
     it("throws CONFLICTING_CLASS when prefix is in conditional arg", () => {
       const fixture = path.join(fixturesDir, "classname-cn.tsx");
       const { line, col } = findElement("classname-cn.tsx", "button");
-      expect(() => updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "red-500",
-        value: "#ef4444",
-        relatedPrefixes: [],
-      }])).toThrow(/CONFLICTING_CLASS/);
+      expect(() =>
+        updateClassName(fixture, line, col, [
+          {
+            tailwindPrefix: "bg",
+            tailwindToken: "red-500",
+            value: "#ef4444",
+            relatedPrefixes: [],
+          },
+        ])
+      ).toThrow(/CONFLICTING_CLASS/);
     });
   });
 
@@ -88,12 +107,14 @@ describe("updateClassName", () => {
     it("creates className prop with the new class", () => {
       const fixture = path.join(fixturesDir, "classname-none.tsx");
       const { line, col } = findElement("classname-none.tsx", "button");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "4",
-        value: "16px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "4",
+          value: "16px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain('className="p-4"');
     });
   });
@@ -102,12 +123,16 @@ describe("updateClassName", () => {
     it("throws DYNAMIC_CLASSNAME error", () => {
       const fixture = path.join(fixturesDir, "classname-dynamic.tsx");
       const { line, col } = findElement("classname-dynamic.tsx", "div");
-      expect(() => updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "4",
-        value: "16px",
-        relatedPrefixes: [],
-      }])).toThrow(/DYNAMIC_CLASSNAME/);
+      expect(() =>
+        updateClassName(fixture, line, col, [
+          {
+            tailwindPrefix: "p",
+            tailwindToken: "4",
+            value: "16px",
+            relatedPrefixes: [],
+          },
+        ])
+      ).toThrow(/DYNAMIC_CLASSNAME/);
     });
   });
 
@@ -115,12 +140,14 @@ describe("updateClassName", () => {
     it("replaces class in static part of template literal", () => {
       const fixture = path.join(fixturesDir, "classname-template.tsx");
       const { line, col } = findElement("classname-template.tsx", "span");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "py",
-        tailwindToken: "4",
-        value: "16px",
-        relatedPrefixes: ["p"],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "py",
+          tailwindToken: "4",
+          value: "16px",
+          relatedPrefixes: ["p"],
+        },
+      ]);
       expect(result).toContain("py-4");
       expect(result).not.toContain("py-2");
     });
@@ -130,12 +157,14 @@ describe("updateClassName", () => {
     it("splits p-4 into all four sides when editing one", () => {
       const fixture = path.join(fixturesDir, "classname-string.tsx");
       const { line, col } = findElement("classname-string.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "pt",
-        tailwindToken: "8",
-        value: "32px",
-        relatedPrefixes: ["p", "py"],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "pt",
+          tailwindToken: "8",
+          value: "32px",
+          relatedPrefixes: ["p", "py"],
+        },
+      ]);
       expect(result).toContain("pt-8");
       expect(result).toContain("pr-4");
       expect(result).toContain("pb-4");
@@ -148,12 +177,14 @@ describe("updateClassName", () => {
     it("replaces base bg class but preserves hover:bg variant", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "red-500",
-        value: "#ef4444",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "red-500",
+          value: "#ef4444",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("bg-red-500");
       expect(result).not.toContain("bg-blue-500");
       expect(result).toContain("hover:bg-blue-700");
@@ -162,12 +193,14 @@ describe("updateClassName", () => {
     it("replaces base bg class but preserves dark:bg variant", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "green-300",
-        value: "#86efac",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "green-300",
+          value: "#86efac",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("bg-green-300");
       expect(result).toContain("dark:bg-gray-900");
       expect(result).toContain("md:bg-red-500");
@@ -178,13 +211,15 @@ describe("updateClassName", () => {
     it("edits the dark: variant in place, leaving base + other variants intact", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "gray-800",
-        value: "#1f2937",
-        relatedPrefixes: [],
-        variant: "dark",
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "gray-800",
+          value: "#1f2937",
+          relatedPrefixes: [],
+          variant: "dark",
+        },
+      ]);
       expect(result).toContain("dark:bg-gray-800");
       expect(result).not.toContain("dark:bg-gray-900");
       expect(result).toContain("bg-blue-500"); // base untouched
@@ -196,13 +231,15 @@ describe("updateClassName", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "section");
       // Source declares `md:dark:bg-slate-800`; we target it as `dark:md`.
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "slate-700",
-        value: "#334155",
-        relatedPrefixes: [],
-        variant: "dark:md",
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "slate-700",
+          value: "#334155",
+          relatedPrefixes: [],
+          variant: "dark:md",
+        },
+      ]);
       // Replaced in place (no duplicate appended), written in canonical order.
       expect(result).toContain("dark:md:bg-slate-700");
       expect(result).not.toContain("slate-800");
@@ -214,13 +251,15 @@ describe("updateClassName", () => {
     it("writes stacked variants in canonical order (dark first) when given md:dark", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "section");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "8",
-        value: "32px",
-        relatedPrefixes: [],
-        variant: "md:dark",
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "8",
+          value: "32px",
+          relatedPrefixes: [],
+          variant: "md:dark",
+        },
+      ]);
       // Existing `dark:md:p-6` is matched order-independently and rewritten canonically.
       expect(result).toContain("dark:md:p-8");
       expect(result).not.toContain("p-6");
@@ -231,12 +270,14 @@ describe("updateClassName", () => {
     it("replaces base p class but preserves md:p and lg:p variants", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "p");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "6",
-        value: "24px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-6");
       expect(result).not.toContain("p-4");
       expect(result).toContain("md:p-8");
@@ -248,12 +289,14 @@ describe("updateClassName", () => {
     it("replaces only exact p- prefix, not px- or py-", () => {
       const fixture = path.join(fixturesDir, "classname-prefix-family.tsx");
       const { line, col } = findElement("classname-prefix-family.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "8",
-        value: "32px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "8",
+          value: "32px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-8");
       expect(result).toContain("px-2");
       expect(result).toContain("py-1");
@@ -265,12 +308,14 @@ describe("updateClassName", () => {
     it("matches and replaces a standalone class like 'rounded'", () => {
       const fixture = path.join(fixturesDir, "classname-edge.tsx");
       const { line, col } = findElement("classname-edge.tsx", "span");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "rounded",
-        tailwindToken: "lg",
-        value: "8px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "rounded",
+          tailwindToken: "lg",
+          value: "8px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("rounded-lg");
       expect(result).not.toMatch(/className="rounded"/);
     });
@@ -280,12 +325,14 @@ describe("updateClassName", () => {
     it("replaces existing arbitrary value class with new token", () => {
       const fixture = path.join(fixturesDir, "classname-edge.tsx");
       const { line, col } = findElement("classname-edge.tsx", "p");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "4",
-        value: "16px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "4",
+          value: "16px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-4");
       expect(result).not.toContain("p-[13px]");
     });
@@ -295,12 +342,14 @@ describe("updateClassName", () => {
     it("adds class to empty className", () => {
       const fixture = path.join(fixturesDir, "classname-edge.tsx");
       const { line, col } = findElement("classname-edge.tsx", "button");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "4",
-        value: "16px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "4",
+          value: "16px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-4");
     });
   });
@@ -309,12 +358,14 @@ describe("updateClassName", () => {
     it("appends new class when no matching prefix exists", () => {
       const fixture = path.join(fixturesDir, "classname-edge.tsx");
       const { line, col } = findElement("classname-edge.tsx", "section");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "blue-500",
-        value: "#3b82f6",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "blue-500",
+          value: "#3b82f6",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("bg-blue-500");
       expect(result).toContain("text-red-500");
       expect(result).toContain("font-bold");
@@ -325,12 +376,14 @@ describe("updateClassName", () => {
     it("handles multi-line className with extra whitespace", () => {
       const fixture = path.join(fixturesDir, "classname-whitespace.tsx");
       const { line, col } = findElement("classname-whitespace.tsx", "article");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "8",
-        value: "32px",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "8",
+          value: "32px",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("p-8");
       expect(result).not.toContain("p-4");
       expect(result).toContain("m-2");
@@ -343,12 +396,14 @@ describe("updateClassName", () => {
       const { line, col } = findElement("classname-related.tsx", "div");
       // div has "p-4 px-2 py-1", setting pl with relatedPrefixes [p, px]
       // p-4 is the first related match → splits into pt-4 pr-4 pb-4 pl-6
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "pl",
-        tailwindToken: "6",
-        value: "24px",
-        relatedPrefixes: ["p", "px"],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "pl",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: ["p", "px"],
+        },
+      ]);
       expect(result).toContain("pl-6");
       // p-4 splits into individual sides
       expect(result).not.toContain('"p-4');
@@ -362,13 +417,15 @@ describe("updateClassName", () => {
     it("uses classPattern to match text-align classes without colliding with text-color", () => {
       const fixture = path.join(fixturesDir, "classname-pattern.tsx");
       const { line, col } = findElement("classname-pattern.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "text",
-        tailwindToken: "center",
-        value: "center",
-        relatedPrefixes: [],
-        classPattern: "^text-(left|center|right|justify|start|end)$",
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "text",
+          tailwindToken: "center",
+          value: "center",
+          relatedPrefixes: [],
+          classPattern: "^text-(left|center|right|justify|start|end)$",
+        },
+      ]);
       expect(result).toContain("text-center");
       expect(result).not.toContain("text-left");
       // text-red-500 should be preserved (not matched by classPattern)
@@ -378,13 +435,15 @@ describe("updateClassName", () => {
     it("classPattern does not affect unmatched classes", () => {
       const fixture = path.join(fixturesDir, "classname-pattern.tsx");
       const { line, col } = findElement("classname-pattern.tsx", "span");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "text",
-        tailwindToken: "right",
-        value: "right",
-        relatedPrefixes: [],
-        classPattern: "^text-(left|center|right|justify|start|end)$",
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "text",
+          tailwindToken: "right",
+          value: "right",
+          relatedPrefixes: [],
+          classPattern: "^text-(left|center|right|justify|start|end)$",
+        },
+      ]);
       expect(result).toContain("text-right");
       expect(result).not.toContain("text-center");
       expect(result).toContain("text-blue-300");
@@ -445,12 +504,16 @@ describe("updateClassName", () => {
     it("throws DYNAMIC_CLASSNAME for bare expression className", () => {
       const fixture = path.join(fixturesDir, "classname-dynamic.tsx");
       const { line, col } = findElement("classname-dynamic.tsx", "div");
-      expect(() => updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "red-500",
-        value: "#ef4444",
-        relatedPrefixes: [],
-      }])).toThrow(/DYNAMIC_CLASSNAME/);
+      expect(() =>
+        updateClassName(fixture, line, col, [
+          {
+            tailwindPrefix: "bg",
+            tailwindToken: "red-500",
+            value: "#ef4444",
+            relatedPrefixes: [],
+          },
+        ])
+      ).toThrow(/DYNAMIC_CLASSNAME/);
     });
   });
 
@@ -459,32 +522,36 @@ describe("updateClassName", () => {
     it("edits the responsive variant class, leaving base and state variants intact", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "green-500",
-        value: "#22c55e",
-        relatedPrefixes: [],
-        variant: "md",
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "green-500",
+          value: "#22c55e",
+          relatedPrefixes: [],
+          variant: "md",
+        },
+      ]);
       expect(result).toContain("md:bg-green-500");
       expect(result).not.toContain("md:bg-red-500");
-      expect(result).toContain("bg-blue-500");       // base untouched
-      expect(result).toContain("hover:bg-blue-700");  // state variants untouched
+      expect(result).toContain("bg-blue-500"); // base untouched
+      expect(result).toContain("hover:bg-blue-700"); // state variants untouched
       expect(result).toContain("dark:bg-gray-900");
     });
 
     it("base edit leaves responsive/state variant classes intact", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "div");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "bg",
-        tailwindToken: "green-500",
-        value: "#22c55e",
-        relatedPrefixes: [],
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "green-500",
+          value: "#22c55e",
+          relatedPrefixes: [],
+        },
+      ]);
       expect(result).toContain("bg-green-500");
       expect(result).not.toContain("bg-blue-500");
-      expect(result).toContain("md:bg-red-500");      // the #11 case: variant must survive a base edit
+      expect(result).toContain("md:bg-red-500"); // the #11 case: variant must survive a base edit
       expect(result).toContain("hover:bg-blue-700");
     });
 
@@ -492,17 +559,19 @@ describe("updateClassName", () => {
     it("edits one responsive breakpoint without touching base or other breakpoints", () => {
       const fixture = path.join(fixturesDir, "classname-variants.tsx");
       const { line, col } = findElement("classname-variants.tsx", "p");
-      const result = updateClassName(fixture, line, col, [{
-        tailwindPrefix: "p",
-        tailwindToken: "6",
-        value: "24px",
-        relatedPrefixes: [],
-        variant: "md",
-      }]);
+      const result = updateClassName(fixture, line, col, [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+          variant: "md",
+        },
+      ]);
       expect(result).toContain("md:p-6");
       expect(result).not.toContain("md:p-8");
-      expect(result).toContain("p-4");     // base intact
-      expect(result).toContain("lg:p-12");  // other breakpoint intact
+      expect(result).toContain("p-4"); // base intact
+      expect(result).toContain("lg:p-12"); // other breakpoint intact
     });
   });
 });

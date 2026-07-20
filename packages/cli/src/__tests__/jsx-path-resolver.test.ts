@@ -1,7 +1,8 @@
+import type { JSXStructuralPath } from "@themelab/shared";
 import { describe, it, expect } from "vitest";
+
 import { resolveJSXPath } from "../jsx-path-resolver.js";
 import { parseSource } from "../transform.js";
-import type { JSXStructuralPath } from "@themelab/shared";
 
 function parse(source: string) {
   return parseSource(source, "test.tsx");

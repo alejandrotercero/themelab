@@ -1,10 +1,21 @@
 // packages/overlay/src/__tests__/snap-guides.test.ts
 import { describe, it, expect } from "vitest";
+
 import { computeSnap } from "../snap-guides.js";
 
 /** Helper to create a mock DOMRect-like object */
 function rect(left: number, top: number, width: number, height: number) {
-  return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} } as DOMRect;
+  return {
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    x: left,
+    y: top,
+    toJSON() {},
+  } as DOMRect;
 }
 
 describe("computeSnap", () => {
@@ -40,7 +51,11 @@ describe("computeSnap", () => {
     expect(result.snappedX).toBe(false);
     expect(result.snappedY).toBe(true);
     expect(result.dy).toBe(2);
-    expect(result.guides.horizontalLine).toEqual({ y: 150, left: 0, right: 400 });
+    expect(result.guides.horizontalLine).toEqual({
+      y: 150,
+      left: 0,
+      right: 400,
+    });
     expect(result.guides.verticalLine).toBeNull();
   });
 
@@ -87,8 +102,16 @@ describe("computeSnap", () => {
     const result = computeSnap(alignedElem, smallParent, 0, 0, 5, 1);
     expect(result.snappedX).toBe(true);
     expect(result.snappedY).toBe(true);
-    expect(result.guides.verticalLine).toEqual({ x: 120, top: 100, bottom: 130 });
-    expect(result.guides.horizontalLine).toEqual({ y: 115, left: 100, right: 140 });
+    expect(result.guides.verticalLine).toEqual({
+      x: 120,
+      top: 100,
+      bottom: 130,
+    });
+    expect(result.guides.horizontalLine).toEqual({
+      y: 115,
+      left: 100,
+      right: 140,
+    });
   });
 
   it("passes through rawDx/rawDy when no snap occurs", () => {

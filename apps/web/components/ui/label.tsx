@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
   return (
+    // oxlint-disable-next-line jsx-a11y/label-has-associated-control -- generic shadcn wrapper; htmlFor is forwarded via ...props from call sites, which the static analyzer can't see through the spread
     <label
       data-slot="label"
       className={cn(

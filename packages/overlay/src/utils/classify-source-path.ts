@@ -12,6 +12,7 @@
 // workspaces classified as app.
 
 import { isSourceFile } from "bippy/source";
+
 import { resolvePackageName } from "./parse-package-name.js";
 import { extractFilePath, isBundlerChunkName } from "./source-resolve.js";
 
@@ -22,30 +23,40 @@ export interface SourcePathClassification {
   packageName: string | null;
 }
 
-const SOURCE_EXTENSION_PATTERN = /\.(tsx?|jsx?|mjs|mdx?)$/;
+const SOURCE_EXTENSION_PATTERN = /\.(?<ext>tsx?|jsx?|mjs|mdx?)$/;
 
 export function classifySourcePath(
-  fileName: string | null | undefined,
+  fileName: string | null | undefined
 ): SourcePathClassification {
-  if (!fileName) return { origin: "unknown", packageName: null };
+  if (!fileName) {
+    return { origin: "unknown", packageName: null };
+  }
 
   // Bundler output chunks (Turbopack `._.`, hashed chunks) are never real
   // source — treat as unknown so they don't masquerade as app files.
-  if (isBundlerChunkName(fileName)) return { origin: "unknown", packageName: null };
+  if (isBundlerChunkName(fileName)) {
+    return { origin: "unknown", packageName: null };
+  }
 
   const packageName = resolvePackageName(fileName);
-  if (packageName) return { origin: "package", packageName };
+  if (packageName) {
+    return { origin: "package", packageName };
+  }
 
   // Direct match (bippy accepts many bundler-wrapped source URLs).
-  if (isSourceFile(fileName)) return { origin: "app", packageName: null };
+  if (isSourceFile(fileName)) {
+    return { origin: "app", packageName: null };
+  }
 
   // Fall back to ThemeLab's bundler-URL extraction for app paths bippy's
   // isSourceFile rejects in raw form (webpack-internal, rsc://, /@fs/, …).
   const extracted = extractFilePath(fileName);
-  if (extracted && !isBundlerChunkName(extracted)) {
-    if (isSourceFile(extracted) || SOURCE_EXTENSION_PATTERN.test(extracted)) {
-      return { origin: "app", packageName: null };
-    }
+  if (
+    extracted &&
+    !isBundlerChunkName(extracted) &&
+    (isSourceFile(extracted) || SOURCE_EXTENSION_PATTERN.test(extracted))
+  ) {
+    return { origin: "app", packageName: null };
   }
 
   return { origin: "unknown", packageName: null };

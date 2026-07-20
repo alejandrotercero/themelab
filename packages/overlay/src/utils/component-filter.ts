@@ -7,41 +7,76 @@
  */
 const INTERNAL_NAMES = new Set([
   // Next.js internals
-  "InnerLayoutRouter", "OuterLayoutRouter", "RedirectErrorBoundary",
-  "RedirectBoundary", "HTTPAccessFallbackErrorBoundary", "HTTPAccessFallbackBoundary",
-  "LoadingBoundary", "ErrorBoundary", "ScrollAndFocusHandler", "InnerScrollAndFocusHandler",
-  "RenderFromTemplateContext", "DevRootHTTPAccessFallbackBoundary",
-  "AppDevOverlayErrorBoundary", "AppDevOverlay", "HotReload", "Router",
-  "ErrorBoundaryHandler", "AppRouter", "ServerRoot", "SegmentStateProvider",
+  "InnerLayoutRouter",
+  "OuterLayoutRouter",
+  "RedirectErrorBoundary",
+  "RedirectBoundary",
+  "HTTPAccessFallbackErrorBoundary",
+  "HTTPAccessFallbackBoundary",
+  "LoadingBoundary",
+  "ErrorBoundary",
+  "ScrollAndFocusHandler",
+  "InnerScrollAndFocusHandler",
+  "RenderFromTemplateContext",
+  "DevRootHTTPAccessFallbackBoundary",
+  "AppDevOverlayErrorBoundary",
+  "AppDevOverlay",
+  "HotReload",
+  "Router",
+  "ErrorBoundaryHandler",
+  "AppRouter",
+  "ServerRoot",
+  "SegmentStateProvider",
   "RootErrorBoundary",
   // React internals
-  "Suspense", "Fragment", "StrictMode",
+  "Suspense",
+  "Fragment",
+  "StrictMode",
   // Next.js RSC internals
-  "ReplaySsrOnlyErrors", "SegmentViewNode", "SegmentTrieNode",
+  "ReplaySsrOnlyErrors",
+  "SegmentViewNode",
+  "SegmentTrieNode",
   // Framer Motion internals
-  "MotionDOMComponent", "MotionComponent", "AnimatePresence",
+  "MotionDOMComponent",
+  "MotionComponent",
+  "AnimatePresence",
   // React Router internals
-  "RenderedRoute", "RenderErrorBoundary", "Outlet",
+  "RenderedRoute",
+  "RenderErrorBoundary",
+  "Outlet",
   // Styled-components / Emotion internals
-  "StyledComponent", "EmotionCssPropInternal",
+  "StyledComponent",
+  "EmotionCssPropInternal",
   // Radix UI internals
-  "Primitive", "Slot",
+  "Primitive",
+  "Slot",
   // MUI internals
-  "Transition", "TransitionGroup",
+  "Transition",
+  "TransitionGroup",
 ]);
 
 export function isInternalName(name: string): boolean {
-  if (INTERNAL_NAMES.has(name)) return true;
-  if (name.startsWith("_") || name.startsWith("$")) return true;
-  if (name.includes("Provider") || name.includes("Context")) return true;
-  if (name === "Head" || name === "html" || name === "body") return true;
+  if (INTERNAL_NAMES.has(name)) {
+    return true;
+  }
+  if (name.startsWith("_") || name.startsWith("$")) {
+    return true;
+  }
+  if (name.includes("Provider") || name.includes("Context")) {
+    return true;
+  }
+  if (name === "Head" || name === "html" || name === "body") {
+    return true;
+  }
   // Catch library internals by fileName pattern — if the resolved component
   // points to node_modules or a dist folder, it's not user code
   return false;
 }
 
 export function isMdxFilePath(filePath: string): boolean {
-  if (!filePath) return false;
+  if (!filePath) {
+    return false;
+  }
   return filePath.endsWith(".mdx") || filePath.endsWith(".md");
 }
 
@@ -50,7 +85,9 @@ export function isMdxFilePath(filePath: string): boolean {
  * Used as an additional filter when isInternalName doesn't catch a wrapper component.
  */
 export function isLibraryPath(filePath: string): boolean {
-  if (!filePath) return false;
+  if (!filePath) {
+    return false;
+  }
   return (
     filePath.includes("node_modules") ||
     filePath.includes("/dist/") ||
@@ -68,7 +105,7 @@ export function isLibraryPath(filePath: string): boolean {
 // --- Visibility cache (from react-grab pattern, avoids redundant getComputedStyle) ---
 const VISIBILITY_CACHE_TTL_MS = 50;
 const VIEWPORT_COVERAGE_THRESHOLD = 0.9;
-const DEV_TOOLS_Z_INDEX_THRESHOLD = 2147483600;
+const DEV_TOOLS_Z_INDEX_THRESHOLD = 2_147_483_600;
 const OVERLAY_Z_INDEX_THRESHOLD = 1000;
 
 interface VisibilityEntry {
@@ -83,23 +120,43 @@ export function clearVisibilityCache(): void {
 }
 
 function isElementVisible(el: Element, style: CSSStyleDeclaration): boolean {
-  return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.opacity !== "0"
+  );
 }
 
 function isDevToolsOverlay(style: CSSStyleDeclaration): boolean {
-  const z = parseInt(style.zIndex, 10);
-  return style.pointerEvents === "none" && style.position === "fixed" && !isNaN(z) && z >= DEV_TOOLS_Z_INDEX_THRESHOLD;
+  const z = Math.trunc(Number(style.zIndex));
+  return (
+    style.pointerEvents === "none" &&
+    style.position === "fixed" &&
+    !Number.isNaN(z) &&
+    z >= DEV_TOOLS_Z_INDEX_THRESHOLD
+  );
 }
 
-function isFullViewportOverlay(el: Element, style: CSSStyleDeclaration): boolean {
+function isFullViewportOverlay(
+  el: Element,
+  style: CSSStyleDeclaration
+): boolean {
   const pos = style.position;
-  if (pos !== "fixed" && pos !== "absolute") return false;
+  if (pos !== "fixed" && pos !== "absolute") {
+    return false;
+  }
 
   const bg = style.backgroundColor;
-  if (bg === "transparent" || bg === "rgba(0, 0, 0, 0)" || parseFloat(style.opacity) < 0.1) return true;
+  if (
+    bg === "transparent" ||
+    bg === "rgba(0, 0, 0, 0)" ||
+    Number(style.opacity) < 0.1
+  ) {
+    return true;
+  }
 
-  const z = parseInt(style.zIndex, 10);
-  return !isNaN(z) && z > OVERLAY_Z_INDEX_THRESHOLD;
+  const z = Math.trunc(Number(style.zIndex));
+  return !Number.isNaN(z) && z > OVERLAY_Z_INDEX_THRESHOLD;
 }
 
 function isOverlayLike(el: Element, style: CSSStyleDeclaration): boolean {
@@ -129,11 +186,25 @@ export function isOverlayLikeElement(el: Element): boolean {
  */
 export function isValidElement(el: Element): boolean {
   const tag = el instanceof HTMLElement ? el.tagName.toLowerCase() : "";
-  if (tag === "html" || tag === "body") return false;
+  if (tag === "html" || tag === "body") {
+    return false;
+  }
 
-  if (el.closest("#themelab-root")) return false;
-  if (el instanceof HTMLElement && el.hasAttribute("data-themelab-interaction")) return false;
-  if (el instanceof HTMLElement && el.hasAttribute("data-themelab-placeholder")) return false;
+  if (el.closest("#themelab-root")) {
+    return false;
+  }
+  if (
+    el instanceof HTMLElement &&
+    Object.hasOwn(el.dataset, "themelabInteraction")
+  ) {
+    return false;
+  }
+  if (
+    el instanceof HTMLElement &&
+    Object.hasOwn(el.dataset, "themelabPlaceholder")
+  ) {
+    return false;
+  }
 
   const now = performance.now();
   const cached = visibilityCache.get(el);

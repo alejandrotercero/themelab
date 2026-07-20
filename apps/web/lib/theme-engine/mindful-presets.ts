@@ -6,12 +6,12 @@
 // palettes carry only one near-black; for those the second dark is a hand-picked
 // shade ~8–10% darker so the neutral ramp still spans the full range.
 
-import type { MindfulColors } from "./transpile";
+import type { MindfulColors } from "./transpile"
 
 export interface MindfulPreset {
-  id: string;
-  name: string;
-  colors: MindfulColors;
+  id: string
+  name: string
+  colors: MindfulColors
 }
 
 export const MINDFUL_PRESETS: MindfulPreset[] = [
@@ -63,4 +63,4 @@ export const MINDFUL_PRESETS: MindfulPreset[] = [
       dark2: "#15151F", // derived (~10% darker)
     },
   },
-];
+]

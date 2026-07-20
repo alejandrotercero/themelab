@@ -1,16 +1,36 @@
 // packages/overlay/src/tools-panel.ts
 import type { ToolType } from "@themelab/shared";
-import { getActiveTool, setActiveTool } from "./canvas-state.js";
-import { getShadowRoot, getToolbarToolsSlot } from "./toolbar.js";
-import { createSettingsButton } from "./settings-panel.js";
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
-import { toggleCanvasTransform, isCanvasActive, onCanvasWrapperChange } from "./canvas-transform.js";
-import { isTextEditing } from "./inline-text-edit.js";
-import { isEditableFocused } from "./utils/active-element.js";
-import { getActiveCount, isChangelogOpen, onChangelogChange, setChangelogOpen } from "./changelog.js";
-import { toggleThemePanel, isThemePanelOpen, onThemePanelToggle } from "./theme-panel.js";
-import { hasTheme, onThemeChange } from "./theme-state.js";
+
 import { brandMark } from "./brand.js";
+import { setActiveTool } from "./canvas-state.js";
+import {
+  toggleCanvasTransform,
+  isCanvasActive,
+  onCanvasWrapperChange,
+} from "./canvas-transform.js";
+import {
+  getActiveCount,
+  isChangelogOpen,
+  onChangelogChange,
+  setChangelogOpen,
+} from "./changelog.js";
+import {
+  COLORS,
+  SHADOWS,
+  RADII,
+  TRANSITIONS,
+  FONT_FAMILY,
+} from "./design-tokens.js";
+import { isTextEditing } from "./inline-text-edit.js";
+import { createSettingsButton } from "./settings-panel.js";
+import {
+  toggleThemePanel,
+  isThemePanelOpen,
+  onThemePanelToggle,
+} from "./theme-panel.js";
+import { hasTheme, onThemeChange } from "./theme-state.js";
+import { getShadowRoot, getToolbarToolsSlot } from "./toolbar.js";
+import { isEditableFocused } from "./utils/active-element.js";
 
 const ICONS = {
   pointer: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13.9093 12.3603L17.0007 20.8537L14.1816 21.8798L11.0902 13.3864L6.91797 16.5422L8.4087 1.63318L19.134 12.0959L13.9093 12.3603Z"></path></svg>`,
@@ -25,9 +45,12 @@ const ICONS = {
 const MOD_KEY = navigator.platform.includes("Mac") ? "\u2318" : "Ctrl+";
 const MOD_LABEL = navigator.platform.includes("Mac") ? "Cmd" : "Ctrl";
 
-const TOOL_DEFS: Array<{ type: ToolType; icon: string; label: string; shortcut: string }> = [
-  { type: "select", icon: ICONS.pointer, label: "Select", shortcut: "S" },
-];
+const TOOL_DEFS: {
+  type: ToolType;
+  icon: string;
+  label: string;
+  shortcut: string;
+}[] = [{ type: "select", icon: ICONS.pointer, label: "Select", shortcut: "S" }];
 
 const PANEL_STYLES = `
   .tools-panel {
@@ -348,7 +371,7 @@ const PANEL_STYLES = `
 
 let panelEl: HTMLElement | null = null;
 let subOptionsEl: HTMLDivElement | null = null;
-let toolButtons: Map<ToolType, HTMLButtonElement> = new Map();
+const toolButtons = new Map<ToolType, HTMLButtonElement>();
 let canvasUndoBtn: HTMLButtonElement | null = null;
 let logsBtn: HTMLButtonElement | null = null;
 let logsBadgeEl: HTMLSpanElement | null = null;
@@ -356,154 +379,27 @@ let onClearAll: (() => void) | null = null;
 let onCanvasUndo: (() => void) | null = null;
 let cleanupChangelogSubscription: (() => void) | null = null;
 
-export function setOnClearAll(fn: () => void): void { onClearAll = fn; }
-export function setOnCanvasUndo(fn: () => void): void { onCanvasUndo = fn; }
+export function setOnClearAll(fn: () => void): void {
+  onClearAll = fn;
+}
+export function setOnCanvasUndo(fn: () => void): void {
+  onCanvasUndo = fn;
+}
 
 export function updateCanvasUndoButton(enabled: boolean): void {
-  if (canvasUndoBtn) canvasUndoBtn.disabled = !enabled;
+  if (canvasUndoBtn) {
+    canvasUndoBtn.disabled = !enabled;
+  }
 }
 
 function updateLogsButton(): void {
-  if (!logsBtn || !logsBadgeEl) return;
+  if (!logsBtn || !logsBadgeEl) {
+    return;
+  }
   const activeCount = getActiveCount();
   logsBtn.classList.toggle("active", isChangelogOpen());
   logsBadgeEl.classList.toggle("hidden", activeCount === 0);
   logsBadgeEl.textContent = String(activeCount);
-}
-
-export function initToolsPanel(): void {
-  const shadowRoot = getShadowRoot();
-  if (!shadowRoot) return;
-
-  const style = document.createElement("style");
-  style.textContent = PANEL_STYLES;
-  shadowRoot.appendChild(style);
-
-  // Mount the tool/action buttons inside the bottom toolbar so it's one unified
-  // bar — no separate floating left strip.
-  panelEl = getToolbarToolsSlot();
-  if (!panelEl) return;
-  panelEl.innerHTML = "";
-
-  for (const def of TOOL_DEFS) {
-    const btn = document.createElement("button");
-    btn.className = `tool-btn${def.type === "select" ? " active" : ""}`;
-    btn.innerHTML = `${def.icon}<span class="tooltip">${def.label}<span class="shortcut-badge">${MOD_KEY}${def.shortcut}</span></span>`;
-    btn.addEventListener("click", () => setActiveTool(def.type));
-
-    // 400ms tooltip delay
-    let tooltipTimer: ReturnType<typeof setTimeout> | null = null;
-    btn.addEventListener("mouseenter", () => {
-      tooltipTimer = setTimeout(() => btn.classList.add("tooltip-visible"), 400);
-    });
-    btn.addEventListener("mouseleave", () => {
-      if (tooltipTimer) clearTimeout(tooltipTimer);
-      btn.classList.remove("tooltip-visible");
-    });
-
-    panelEl.appendChild(btn);
-    toolButtons.set(def.type, btn);
-  }
-
-  // Sub-options container (used by future tools; harmless when empty)
-  subOptionsEl = document.createElement("div");
-  subOptionsEl.className = "sub-options hidden";
-  panelEl.appendChild(subOptionsEl);
-
-  canvasUndoBtn = document.createElement("button");
-  canvasUndoBtn.className = "action-btn";
-  canvasUndoBtn.innerHTML = ICONS.undo;
-  canvasUndoBtn.title = "Undo (Ctrl+Z)";
-  canvasUndoBtn.disabled = true;
-  canvasUndoBtn.addEventListener("click", () => { if (onCanvasUndo) onCanvasUndo(); });
-  panelEl.appendChild(canvasUndoBtn);
-
-  logsBtn = document.createElement("button");
-  logsBtn.className = "action-btn has-badge";
-  logsBtn.innerHTML = `${ICONS.logs}<span class="action-badge hidden">0</span>`;
-  logsBtn.title = "History & Logs";
-  logsBtn.addEventListener("click", () => {
-    setChangelogOpen(!isChangelogOpen());
-  });
-  logsBadgeEl = logsBtn.querySelector(".action-badge");
-  panelEl.appendChild(logsBtn);
-
-  const clearBtn = document.createElement("button");
-  clearBtn.className = "action-btn danger";
-  clearBtn.innerHTML = ICONS.reset;
-  clearBtn.title = "Reset Canvas";
-  clearBtn.addEventListener("click", () => { if (onClearAll) onClearAll(); });
-  panelEl.appendChild(clearBtn);
-
-  const canvasBtn = document.createElement("button");
-  canvasBtn.className = "action-btn";
-  canvasBtn.innerHTML = ICONS.canvas;
-  canvasBtn.title = "Toggle Infinite Canvas";
-  canvasBtn.addEventListener("click", () => {
-    toggleCanvasTransform();
-  });
-  // Reflect canvas state reactively — covers manual toggle AND restore-after-reload.
-  const syncCanvasBtn = () => { canvasBtn.style.color = isCanvasActive() ? COLORS.accent : ""; };
-  onCanvasWrapperChange(syncCanvasBtn);
-  syncCanvasBtn();
-  panelEl.appendChild(canvasBtn);
-
-  // Theme button — toggles the left Theme sidebar. Hidden until a theme loads.
-  const themeBtn = document.createElement("button");
-  themeBtn.className = "action-btn";
-  themeBtn.innerHTML = ICONS.theme;
-  themeBtn.title = "Toggle Theme panel";
-  const syncThemeBtn = () => {
-    themeBtn.style.display = hasTheme() ? "" : "none";
-    themeBtn.classList.toggle("active", isThemePanelOpen());
-  };
-  themeBtn.addEventListener("click", () => toggleThemePanel());
-  onThemeChange(syncThemeBtn);      // theme arrival → show/hide the button
-  onThemePanelToggle(syncThemeBtn); // open/close from button or panel ✕ → keep active state in sync
-  syncThemeBtn();
-  panelEl.appendChild(themeBtn);
-
-  // Help button — shows keyboard shortcuts
-  const helpBtn = document.createElement("button");
-  helpBtn.className = "help-btn";
-  helpBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 8H14V6.5C14 4.567 15.567 3 17.5 3C19.433 3 21 4.567 21 6.5C21 8.433 19.433 10 17.5 10H16V14H17.5C19.433 14 21 15.567 21 17.5C21 19.433 19.433 21 17.5 21C15.567 21 14 19.433 14 17.5V16H10V17.5C10 19.433 8.433 21 6.5 21C4.567 21 3 19.433 3 17.5C3 15.567 4.567 14 6.5 14H8V10H6.5C4.567 10 3 8.433 3 6.5C3 4.567 4.567 3 6.5 3C8.433 3 10 4.567 10 6.5V8ZM8 8V6.5C8 5.67157 7.32843 5 6.5 5C5.67157 5 5 5.67157 5 6.5C5 7.32843 5.67157 8 6.5 8H8ZM8 16H6.5C5.67157 16 5 16.6716 5 17.5C5 18.3284 5.67157 19 6.5 19C7.32843 19 8 18.3284 8 17.5V16ZM16 8H17.5C18.3284 8 19 7.32843 19 6.5C19 5.67157 18.3284 5 17.5 5C16.6716 5 16 5.67157 16 6.5V8ZM16 16V17.5C16 18.3284 16.6716 19 17.5 19C18.3284 19 19 18.3284 19 17.5C19 16.6716 18.3284 16 17.5 16H16ZM10 10V14H14V10H10Z"></path></svg>`;
-  helpBtn.title = `Keyboard Shortcuts (${MOD_KEY}/)`;
-  helpBtn.addEventListener("click", () => toggleShortcutsOverlay());
-  panelEl.appendChild(helpBtn);
-
-  // AI locator settings (gear)
-  panelEl.appendChild(createSettingsButton());
-
-  // NOTE: panelEl IS the toolbar's tools slot — it's already mounted inside the
-  // toolbar. Do NOT re-append it to the shadow root (that would tear the whole
-  // tools group back out of the bar and drop it into normal flow at the page edge).
-  document.addEventListener("keydown", handleToolShortcut, true);
-  cleanupChangelogSubscription = onChangelogChange(updateLogsButton);
-  updateLogsButton();
-}
-
-function handleToolShortcut(e: KeyboardEvent): void {
-  // Suppress shortcuts when a text field is focused (resolves through shadow DOM).
-  if (isEditableFocused()) return;
-  if (isTextEditing()) return;
-
-  // Modifier keys → ignore (let browser handle Cmd+T, Ctrl+V, etc.)
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-  const key = e.key.toUpperCase();
-
-  // Toggle shortcuts overlay with ?
-  if (e.key === "?") {
-    toggleShortcutsOverlay();
-    e.preventDefault();
-    return;
-  }
-
-  const tool = TOOL_DEFS.find(d => d.shortcut === key);
-  if (tool) {
-    setActiveTool(tool.type);
-    e.preventDefault();
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -513,17 +409,20 @@ function handleToolShortcut(e: KeyboardEvent): void {
 let shortcutsOverlayEl: HTMLDivElement | null = null;
 let shortcutsKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 
-function toggleShortcutsOverlay(): void {
-  if (shortcutsOverlayEl) {
-    closeShortcutsOverlay();
-  } else {
-    openShortcutsOverlay();
+function closeShortcutsOverlay(): void {
+  if (shortcutsKeyHandler) {
+    document.removeEventListener("keydown", shortcutsKeyHandler, true);
+    shortcutsKeyHandler = null;
   }
+  shortcutsOverlayEl?.remove();
+  shortcutsOverlayEl = null;
 }
 
 function openShortcutsOverlay(): void {
   const shadowRoot = getShadowRoot();
-  if (!shadowRoot || shortcutsOverlayEl) return;
+  if (!shadowRoot || shortcutsOverlayEl) {
+    return;
+  }
 
   shortcutsOverlayEl = document.createElement("div");
   shortcutsOverlayEl.className = "shortcuts-overlay";
@@ -533,17 +432,20 @@ function openShortcutsOverlay(): void {
 
   const brand = brandMark(20);
   brand.style.marginBottom = "10px";
-  card.appendChild(brand);
+  card.append(brand);
 
   const title = document.createElement("div");
   title.className = "shortcuts-title";
   title.textContent = "Keyboard Shortcuts";
-  card.appendChild(title);
+  card.append(title);
 
-  const sections: Array<{ label: string; items: Array<{ action: string; keys: string[] }> }> = [
+  const sections: {
+    label: string;
+    items: { action: string; keys: string[] }[];
+  }[] = [
     {
       label: "Tools",
-      items: TOOL_DEFS.map(d => ({
+      items: TOOL_DEFS.map((d) => ({
         action: d.label,
         keys: [d.shortcut],
       })),
@@ -582,7 +484,7 @@ function openShortcutsOverlay(): void {
     const labelEl = document.createElement("div");
     labelEl.className = "shortcuts-section-label";
     labelEl.textContent = section.label;
-    sectionEl.appendChild(labelEl);
+    sectionEl.append(labelEl);
 
     for (const item of section.items) {
       const row = document.createElement("div");
@@ -591,54 +493,224 @@ function openShortcutsOverlay(): void {
       const action = document.createElement("span");
       action.className = "shortcut-action";
       action.textContent = item.action;
-      row.appendChild(action);
+      row.append(action);
 
       const keysWrap = document.createElement("span");
       keysWrap.className = "shortcut-keys";
-      for (let i = 0; i < item.keys.length; i++) {
+      for (let i = 0; i < item.keys.length; i += 1) {
         if (i > 0) {
           const plus = document.createElement("span");
           plus.className = "shortcut-plus";
           plus.textContent = "+";
-          keysWrap.appendChild(plus);
+          keysWrap.append(plus);
         }
         const key = document.createElement("span");
         key.className = "shortcut-key";
         key.textContent = item.keys[i];
-        keysWrap.appendChild(key);
+        keysWrap.append(key);
       }
-      row.appendChild(keysWrap);
+      row.append(keysWrap);
 
-      sectionEl.appendChild(row);
+      sectionEl.append(row);
     }
 
-    card.appendChild(sectionEl);
+    card.append(sectionEl);
   }
 
-  shortcutsOverlayEl.appendChild(card);
+  shortcutsOverlayEl.append(card);
 
   // Close on backdrop click
   shortcutsOverlayEl.addEventListener("click", (e) => {
-    if (e.target === shortcutsOverlayEl) closeShortcutsOverlay();
+    if (e.target === shortcutsOverlayEl) {
+      closeShortcutsOverlay();
+    }
   });
 
-  shadowRoot.appendChild(shortcutsOverlayEl);
+  shadowRoot.append(shortcutsOverlayEl);
 
   // Dismiss on any keypress
-  shortcutsKeyHandler = (e: KeyboardEvent) => {
+  shortcutsKeyHandler = (_e: KeyboardEvent) => {
     closeShortcutsOverlay();
     // Don't prevent the key from also triggering its shortcut
   };
   document.addEventListener("keydown", shortcutsKeyHandler, true);
 }
 
-function closeShortcutsOverlay(): void {
-  if (shortcutsKeyHandler) {
-    document.removeEventListener("keydown", shortcutsKeyHandler, true);
-    shortcutsKeyHandler = null;
+function toggleShortcutsOverlay(): void {
+  if (shortcutsOverlayEl) {
+    closeShortcutsOverlay();
+  } else {
+    openShortcutsOverlay();
   }
-  shortcutsOverlayEl?.remove();
-  shortcutsOverlayEl = null;
+}
+
+function handleToolShortcut(e: KeyboardEvent): void {
+  // Suppress shortcuts when a text field is focused (resolves through shadow DOM).
+  if (isEditableFocused()) {
+    return;
+  }
+  if (isTextEditing()) {
+    return;
+  }
+
+  // Modifier keys → ignore (let browser handle Cmd+T, Ctrl+V, etc.)
+  if (e.ctrlKey || e.metaKey || e.altKey) {
+    return;
+  }
+
+  const key = e.key.toUpperCase();
+
+  // Toggle shortcuts overlay with ?
+  if (e.key === "?") {
+    toggleShortcutsOverlay();
+    e.preventDefault();
+    return;
+  }
+
+  const tool = TOOL_DEFS.find((d) => d.shortcut === key);
+  if (tool) {
+    setActiveTool(tool.type);
+    e.preventDefault();
+  }
+}
+
+function updateSubOptions(_tool: ToolType): void {
+  if (!subOptionsEl) {
+    return;
+  }
+  subOptionsEl.innerHTML = "";
+  subOptionsEl.classList.add("hidden");
+  subOptionsEl.classList.remove("visible");
+}
+
+export function initToolsPanel(): void {
+  const shadowRoot = getShadowRoot();
+  if (!shadowRoot) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.textContent = PANEL_STYLES;
+  shadowRoot.append(style);
+
+  // Mount the tool/action buttons inside the bottom toolbar so it's one unified
+  // bar — no separate floating left strip.
+  panelEl = getToolbarToolsSlot();
+  if (!panelEl) {
+    return;
+  }
+  panelEl.innerHTML = "";
+
+  for (const def of TOOL_DEFS) {
+    const btn = document.createElement("button");
+    btn.className = `tool-btn${def.type === "select" ? " active" : ""}`;
+    btn.innerHTML = `${def.icon}<span class="tooltip">${def.label}<span class="shortcut-badge">${MOD_KEY}${def.shortcut}</span></span>`;
+    btn.addEventListener("click", () => setActiveTool(def.type));
+
+    // 400ms tooltip delay
+    let tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+    btn.addEventListener("mouseenter", () => {
+      tooltipTimer = setTimeout(
+        () => btn.classList.add("tooltip-visible"),
+        400
+      );
+    });
+    btn.addEventListener("mouseleave", () => {
+      if (tooltipTimer) {
+        clearTimeout(tooltipTimer);
+      }
+      btn.classList.remove("tooltip-visible");
+    });
+
+    panelEl.append(btn);
+    toolButtons.set(def.type, btn);
+  }
+
+  // Sub-options container (used by future tools; harmless when empty)
+  subOptionsEl = document.createElement("div");
+  subOptionsEl.className = "sub-options hidden";
+  panelEl.append(subOptionsEl);
+
+  canvasUndoBtn = document.createElement("button");
+  canvasUndoBtn.className = "action-btn";
+  canvasUndoBtn.innerHTML = ICONS.undo;
+  canvasUndoBtn.title = "Undo (Ctrl+Z)";
+  canvasUndoBtn.disabled = true;
+  canvasUndoBtn.addEventListener("click", () => {
+    if (onCanvasUndo) {
+      onCanvasUndo();
+    }
+  });
+  panelEl.append(canvasUndoBtn);
+
+  logsBtn = document.createElement("button");
+  logsBtn.className = "action-btn has-badge";
+  logsBtn.innerHTML = `${ICONS.logs}<span class="action-badge hidden">0</span>`;
+  logsBtn.title = "History & Logs";
+  logsBtn.addEventListener("click", () => {
+    setChangelogOpen(!isChangelogOpen());
+  });
+  logsBadgeEl = logsBtn.querySelector(".action-badge");
+  panelEl.append(logsBtn);
+
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "action-btn danger";
+  clearBtn.innerHTML = ICONS.reset;
+  clearBtn.title = "Reset Canvas";
+  clearBtn.addEventListener("click", () => {
+    if (onClearAll) {
+      onClearAll();
+    }
+  });
+  panelEl.append(clearBtn);
+
+  const canvasBtn = document.createElement("button");
+  canvasBtn.className = "action-btn";
+  canvasBtn.innerHTML = ICONS.canvas;
+  canvasBtn.title = "Toggle Infinite Canvas";
+  canvasBtn.addEventListener("click", () => {
+    toggleCanvasTransform();
+  });
+  // Reflect canvas state reactively — covers manual toggle AND restore-after-reload.
+  const syncCanvasBtn = () => {
+    canvasBtn.style.color = isCanvasActive() ? COLORS.accent : "";
+  };
+  onCanvasWrapperChange(syncCanvasBtn);
+  syncCanvasBtn();
+  panelEl.append(canvasBtn);
+
+  // Theme button — toggles the left Theme sidebar. Hidden until a theme loads.
+  const themeBtn = document.createElement("button");
+  themeBtn.className = "action-btn";
+  themeBtn.innerHTML = ICONS.theme;
+  themeBtn.title = "Toggle Theme panel";
+  const syncThemeBtn = () => {
+    themeBtn.style.display = hasTheme() ? "" : "none";
+    themeBtn.classList.toggle("active", isThemePanelOpen());
+  };
+  themeBtn.addEventListener("click", () => toggleThemePanel());
+  onThemeChange(syncThemeBtn); // theme arrival → show/hide the button
+  onThemePanelToggle(syncThemeBtn); // open/close from button or panel ✕ → keep active state in sync
+  syncThemeBtn();
+  panelEl.append(themeBtn);
+
+  // Help button — shows keyboard shortcuts
+  const helpBtn = document.createElement("button");
+  helpBtn.className = "help-btn";
+  helpBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 8H14V6.5C14 4.567 15.567 3 17.5 3C19.433 3 21 4.567 21 6.5C21 8.433 19.433 10 17.5 10H16V14H17.5C19.433 14 21 15.567 21 17.5C21 19.433 19.433 21 17.5 21C15.567 21 14 19.433 14 17.5V16H10V17.5C10 19.433 8.433 21 6.5 21C4.567 21 3 19.433 3 17.5C3 15.567 4.567 14 6.5 14H8V10H6.5C4.567 10 3 8.433 3 6.5C3 4.567 4.567 3 6.5 3C8.433 3 10 4.567 10 6.5V8ZM8 8V6.5C8 5.67157 7.32843 5 6.5 5C5.67157 5 5 5.67157 5 6.5C5 7.32843 5.67157 8 6.5 8H8ZM8 16H6.5C5.67157 16 5 16.6716 5 17.5C5 18.3284 5.67157 19 6.5 19C7.32843 19 8 18.3284 8 17.5V16ZM16 8H17.5C18.3284 8 19 7.32843 19 6.5C19 5.67157 18.3284 5 17.5 5C16.6716 5 16 5.67157 16 6.5V8ZM16 16V17.5C16 18.3284 16.6716 19 17.5 19C18.3284 19 19 18.3284 19 17.5C19 16.6716 18.3284 16 17.5 16H16ZM10 10V14H14V10H10Z"></path></svg>`;
+  helpBtn.title = `Keyboard Shortcuts (${MOD_KEY}/)`;
+  helpBtn.addEventListener("click", () => toggleShortcutsOverlay());
+  panelEl.append(helpBtn);
+
+  // AI locator settings (gear)
+  panelEl.append(createSettingsButton());
+
+  // NOTE: panelEl IS the toolbar's tools slot — it's already mounted inside the
+  // toolbar. Do NOT re-append it to the shadow root (that would tear the whole
+  // tools group back out of the bar and drop it into normal flow at the page edge).
+  document.addEventListener("keydown", handleToolShortcut, true);
+  cleanupChangelogSubscription = onChangelogChange(updateLogsButton);
+  updateLogsButton();
 }
 
 export function updateActiveToolUI(tool: ToolType): void {
@@ -648,17 +720,11 @@ export function updateActiveToolUI(tool: ToolType): void {
   updateSubOptions(tool);
 }
 
-function updateSubOptions(tool: ToolType): void {
-  if (!subOptionsEl) return;
-  subOptionsEl.innerHTML = "";
-  subOptionsEl.classList.add("hidden");
-  subOptionsEl.classList.remove("visible");
-
-}
-
 export function flashToolButton(tool: ToolType): void {
   const btn = toolButtons.get(tool);
-  if (!btn) return;
+  if (!btn) {
+    return;
+  }
   btn.style.backgroundColor = COLORS.accentSoft;
   btn.style.transition = `background-color 300ms ease`;
   setTimeout(() => {
@@ -674,7 +740,9 @@ export function destroyToolsPanel(): void {
   closeShortcutsOverlay();
   // panelEl is the toolbar's tools slot — clear its children, don't remove the
   // node itself (the toolbar owns it and tears down separately).
-  if (panelEl) panelEl.innerHTML = "";
+  if (panelEl) {
+    panelEl.innerHTML = "";
+  }
   panelEl = null;
   subOptionsEl = null;
   canvasUndoBtn = null;

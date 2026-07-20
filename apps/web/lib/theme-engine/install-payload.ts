@@ -1,10 +1,11 @@
 import type { ThemeStyles } from "@themelab/shared"
+
 import { sanitizeThemeName } from "./design-md"
 import { toOklch } from "./oklch"
 import { THEME_TOKENS } from "./transpile"
 
 export const INSTALL_PAYLOAD_VERSION = 1 as const
-export const MAX_INSTALL_PAYLOAD_LENGTH = 8_192
+export const MAX_INSTALL_PAYLOAD_LENGTH = 8192
 
 export type InstallPayloadErrorCode =
   | "INVALID_PAYLOAD"
@@ -16,12 +17,12 @@ export type InstallPayloadErrorCode =
   | "INVALID_METADATA"
 
 export class InstallPayloadError extends Error {
-  constructor(
-    public readonly code: InstallPayloadErrorCode,
-    message: string
-  ) {
+  readonly code: InstallPayloadErrorCode
+
+  constructor(code: InstallPayloadErrorCode, message: string) {
     super(message)
     this.name = "InstallPayloadError"
+    this.code = code
   }
 }
 
@@ -85,7 +86,7 @@ function assertMode(
       `The ${mode} theme must contain every canonical shadcn color token.`
     )
   }
-  for (let index = 0; index < value.length; index++) {
+  for (let index = 0; index < value.length; index += 1) {
     const color = value[index]
     if (
       typeof color !== "string" ||
@@ -118,7 +119,7 @@ function toWire(input: EncodeInstallPayloadInput): WirePayload {
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
+  return btoa(String.fromCodePoint(...bytes))
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replace(/=+$/u, "")
@@ -129,7 +130,7 @@ function base64UrlToBytes(encoded: string): Uint8Array {
   const binary = atob(
     encoded.replaceAll("-", "+").replaceAll("_", "/") + padding
   )
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0))
+  return Uint8Array.from(binary, (character) => character.codePointAt(0) ?? 0)
 }
 
 export function encodeInstallPayload(input: EncodeInstallPayloadInput): string {
@@ -206,7 +207,7 @@ export function decodeInstallPayload(encoded: string): InstallTheme {
 
   const light: Record<string, string> = {}
   const dark: Record<string, string> = {}
-  for (let index = 0; index < THEME_TOKENS.length; index++) {
+  for (let index = 0; index < THEME_TOKENS.length; index += 1) {
     light[THEME_TOKENS[index]] = value.l[index]
     dark[THEME_TOKENS[index]] = value.d[index]
   }

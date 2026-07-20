@@ -26,8 +26,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function createSamplePoints(rect: DragRect): Array<{ x: number; y: number }> {
-  if (rect.width <= 0 || rect.height <= 0) return [];
+function createSamplePoints(rect: DragRect): { x: number; y: number }[] {
+  if (rect.width <= 0 || rect.height <= 0) {
+    return [];
+  }
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -37,23 +39,42 @@ function createSamplePoints(rect: DragRect): Array<{ x: number; y: number }> {
   const cx = left + rect.width / 2;
   const cy = top + rect.height / 2;
 
-  let xCount = clamp(Math.ceil(rect.width / SAMPLE_SPACING_PX), MIN_SAMPLES_PER_AXIS, MAX_SAMPLES_PER_AXIS);
-  let yCount = clamp(Math.ceil(rect.height / SAMPLE_SPACING_PX), MIN_SAMPLES_PER_AXIS, MAX_SAMPLES_PER_AXIS);
+  let xCount = clamp(
+    Math.ceil(rect.width / SAMPLE_SPACING_PX),
+    MIN_SAMPLES_PER_AXIS,
+    MAX_SAMPLES_PER_AXIS
+  );
+  let yCount = clamp(
+    Math.ceil(rect.height / SAMPLE_SPACING_PX),
+    MIN_SAMPLES_PER_AXIS,
+    MAX_SAMPLES_PER_AXIS
+  );
 
   if (xCount * yCount > MAX_TOTAL_SAMPLES) {
     const scale = Math.sqrt(MAX_TOTAL_SAMPLES / (xCount * yCount));
-    xCount = clamp(Math.floor(xCount * scale), MIN_SAMPLES_PER_AXIS, MAX_SAMPLES_PER_AXIS);
-    yCount = clamp(Math.floor(yCount * scale), MIN_SAMPLES_PER_AXIS, MAX_SAMPLES_PER_AXIS);
+    xCount = clamp(
+      Math.floor(xCount * scale),
+      MIN_SAMPLES_PER_AXIS,
+      MAX_SAMPLES_PER_AXIS
+    );
+    yCount = clamp(
+      Math.floor(yCount * scale),
+      MIN_SAMPLES_PER_AXIS,
+      MAX_SAMPLES_PER_AXIS
+    );
   }
 
   const keys = new Set<string>();
-  const points: Array<{ x: number; y: number }> = [];
+  const points: { x: number; y: number }[] = [];
 
   const add = (x: number, y: number) => {
-    const cx = clamp(Math.round(x), 0, vw - 1);
-    const cy = clamp(Math.round(y), 0, vh - 1);
-    const key = `${cx}:${cy}`;
-    if (!keys.has(key)) { keys.add(key); points.push({ x: cx, y: cy }); }
+    const px = clamp(Math.round(x), 0, vw - 1);
+    const py = clamp(Math.round(y), 0, vh - 1);
+    const key = `${px}:${py}`;
+    if (!keys.has(key)) {
+      keys.add(key);
+      points.push({ x: px, y: py });
+    }
   };
 
   add(left + EDGE_INSET_PX, top + EDGE_INSET_PX);
@@ -66,9 +87,9 @@ function createSamplePoints(rect: DragRect): Array<{ x: number; y: number }> {
   add(right - EDGE_INSET_PX, cy);
   add(cx, cy);
 
-  for (let xi = 0; xi < xCount; xi++) {
+  for (let xi = 0; xi < xCount; xi += 1) {
     const sx = left + ((xi + 0.5) / xCount) * rect.width;
-    for (let yi = 0; yi < yCount; yi++) {
+    for (let yi = 0; yi < yCount; yi += 1) {
       add(sx, top + ((yi + 0.5) / yCount) * rect.height);
     }
   }
@@ -84,11 +105,13 @@ function createSamplePoints(rect: DragRect): Array<{ x: number; y: number }> {
 export function getElementsInArea(
   rect: DragRect,
   validator: (el: Element) => boolean = isValidElement,
-  useCoverage: boolean = true,
+  useCoverage = true
 ): HTMLElement[] {
   const dragBounds = {
-    left: rect.x, top: rect.y,
-    right: rect.x + rect.width, bottom: rect.y + rect.height,
+    left: rect.x,
+    top: rect.y,
+    right: rect.x + rect.width,
+    bottom: rect.y + rect.height,
   };
 
   const candidates = new Set<Element>();
@@ -103,14 +126,20 @@ export function getElementsInArea(
   const matches: Element[] = [];
 
   for (const el of candidates) {
-    if (!validator(el)) continue;
+    if (!validator(el)) {
+      continue;
+    }
 
     const elRect = el.getBoundingClientRect();
-    if (elRect.width <= 0 || elRect.height <= 0) continue;
+    if (elRect.width <= 0 || elRect.height <= 0) {
+      continue;
+    }
 
     const elBounds = {
-      left: elRect.left, top: elRect.top,
-      right: elRect.left + elRect.width, bottom: elRect.top + elRect.height,
+      left: elRect.left,
+      top: elRect.top,
+      right: elRect.left + elRect.width,
+      bottom: elRect.top + elRect.height,
     };
 
     if (useCoverage) {
@@ -124,22 +153,32 @@ export function getElementsInArea(
       if (elArea > 0 && iArea / elArea >= COVERAGE_THRESHOLD) {
         matches.push(el);
       }
-    } else {
-      if (dragBounds.left < elBounds.right && dragBounds.right > elBounds.left &&
-          dragBounds.top < elBounds.bottom && dragBounds.bottom > elBounds.top) {
-        matches.push(el);
-      }
+    } else if (
+      dragBounds.left < elBounds.right &&
+      dragBounds.right > elBounds.left &&
+      dragBounds.top < elBounds.bottom &&
+      dragBounds.bottom > elBounds.top
+    ) {
+      matches.push(el);
     }
   }
 
-  const filtered = matches.filter(el =>
-    !matches.some(other => other !== el && other.contains(el))
+  const filtered = matches.filter(
+    (el) => !matches.some((other) => other !== el && other.contains(el))
   );
 
   filtered.sort((a, b) => {
     const pos = a.compareDocumentPosition(b);
-    if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
-    if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    // DOM compareDocumentPosition() returns a bitmask; testing membership
+    // requires `&`, there's no non-bitwise API.
+    // oxlint-disable-next-line no-bitwise -- see comment above
+    if (pos & Node.DOCUMENT_POSITION_FOLLOWING) {
+      return -1;
+    }
+    // oxlint-disable-next-line no-bitwise -- same bitmask check as above
+    if (pos & Node.DOCUMENT_POSITION_PRECEDING) {
+      return 1;
+    }
     return 0;
   });
 

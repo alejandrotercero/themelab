@@ -23,6 +23,13 @@
     "typecheck:web": "pnpm --filter @themelab/web typecheck",
     "lint:web": "pnpm --filter @themelab/web lint",
     "check:web": "pnpm typecheck:web && pnpm lint:web",
+    "lint:oxc": "sh -c 'status=0; for scope in web cli overlay shared; do pnpm \"lint:oxc:$scope\" || status=1; done; exit $status'",
+    "lint:oxc:web": "oxlint --config apps/web/oxlint.config.mjs apps/web",
+    "lint:oxc:cli": "oxlint --config packages/cli/oxlint.config.mjs packages/cli/src",
+    "lint:oxc:overlay": "oxlint --config packages/overlay/oxlint.config.mjs packages/overlay/src",
+    "lint:oxc:shared": "oxlint --config packages/shared/oxlint.config.mjs packages/shared/src",
+    "format:check:oxc": "oxfmt --config oxfmt.config.mjs --check \"apps/web/**/*.{ts,tsx}\" \"packages/{cli,overlay,shared}/src/**/*.{ts,tsx}\"",
+    "check:oxc": "pnpm lint:oxc && pnpm format:check:oxc",
     "test": "pnpm --filter themelab-cli test",
     "changeset": "changeset",
     "version": "changeset version",
@@ -32,6 +39,10 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.30.0"
+    "@changesets/cli": "^2.30.0",
+    "@strastdas/oxc-config": "0.1.2",
+    "oxfmt": "0.59.0",
+    "oxlint": "1.74.0",
+    "ultracite": "7.9.4"
   }
 }

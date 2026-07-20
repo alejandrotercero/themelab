@@ -17,20 +17,33 @@ export function getDeepActiveElement(): Element | null {
 
 /** A text-bearing input the user can type into (text/number/search/email/url/tel/password). */
 export function isTextInput(el: Element | null): el is HTMLInputElement {
-  if (!(el instanceof HTMLInputElement)) return false;
+  if (!(el instanceof HTMLInputElement)) {
+    return false;
+  }
   const t = el.type;
   return (
-    t === "text" || t === "number" || t === "search" || t === "email" ||
-    t === "url" || t === "tel" || t === "password"
+    t === "text" ||
+    t === "number" ||
+    t === "search" ||
+    t === "email" ||
+    t === "url" ||
+    t === "tel" ||
+    t === "password"
   );
 }
 
 /** True when the focused element captures text/navigation keys (input, textarea,
  *  or contentEditable) — on the page or inside the overlay's shadow DOM. */
 export function isEditableElement(el: Element | null): boolean {
-  if (!el) return false;
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return true;
-  if ((el as HTMLElement).isContentEditable) return true;
+  if (!el) {
+    return false;
+  }
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  if ((el as HTMLElement).isContentEditable) {
+    return true;
+  }
   return false;
 }
 

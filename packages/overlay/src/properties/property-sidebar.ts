@@ -1,4 +1,12 @@
-import { COLORS, SHADOWS, RADII, TRANSITIONS, PANEL, FONT_MONO, ensurePanelFont } from "../design-tokens.js";
+import {
+  COLORS,
+  SHADOWS,
+  RADII,
+  TRANSITIONS,
+  PANEL,
+  FONT_MONO,
+  ensurePanelFont,
+} from "../design-tokens.js";
 import {
   getVariantTarget,
   setVariantTarget,
@@ -330,10 +338,10 @@ function loadWidth(): number {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = parseInt(stored, 10);
+      const parsed = Math.trunc(Number(stored));
       // Clamp a stored width into the current range so a value saved under older,
       // narrower bounds migrates up to the new minimum instead of being discarded.
-      if (!isNaN(parsed)) {
+      if (!Number.isNaN(parsed)) {
         return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parsed));
       }
     }
@@ -363,14 +371,23 @@ export function createSidebar(
   shadowRoot: ShadowRoot,
   onClose?: () => void,
   onNavigate?: (dir: NavDir) => void,
-  onMove?: (dir: MoveDir) => void,
+  onMove?: (dir: MoveDir) => void
 ): {
-  show: (componentName: string, filePath: string, lineNumber: number, content: HTMLElement) => void;
+  show: (
+    componentName: string,
+    filePath: string,
+    lineNumber: number,
+    content: HTMLElement
+  ) => void;
   hide: () => void;
   isVisible: () => boolean;
   getElement: () => HTMLElement;
   replaceContent: (contentEl: HTMLElement) => void;
-  showWarning: (message: string, actionLabel: string, onAction: () => void) => void;
+  showWarning: (
+    message: string,
+    actionLabel: string,
+    onAction: () => void
+  ) => void;
   clearWarning: () => void;
   showSaving: () => void;
   hideSaving: () => void;
@@ -382,7 +399,7 @@ export function createSidebar(
   // Inject styles
   const style = document.createElement("style");
   style.textContent = SIDEBAR_STYLES;
-  shadowRoot.appendChild(style);
+  shadowRoot.append(style);
 
   // Sidebar element
   const sidebar = document.createElement("div");
@@ -392,7 +409,7 @@ export function createSidebar(
   // Resize handle
   const resizeHandle = document.createElement("div");
   resizeHandle.className = "prop-sidebar-resize";
-  sidebar.appendChild(resizeHandle);
+  sidebar.append(resizeHandle);
 
   // Header
   const header = document.createElement("div");
@@ -410,17 +427,17 @@ export function createSidebar(
   const filePathEl = document.createElement("div");
   filePathEl.className = "prop-sidebar-file-path";
 
-  headerInfo.appendChild(componentNameEl);
-  headerInfo.appendChild(filePathEl);
+  headerInfo.append(componentNameEl);
+  headerInfo.append(filePathEl);
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "prop-sidebar-close";
   closeBtn.title = "Collapse panel";
   closeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="8,2 4,6 8,10"/></svg>`;
 
-  header.appendChild(headerInfo);
-  header.appendChild(closeBtn);
-  sidebar.appendChild(header);
+  header.append(headerInfo);
+  header.append(closeBtn);
+  sidebar.append(header);
 
   // Variant target row: explicit breakpoint selector + Dark toggle. Drives which
   // variant every property edit writes (base / sm / md / lg / xl / 2xl / dark:).
@@ -431,28 +448,6 @@ export function createSidebar(
   seg.className = "prop-variant-seg";
 
   const segButtons = new Map<string, HTMLButtonElement>();
-
-  function rebuildSegments(): void {
-    seg.innerHTML = "";
-    segButtons.clear();
-    const baseBtn = document.createElement("button");
-    baseBtn.className = "prop-variant-seg-btn";
-    baseBtn.textContent = "Base";
-    baseBtn.title = "Edit the base (mobile-first) utility";
-    baseBtn.addEventListener("click", () => setVariantTarget({ breakpoint: "" }));
-    seg.appendChild(baseBtn);
-    segButtons.set("", baseBtn);
-    for (const screen of getMeta().screens) {
-      const btn = document.createElement("button");
-      btn.className = "prop-variant-seg-btn";
-      btn.textContent = screen.name;
-      btn.title = `Edit the ${screen.name}: breakpoint (≥ ${screen.minWidth}px)`;
-      btn.addEventListener("click", () => setVariantTarget({ breakpoint: screen.name }));
-      seg.appendChild(btn);
-      segButtons.set(screen.name, btn);
-    }
-    syncActive();
-  }
 
   const darkBtn = document.createElement("button");
   darkBtn.className = "prop-variant-dark";
@@ -480,30 +475,63 @@ export function createSidebar(
     const dm = getMeta().darkMode;
     const parts: string[] = [];
     if (t.dark && dm.strategy === "media") {
-      parts.push("Dark uses prefers-color-scheme — preview unavailable; dark: still written.");
+      parts.push(
+        "Dark uses prefers-color-scheme — preview unavailable; dark: still written."
+      );
     }
     if (t.breakpoint && !parts.length) {
-      parts.push(`Showing declared ${t.breakpoint}: value (may differ from rendered).`);
+      parts.push(
+        `Showing declared ${t.breakpoint}: value (may differ from rendered).`
+      );
     }
     note.textContent = parts.join(" ");
     note.style.display = parts.length ? "block" : "none";
   }
 
-  variantRow.appendChild(seg);
-  variantRow.appendChild(darkBtn);
-  variantRow.appendChild(note);
+  function rebuildSegments(): void {
+    seg.innerHTML = "";
+    segButtons.clear();
+    const baseBtn = document.createElement("button");
+    baseBtn.className = "prop-variant-seg-btn";
+    baseBtn.textContent = "Base";
+    baseBtn.title = "Edit the base (mobile-first) utility";
+    baseBtn.addEventListener("click", () =>
+      setVariantTarget({ breakpoint: "" })
+    );
+    seg.append(baseBtn);
+    segButtons.set("", baseBtn);
+    for (const screen of getMeta().screens) {
+      const btn = document.createElement("button");
+      btn.className = "prop-variant-seg-btn";
+      btn.textContent = screen.name;
+      btn.title = `Edit the ${screen.name}: breakpoint (≥ ${screen.minWidth}px)`;
+      btn.addEventListener("click", () =>
+        setVariantTarget({ breakpoint: screen.name })
+      );
+      seg.append(btn);
+      segButtons.set(screen.name, btn);
+    }
+    syncActive();
+  }
+
+  variantRow.append(seg);
+  variantRow.append(darkBtn);
+  variantRow.append(note);
   rebuildSegments();
   onVariantTargetChange(() => {
     // The breakpoint set may have changed (metadata arrived) — rebuild segments.
     rebuildSegments();
   });
-  sidebar.appendChild(variantRow);
+  sidebar.append(variantRow);
 
   // Hierarchy navigation row (↑ parent, ↓ child, ←/→ siblings)
   const nav = document.createElement("div");
   nav.className = "prop-sidebar-nav";
-  const navButtons: Record<NavDir, HTMLButtonElement> = {} as Record<NavDir, HTMLButtonElement>;
-  const NAV_DEFS: Array<{ dir: NavDir; glyph: string; title: string }> = [
+  const navButtons: Record<NavDir, HTMLButtonElement> = {} as Record<
+    NavDir,
+    HTMLButtonElement
+  >;
+  const NAV_DEFS: { dir: NavDir; glyph: string; title: string }[] = [
     { dir: "left", glyph: "←", title: "Select previous sibling  (←)" },
     { dir: "up", glyph: "↑", title: "Select parent  (↑)" },
     { dir: "down", glyph: "↓", title: "Select first child  (↓)" },
@@ -519,16 +547,34 @@ export function createSidebar(
       onNavigate?.(def.dir);
     });
     navButtons[def.dir] = btn;
-    nav.appendChild(btn);
+    nav.append(btn);
   }
-  sidebar.appendChild(nav);
+  sidebar.append(nav);
 
   // Move row — reorders the element in source (distinct from nav, which selects)
   const move = document.createElement("div");
   move.className = "prop-sidebar-move";
-  const MOVE_DEFS: Array<{ dir: MoveDir; label: string; glyph: string; kbd: string; title: string }> = [
-    { dir: "up", glyph: "↑", label: "Move up", kbd: "[", title: "Move element up among its siblings  ([)" },
-    { dir: "down", glyph: "↓", label: "Move down", kbd: "]", title: "Move element down among its siblings  (])" },
+  const MOVE_DEFS: {
+    dir: MoveDir;
+    label: string;
+    glyph: string;
+    kbd: string;
+    title: string;
+  }[] = [
+    {
+      dir: "up",
+      glyph: "↑",
+      label: "Move up",
+      kbd: "[",
+      title: "Move element up among its siblings  ([)",
+    },
+    {
+      dir: "down",
+      glyph: "↓",
+      label: "Move down",
+      kbd: "]",
+      title: "Move element down among its siblings  (])",
+    },
   ];
   for (const def of MOVE_DEFS) {
     const btn = document.createElement("button");
@@ -539,22 +585,22 @@ export function createSidebar(
       e.stopPropagation();
       onMove?.(def.dir);
     });
-    move.appendChild(btn);
+    move.append(btn);
   }
-  sidebar.appendChild(move);
+  sidebar.append(move);
 
   // Warning banner (hidden by default)
   const warningBanner = document.createElement("div");
   warningBanner.className = "prop-sidebar-warning";
   warningBanner.style.display = "none";
-  sidebar.appendChild(warningBanner);
+  sidebar.append(warningBanner);
 
   // Scrollable content area
   const content = document.createElement("div");
   content.className = "prop-sidebar-content";
-  sidebar.appendChild(content);
+  sidebar.append(content);
 
-  shadowRoot.appendChild(sidebar);
+  shadowRoot.append(sidebar);
 
   // --- Resize logic ---
   let resizing = false;
@@ -572,15 +618,22 @@ export function createSidebar(
   });
 
   resizeHandle.addEventListener("pointermove", (e: PointerEvent) => {
-    if (!resizing) return;
+    if (!resizing) {
+      return;
+    }
     // Dragging left makes sidebar wider (handle is on left edge, sidebar on right)
     const delta = startX - e.clientX;
-    const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta));
+    const newWidth = Math.max(
+      MIN_WIDTH,
+      Math.min(MAX_WIDTH, startWidth + delta)
+    );
     sidebar.style.width = `${newWidth}px`;
   });
 
   const endResize = () => {
-    if (!resizing) return;
+    if (!resizing) {
+      return;
+    }
     resizing = false;
     resizeHandle.classList.remove("active");
     saveWidth(sidebar.offsetWidth);
@@ -595,51 +648,59 @@ export function createSidebar(
   sidebar.addEventListener("click", (e) => e.stopPropagation());
   sidebar.addEventListener("mouseup", (e) => e.stopPropagation());
 
-  // Close button
-  closeBtn.addEventListener("click", () => {
-    hide();
-    if (onClose) onClose();
-  });
-
   // --- Public methods ---
 
   let visible = false;
+
+  function hide(): void {
+    if (!visible) {
+      return;
+    }
+    visible = false;
+    sidebar.classList.remove("visible");
+  }
+
+  // Close button
+  closeBtn.addEventListener("click", () => {
+    hide();
+    if (onClose) {
+      onClose();
+    }
+  });
 
   function show(
     componentName: string,
     filePath: string,
     lineNumber: number,
-    contentEl: HTMLElement,
+    contentEl: HTMLElement
   ): void {
     componentNameEl.textContent = `<${componentName}>`;
-    componentNameEl.appendChild(savingDot);
+    componentNameEl.append(savingDot);
     filePathEl.textContent = `${filePath}:${lineNumber}`;
     filePathEl.title = `${filePath}:${lineNumber}`;
 
     // Replace content
     content.innerHTML = "";
-    content.appendChild(contentEl);
+    content.append(contentEl);
 
     if (!visible) {
       visible = true;
       // Force reflow so transition fires
-      sidebar.offsetHeight;
+      void sidebar.offsetHeight;
       sidebar.classList.add("visible");
     }
   }
 
-  function hide(): void {
-    if (!visible) return;
-    visible = false;
-    sidebar.classList.remove("visible");
-  }
-
   function replaceContent(contentEl: HTMLElement): void {
     content.innerHTML = "";
-    content.appendChild(contentEl);
+    content.append(contentEl);
   }
 
-  function showWarning(message: string, actionLabel: string, onAction: () => void): void {
+  function showWarning(
+    message: string,
+    actionLabel: string,
+    onAction: () => void
+  ): void {
     warningBanner.innerHTML = "";
     const text = document.createElement("span");
     text.className = "prop-sidebar-warning-text";
@@ -651,8 +712,8 @@ export function createSidebar(
       e.stopPropagation();
       onAction();
     });
-    warningBanner.appendChild(text);
-    warningBanner.appendChild(btn);
+    warningBanner.append(text);
+    warningBanner.append(btn);
     warningBanner.style.display = "flex";
   }
 

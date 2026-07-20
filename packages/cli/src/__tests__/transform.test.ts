@@ -1,16 +1,32 @@
-import { describe, it, expect } from "vitest";
-import { reorderComponent, getSiblings, moveSiblingComponent } from "../transform.js";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-const fixturesDir = path.join(__dirname, "fixtures");
+import { describe, it, expect } from "vitest";
+
+import {
+  reorderComponent,
+  getSiblings,
+  moveSiblingComponent,
+} from "../transform.js";
+
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
+
+const order = (result: string) =>
+  result
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) =>
+      /^<(?<component>Navbar|Hero|Features|Pricing|Footer) \/>$/.test(l)
+    );
 
 /** Find the line number of a component's opening tag in a fixture file */
 function findLine(fixture: string, componentName: string): number {
   const content = fs.readFileSync(path.join(fixturesDir, fixture), "utf-8");
   const lines = content.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(`<${componentName}`)) return i + 1; // 1-indexed
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].includes(`<${componentName}`)) {
+      return i + 1;
+    } // 1-indexed
   }
   throw new Error(`Component <${componentName}> not found in ${fixture}`);
 }
@@ -19,8 +35,10 @@ function findLine(fixture: string, componentName: string): number {
 function findParentLine(fixture: string, tagName: string): number {
   const content = fs.readFileSync(path.join(fixturesDir, fixture), "utf-8");
   const lines = content.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(`<${tagName}`)) return i + 1;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].includes(`<${tagName}`)) {
+      return i + 1;
+    }
   }
   throw new Error(`Tag <${tagName}> not found in ${fixture}`);
 }
@@ -47,7 +65,7 @@ describe("reorderComponent", () => {
     // Navbar moved before Pricing → expected: Hero, Features, Navbar, Pricing, Footer
     const lines = result.split("\n");
     const componentLines = lines.filter((l) =>
-      l.trim().match(/^<(Navbar|Hero|Features|Pricing|Footer)/)
+      l.trim().match(/^<(?<component>Navbar|Hero|Features|Pricing|Footer)/)
     );
     expect(componentLines.map((l) => l.trim())).toEqual([
       "<Hero />",
@@ -73,7 +91,8 @@ describe("reorderComponent", () => {
     const fixturePath = path.join(fixturesDir, "with-expressions.tsx");
     // The expression {showHero && <Hero />} — find the line with "showHero"
     const content = fs.readFileSync(fixturePath, "utf-8");
-    const exprLine = content.split("\n").findIndex((l) => l.includes("showHero")) + 1;
+    const exprLine =
+      content.split("\n").findIndex((l) => l.includes("showHero")) + 1;
     const navbarLine = findLine("with-expressions.tsx", "Navbar");
     const result = reorderComponent(fixturePath, exprLine, navbarLine);
     // Expression moved before Navbar
@@ -112,14 +131,14 @@ describe("reorderComponent", () => {
   });
 
   it("throws on nonexistent file", () => {
-    expect(() =>
-      reorderComponent("/nonexistent/file.tsx", 1, 2)
-    ).toThrow();
+    expect(() => reorderComponent("/nonexistent/file.tsx", 1, 2)).toThrow();
   });
 
   it("throws on invalid line numbers", () => {
     const fixturePath = path.join(fixturesDir, "basic.tsx");
-    expect(() => reorderComponent(fixturePath, 999, 1000)).toThrow(/not found at line/i);
+    expect(() => reorderComponent(fixturePath, 999, 1000)).toThrow(
+      /not found at line/i
+    );
   });
 
   it("throws when elements are not siblings", () => {
@@ -133,12 +152,6 @@ describe("reorderComponent", () => {
 });
 
 describe("moveSiblingComponent", () => {
-  const order = (result: string) =>
-    result
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => /^<(Navbar|Hero|Features|Pricing|Footer) \/>$/.test(l));
-
   it("moves an element up (swaps with previous sibling)", () => {
     const fixturePath = path.join(fixturesDir, "basic.tsx");
     const heroLine = findLine("basic.tsx", "Hero");
@@ -186,14 +199,16 @@ describe("moveSiblingComponent", () => {
   it("throws a friendly error when already the last sibling", () => {
     const fixturePath = path.join(fixturesDir, "basic.tsx");
     const featuresLine = findLine("basic.tsx", "Features");
-    expect(() => moveSiblingComponent(fixturePath, featuresLine, "down")).toThrow(
-      /already the last sibling/i
-    );
+    expect(() =>
+      moveSiblingComponent(fixturePath, featuresLine, "down")
+    ).toThrow(/already the last sibling/i);
   });
 
   it("throws when no element exists at the given line", () => {
     const fixturePath = path.join(fixturesDir, "basic.tsx");
-    expect(() => moveSiblingComponent(fixturePath, 999, "up")).toThrow(/no jsx element found/i);
+    expect(() => moveSiblingComponent(fixturePath, 999, "up")).toThrow(
+      /no jsx element found/i
+    );
   });
 });
 
@@ -203,7 +218,11 @@ describe("getSiblings", () => {
     const mainLine = findParentLine("basic.tsx", "main");
     const siblings = getSiblings(fixturePath, mainLine);
     expect(siblings).toHaveLength(3);
-    expect(siblings.map((s) => s.componentName)).toEqual(["Navbar", "Hero", "Features"]);
+    expect(siblings.map((s) => s.componentName)).toEqual([
+      "Navbar",
+      "Hero",
+      "Features",
+    ]);
   });
 
   it("returns expression containers as siblings", () => {

@@ -3,9 +3,10 @@
 // Move logic — called by selection.ts when the Select tool detects a move-drag.
 // No longer a ToolEventHandler; these are standalone functions.
 
-import type { MoveEntry } from "../move-state.js";
-import { applyDragVisual, settleDragVisual, captureParentLayout, computeNthOfType } from "../move-state.js";
-import { addChangeEntry } from "../changelog.js";
+import type { ComponentInfo } from "@themelab/shared";
+import { getFiberFromHostInstance } from "bippy";
+
+import { requestFileStat } from "../bridge.js";
 import {
   addMove,
   updateMoveDelta,
@@ -13,23 +14,47 @@ import {
   viewportToPage,
   getCanvasTransform,
 } from "../canvas-state.js";
-import { getSelection, getSelectedElement } from "../selection.js";
-import { computeSnap } from "../snap-guides.js";
+import { addChangeEntry } from "../changelog.js";
 import { setSnapGuides, clearSnapGuides } from "../highlight-canvas.js";
-import { requestFileStat } from "../bridge.js";
-import { getFiberFromHostInstance } from "bippy";
-import { buildJSXPath } from "../utils/jsx-path.js";
+import type { MoveEntry } from "../move-state.js";
+import {
+  applyDragVisual,
+  settleDragVisual,
+  captureParentLayout,
+  computeNthOfType,
+} from "../move-state.js";
+import { computeSnap } from "../snap-guides.js";
 
 let dragEntry: MoveEntry | null = null;
 let dragStartMouse = { x: 0, y: 0 };
 let preDragDelta = { dx: 0, dy: 0 };
 let isNewMove = false;
 
+// selection.ts owns the currently-selected element but also imports this
+// module (tryStartMove/updateMovePosition/endMove, called from its drag
+// handlers), so it registers a read-only accessor here at init instead of
+// this module importing selection.js — avoids an import cycle.
+interface SelectionAccessor {
+  getSelection: () => ComponentInfo | null;
+  getSelectedElement: () => HTMLElement | null;
+}
+let selectionAccessor: SelectionAccessor = {
+  getSelection: () => null,
+  getSelectedElement: () => null,
+};
+export function registerSelectionAccessor(accessor: SelectionAccessor): void {
+  selectionAccessor = accessor;
+}
+
 /**
  * Attempt to start a move for the given element.
  * Returns true if a move was initiated. Returns false if no move is possible.
  */
-export function tryStartMove(clientX: number, clientY: number, el: HTMLElement): boolean {
+export function tryStartMove(
+  clientX: number,
+  clientY: number,
+  el: HTMLElement
+): boolean {
   const pagePos = viewportToPage(clientX, clientY);
 
   // Check if the element already has a move entry → re-drag it
@@ -39,14 +64,21 @@ export function tryStartMove(clientX: number, clientY: number, el: HTMLElement):
     dragStartMouse = { x: pagePos.x, y: pagePos.y };
     preDragDelta = { ...existingForEl.delta };
     isNewMove = false;
-    applyDragVisual(existingForEl.element, existingForEl.delta.dx, existingForEl.delta.dy, existingForEl.existingTransform);
+    applyDragVisual(
+      existingForEl.element,
+      existingForEl.delta.dx,
+      existingForEl.delta.dy,
+      existingForEl.existingTransform
+    );
     return true;
   }
 
   // Element must be the currently selected element to create a new move
-  const selection = getSelection();
-  const selectedEl = getSelectedElement();
-  if (!selection || !selectedEl || el !== selectedEl) return false;
+  const selection = selectionAccessor.getSelection();
+  const selectedEl = selectionAccessor.getSelectedElement();
+  if (!selection || !selectedEl || el !== selectedEl) {
+    return false;
+  }
 
   // Create new move entry
   const originalRect = selectedEl.getBoundingClientRect();
@@ -56,11 +88,16 @@ export function tryStartMove(clientX: number, clientY: number, el: HTMLElement):
   // If the element has Tailwind translate classes from a previous commit,
   // the computed transform matrix includes their effect. Clear it to avoid
   // doubling: the batch engine manages translate via classes, not inline styles.
-  const hasTailwindTranslate = /(?:^|\s)-?translate-[xy]/.test(selectedEl.className ?? "");
+  const hasTailwindTranslate = /(?:^|\s)-?translate-[xy]/.test(
+    selectedEl.className ?? ""
+  );
 
   // Capture fiber key for list item disambiguation
   const hostFiber = getFiberFromHostInstance(selectedEl);
-  const jsxKey = hostFiber?.key != null ? String(hostFiber.key) : undefined;
+  const jsxKey =
+    hostFiber?.key === null || hostFiber?.key === undefined
+      ? undefined
+      : String(hostFiber.key);
 
   // Compute nth-of-type among same-tag siblings in the DOM
   const nthOfType = computeNthOfType(selectedEl);
@@ -78,7 +115,10 @@ export function tryStartMove(clientX: number, clientY: number, el: HTMLElement):
     originalRect,
     delta: { dx: 0, dy: 0 },
     originalCssText,
-    existingTransform: (!hasTailwindTranslate && existingTransform !== "none") ? existingTransform : "",
+    existingTransform:
+      !hasTailwindTranslate && existingTransform !== "none"
+        ? existingTransform
+        : "",
     identity: {
       componentName: selection.componentName,
       filePath: selection.filePath,
@@ -92,11 +132,15 @@ export function tryStartMove(clientX: number, clientY: number, el: HTMLElement):
     jsxKey,
   };
 
-  // Request file stat for staleness detection (async, stored on entry when it resolves)
-  requestFileStat(selection.filePath).then(({ mtime, size }) => {
+  // Request file stat for staleness detection (async, stored on entry when it
+  // resolves). tryStartMove() itself must stay synchronous (it returns a
+  // boolean immediately to the caller), so this runs as a fire-and-forget
+  // async IIFE rather than an awaited call.
+  void (async () => {
+    const { mtime, size } = await requestFileStat(selection.filePath);
     entry.fileMtime = mtime;
     entry.fileSize = size;
-  });
+  })();
 
   addMove(entry);
   dragEntry = entry;
@@ -109,7 +153,9 @@ export function tryStartMove(clientX: number, clientY: number, el: HTMLElement):
 
 /** Update the active move drag with new mouse position. */
 export function updateMovePosition(clientX: number, clientY: number): void {
-  if (!dragEntry) return;
+  if (!dragEntry) {
+    return;
+  }
   const pagePos = viewportToPage(clientX, clientY);
   const rawDx = preDragDelta.dx + (pagePos.x - dragStartMouse.x);
   const rawDy = preDragDelta.dy + (pagePos.y - dragStartMouse.y);
@@ -117,7 +163,11 @@ export function updateMovePosition(clientX: number, clientY: number): void {
   applyDragVisual(dragEntry.element, rawDx, rawDy, dragEntry.existingTransform);
 
   const parent = dragEntry.element.parentElement;
-  if (!parent || parent === document.body || parent === document.documentElement) {
+  if (
+    !parent ||
+    parent === document.body ||
+    parent === document.documentElement
+  ) {
     dragEntry.delta = { dx: rawDx, dy: rawDy };
     clearSnapGuides();
     return;
@@ -129,7 +179,12 @@ export function updateMovePosition(clientX: number, clientY: number): void {
   const snap = computeSnap(elemRect, parentRect, rawDx, rawDy, 5, scale);
 
   if (snap.snappedX || snap.snappedY) {
-    applyDragVisual(dragEntry.element, snap.dx, snap.dy, dragEntry.existingTransform);
+    applyDragVisual(
+      dragEntry.element,
+      snap.dx,
+      snap.dy,
+      dragEntry.existingTransform
+    );
   }
 
   dragEntry.delta = { dx: snap.dx, dy: snap.dy };
@@ -138,7 +193,9 @@ export function updateMovePosition(clientX: number, clientY: number): void {
 
 /** End the active move drag. Returns the moved element for re-selection by caller. */
 export function endMove(): HTMLElement | null {
-  if (!dragEntry) return null;
+  if (!dragEntry) {
+    return null;
+  }
 
   const entry = dragEntry;
   const previousDelta = { ...preDragDelta };

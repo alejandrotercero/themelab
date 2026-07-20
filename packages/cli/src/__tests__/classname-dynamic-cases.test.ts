@@ -11,19 +11,26 @@
  * See plan 009 for the investigation brief and findings report.
  */
 
-import { describe, it, expect } from "vitest";
-import { updateClassName } from "../transform.js";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-const fixturesDir = path.join(__dirname, "fixtures");
+import { describe, it, expect } from "vitest";
 
-function findElement(fixture: string, tag: string): { line: number; col: number } {
+import { updateClassName } from "../transform.js";
+
+const fixturesDir = path.join(import.meta.dirname, "fixtures");
+
+function findElement(
+  fixture: string,
+  tag: string
+): { line: number; col: number } {
   const content = fs.readFileSync(path.join(fixturesDir, fixture), "utf-8");
   const lines = content.split("\n");
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i += 1) {
     const col = lines[i].indexOf(`<${tag}`);
-    if (col !== -1) return { line: i + 1, col };
+    if (col !== -1) {
+      return { line: i + 1, col };
+    }
   }
   throw new Error(`<${tag}> not found in ${fixture}`);
 }
@@ -41,7 +48,14 @@ describe("cn() with logical-AND conditional arg (cond && 'gap-4')", () => {
         path.join(fixturesDir, "classname-cn-logical-and.tsx"),
         line,
         col,
-        [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+        [
+          {
+            tailwindPrefix: "gap",
+            tailwindToken: "6",
+            value: "24px",
+            relatedPrefixes: [],
+          },
+        ]
       )
     ).toThrow(/CONFLICTING_CLASS/);
   });
@@ -54,7 +68,14 @@ describe("cn() with logical-AND conditional arg (cond && 'gap-4')", () => {
       path.join(fixturesDir, "classname-cn-logical-and.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "flex", tailwindToken: "1", value: "flex-1", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "flex",
+          tailwindToken: "1",
+          value: "flex-1",
+          relatedPrefixes: [],
+        },
+      ]
     );
     // "flex" in the literal is replaced with "flex-1"
     expect(result).toContain("flex-1");
@@ -76,7 +97,14 @@ describe("cn() with ternary conditional arg (cond ? 'a' : 'b')", () => {
         path.join(fixturesDir, "classname-cn-ternary.tsx"),
         line,
         col,
-        [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+        [
+          {
+            tailwindPrefix: "gap",
+            tailwindToken: "6",
+            value: "24px",
+            relatedPrefixes: [],
+          },
+        ]
       )
     ).toThrow(/CONFLICTING_CLASS/);
   });
@@ -89,7 +117,14 @@ describe("cn() with ternary conditional arg (cond ? 'a' : 'b')", () => {
         path.join(fixturesDir, "classname-cn-ternary.tsx"),
         line,
         col,
-        [{ tailwindPrefix: "gap", tailwindToken: "8", value: "32px", relatedPrefixes: [] }]
+        [
+          {
+            tailwindPrefix: "gap",
+            tailwindToken: "8",
+            value: "32px",
+            relatedPrefixes: [],
+          },
+        ]
       )
     ).toThrow(/CONFLICTING_CLASS/);
   });
@@ -109,7 +144,14 @@ describe("clsx() with object-expression arg ({ 'gap-4': cond })", () => {
         path.join(fixturesDir, "classname-cn-object.tsx"),
         line,
         col,
-        [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+        [
+          {
+            tailwindPrefix: "gap",
+            tailwindToken: "6",
+            value: "24px",
+            relatedPrefixes: [],
+          },
+        ]
       )
     ).toThrow(/CONFLICTING_CLASS/);
   });
@@ -121,7 +163,14 @@ describe("clsx() with object-expression arg ({ 'gap-4': cond })", () => {
       path.join(fixturesDir, "classname-cn-object.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "p", tailwindToken: "4", value: "16px", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "4",
+          value: "16px",
+          relatedPrefixes: [],
+        },
+      ]
     );
     // New class is appended to the "flex" literal
     expect(result).toContain("flex p-4");
@@ -147,7 +196,14 @@ describe("cn() with identifier arg (cn(base, 'flex')) — accepted residual (opa
         path.join(fixturesDir, "classname-cn-identifier.tsx"),
         line,
         col,
-        [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+        [
+          {
+            tailwindPrefix: "gap",
+            tailwindToken: "6",
+            value: "24px",
+            relatedPrefixes: [],
+          },
+        ]
       )
     ).not.toThrow();
   });
@@ -158,7 +214,14 @@ describe("cn() with identifier arg (cn(base, 'flex')) — accepted residual (opa
       path.join(fixturesDir, "classname-cn-identifier.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "gap",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+        },
+      ]
     );
     // New class is appended to the "flex" string literal (the only StringLiteral arg)
     expect(result).toContain("flex gap-6");
@@ -182,7 +245,14 @@ describe("cn() with spread element arg (cn('flex', ...extraClasses)) — accepte
         path.join(fixturesDir, "classname-cn-spread.tsx"),
         line,
         col,
-        [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+        [
+          {
+            tailwindPrefix: "gap",
+            tailwindToken: "6",
+            value: "24px",
+            relatedPrefixes: [],
+          },
+        ]
       )
     ).not.toThrow();
   });
@@ -193,7 +263,14 @@ describe("cn() with spread element arg (cn('flex', ...extraClasses)) — accepte
       path.join(fixturesDir, "classname-cn-spread.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "gap",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+        },
+      ]
     );
     // Appended to "flex" (first StringLiteral), the spread is not examined
     expect(result).toContain("flex gap-6");
@@ -209,18 +286,28 @@ describe("cn() with spread element arg (cn('flex', ...extraClasses)) — accepte
 // ---------------------------------------------------------------------------
 describe("template literal — editing a class in a static quasi", () => {
   it("replaces the class in the static part and preserves the interpolation", () => {
-    const { line, col } = findElement("classname-template-interpolation.tsx", "span");
+    const { line, col } = findElement(
+      "classname-template-interpolation.tsx",
+      "span"
+    );
     const result = updateClassName(
       path.join(fixturesDir, "classname-template-interpolation.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "gap", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "gap",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+        },
+      ]
     );
     // Static quasi is updated
     expect(result).toContain("gap-6");
     expect(result).not.toContain("gap-4");
     // The interpolation ${color} is preserved in the output source
-    expect(result).toContain("${color}");
+    expect(result).toContain(`\${color}`);
   });
 });
 
@@ -232,19 +319,29 @@ describe("template literal — editing a class in a static quasi", () => {
 // ---------------------------------------------------------------------------
 describe("template literal — editing a class that only exists in an interpolation", () => {
   it("appends new class to last quasi and preserves the interpolation", () => {
-    const { line, col } = findElement("classname-template-interpolation.tsx", "span");
+    const { line, col } = findElement(
+      "classname-template-interpolation.tsx",
+      "span"
+    );
     // "color" prefix won't match "flex" or "gap-4" in any quasi
     // We'll edit a prefix that does NOT appear in any static quasi
     const result = updateClassName(
       path.join(fixturesDir, "classname-template-interpolation.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "#ef4444", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "red-500",
+          value: "#ef4444",
+          relatedPrefixes: [],
+        },
+      ]
     );
     // New class is appended after the interpolation
     expect(result).toContain("bg-red-500");
     // The interpolation is preserved (not mutated)
-    expect(result).toContain("${color}");
+    expect(result).toContain(`\${color}`);
   });
 });
 
@@ -260,7 +357,14 @@ describe("cn() with only string literal args (baseline safe case)", () => {
       path.join(fixturesDir, "classname-cn.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "p", tailwindToken: "6", value: "24px", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "6",
+          value: "24px",
+          relatedPrefixes: [],
+        },
+      ]
     );
     expect(result).toContain("p-6");
     expect(result).not.toContain("p-4");
@@ -276,12 +380,14 @@ describe("cn() with logical-AND in existing fixture (coverage confirmation)", ()
   it("throws CONFLICTING_CLASS for logical-AND in classname-cn.tsx fixture", () => {
     const { line, col } = findElement("classname-cn.tsx", "button");
     expect(() =>
-      updateClassName(
-        path.join(fixturesDir, "classname-cn.tsx"),
-        line,
-        col,
-        [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "#ef4444", relatedPrefixes: [] }]
-      )
+      updateClassName(path.join(fixturesDir, "classname-cn.tsx"), line, col, [
+        {
+          tailwindPrefix: "bg",
+          tailwindToken: "red-500",
+          value: "#ef4444",
+          relatedPrefixes: [],
+        },
+      ])
     ).toThrow(/CONFLICTING_CLASS/);
   });
 });
@@ -293,24 +399,44 @@ describe("cn() with logical-AND in existing fixture (coverage confirmation)", ()
 // ---------------------------------------------------------------------------
 describe("cn('flex items-center', className) — regression guard for dominant shadcn pattern", () => {
   it("does NOT throw when adding a new prefix to cn(<literal>, <identifier>)", () => {
-    const { line, col } = findElement("classname-cn-literal-then-identifier.tsx", "button");
+    const { line, col } = findElement(
+      "classname-cn-literal-then-identifier.tsx",
+      "button"
+    );
     expect(() =>
       updateClassName(
         path.join(fixturesDir, "classname-cn-literal-then-identifier.tsx"),
         line,
         col,
-        [{ tailwindPrefix: "p", tailwindToken: "4", value: "16px", relatedPrefixes: [] }]
+        [
+          {
+            tailwindPrefix: "p",
+            tailwindToken: "4",
+            value: "16px",
+            relatedPrefixes: [],
+          },
+        ]
       )
     ).not.toThrow();
   });
 
   it("appends the new class to the literal arg, leaving the identifier arg untouched", () => {
-    const { line, col } = findElement("classname-cn-literal-then-identifier.tsx", "button");
+    const { line, col } = findElement(
+      "classname-cn-literal-then-identifier.tsx",
+      "button"
+    );
     const result = updateClassName(
       path.join(fixturesDir, "classname-cn-literal-then-identifier.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "p", tailwindToken: "4", value: "16px", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "p",
+          tailwindToken: "4",
+          value: "16px",
+          relatedPrefixes: [],
+        },
+      ]
     );
     // New class is appended to the literal "flex items-center"
     expect(result).toContain("flex items-center p-4");
@@ -319,12 +445,22 @@ describe("cn('flex items-center', className) — regression guard for dominant s
   });
 
   it("replaces an existing class in the literal arg without throwing", () => {
-    const { line, col } = findElement("classname-cn-literal-then-identifier.tsx", "button");
+    const { line, col } = findElement(
+      "classname-cn-literal-then-identifier.tsx",
+      "button"
+    );
     const result = updateClassName(
       path.join(fixturesDir, "classname-cn-literal-then-identifier.tsx"),
       line,
       col,
-      [{ tailwindPrefix: "flex", tailwindToken: "1", value: "flex-1", relatedPrefixes: [] }]
+      [
+        {
+          tailwindPrefix: "flex",
+          tailwindToken: "1",
+          value: "flex-1",
+          relatedPrefixes: [],
+        },
+      ]
     );
     expect(result).toContain("flex-1 items-center");
     expect(result).not.toContain('"flex "');

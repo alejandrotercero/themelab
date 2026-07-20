@@ -1,7 +1,7 @@
 // The ThemeLab wordmark, ported from packages/overlay/src/brand.ts
 // (BRAND_LOGO_SVG). Uses currentColor so it inherits the surrounding text color.
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
 
 export function Logo({ className }: { className?: string }) {
   return (
@@ -9,6 +9,7 @@ export function Logo({ className }: { className?: string }) {
       viewBox="0 0 263 30"
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- inline vector wordmark; the standard a11y pattern for an inline <svg> icon is role="img", not an <img> tag (that would require rasterizing the paths and lose currentColor theming)
       role="img"
       aria-label="ThemeLab"
       className={cn("w-auto", className)}
@@ -29,5 +30,5 @@ export function Logo({ className }: { className?: string }) {
       <path d="M263 10.0003H257.997V5.00017H263V10.0003Z" />
       <path d="M218.996 5.00017H213.995V0H218.996V5.00017Z" />
     </svg>
-  );
+  )
 }

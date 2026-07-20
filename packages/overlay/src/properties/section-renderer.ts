@@ -1,11 +1,17 @@
 import type { PropertyDescriptor, PropertyGroup } from "@themelab/shared";
-import type { PropertyControl, OnPreview, OnCommit, ControlContext } from "./controls/types.js";
+
+import { PANEL, FONT_MONO, RADII, TRANSITIONS } from "../design-tokens.js";
+import { createAlignSegmented } from "./controls/align-segmented.js";
+import { createBoxModel } from "./controls/box-model.js";
+import { createColorSwatch } from "./controls/color-swatch.js";
 import { createNumberScrub } from "./controls/number-scrub.js";
 import { createSegmented } from "./controls/segmented.js";
-import { createColorSwatch } from "./controls/color-swatch.js";
-import { createBoxModel } from "./controls/box-model.js";
-import { createAlignSegmented } from "./controls/align-segmented.js";
-import { PANEL, FONT_MONO, RADII, TRANSITIONS } from "../design-tokens.js";
+import type {
+  PropertyControl,
+  OnPreview,
+  OnCommit,
+  ControlContext,
+} from "./controls/types.js";
 
 // Persists collapse state across re-renders and element selections
 const collapsedGroups = new Set<string>();
@@ -24,7 +30,9 @@ export function onSectionExpand(fn: SectionExpandListener): () => void {
   expandListeners.push(fn);
   return () => {
     const idx = expandListeners.indexOf(fn);
-    if (idx >= 0) expandListeners.splice(idx, 1);
+    if (idx !== -1) {
+      expandListeners.splice(idx, 1);
+    }
   };
 }
 
@@ -46,12 +54,12 @@ type ControlFactory = (
   values: Map<string, string>,
   onPreview: OnPreview,
   onCommit: OnCommit,
-  ctx?: ControlContext,
+  ctx?: ControlContext
 ) => PropertyControl;
 
 const CONTROL_FACTORIES: Record<string, ControlFactory> = {
   "number-scrub": createNumberScrub,
-  "segmented": createSegmented,
+  segmented: createSegmented,
   "color-swatch": createColorSwatch,
   "box-model": createBoxModel,
   "align-segmented": createAlignSegmented,
@@ -218,7 +226,7 @@ function createChevronSvg(): string {
  * in the input array (i.e. the canonical descriptor order).
  */
 function groupDescriptors(
-  descriptors: PropertyDescriptor[],
+  descriptors: PropertyDescriptor[]
 ): Map<PropertyGroup, PropertyDescriptor[]> {
   const groups = new Map<PropertyGroup, PropertyDescriptor[]>();
   for (const desc of descriptors) {
@@ -238,9 +246,12 @@ function groupDescriptors(
  * single entry so the factory receives all of them at once.
  */
 function splitCompound(
-  descriptors: PropertyDescriptor[],
-): Array<{ controlType: string; descriptors: PropertyDescriptor[] }> {
-  const result: Array<{ controlType: string; descriptors: PropertyDescriptor[] }> = [];
+  descriptors: PropertyDescriptor[]
+): { controlType: string; descriptors: PropertyDescriptor[] }[] {
+  const result: {
+    controlType: string;
+    descriptors: PropertyDescriptor[];
+  }[] = [];
   const compoundBuckets = new Map<string, PropertyDescriptor[]>();
 
   for (const desc of descriptors) {
@@ -268,7 +279,12 @@ function splitCompound(
 // Flex-specific descriptor keys (only shown when display is flex/inline-flex)
 // ---------------------------------------------------------------------------
 
-const FLEX_ONLY_KEYS = new Set(["flexDirection", "justifyContent", "alignItems", "gap"]);
+const FLEX_ONLY_KEYS = new Set([
+  "flexDirection",
+  "justifyContent",
+  "alignItems",
+  "gap",
+]);
 
 function isFlexDisplay(currentValues: Map<string, string>): boolean {
   const display = currentValues.get("display") ?? "";
@@ -285,7 +301,7 @@ export function renderSections(
   onPreview: OnPreview,
   onCommit: OnCommit,
   onShowAll?: () => void,
-  ctx?: ControlContext,
+  ctx?: ControlContext
 ): { container: HTMLElement; controls: PropertyControl[] } {
   const container = document.createElement("div");
   container.className = "prop-sections";
@@ -293,18 +309,21 @@ export function renderSections(
   // Inject styles once
   const style = document.createElement("style");
   style.textContent = SECTION_STYLES;
-  container.appendChild(style);
+  container.append(style);
 
   const allControls: PropertyControl[] = [];
   const grouped = groupDescriptors(descriptors);
 
   for (const [group, descs] of grouped) {
     // Filter out flex-only descriptors when display is not flex/inline-flex
-    const filteredDescs = group === "layout" && !isFlexDisplay(currentValues)
-      ? descs.filter(d => !FLEX_ONLY_KEYS.has(d.key))
-      : descs;
+    const filteredDescs =
+      group === "layout" && !isFlexDisplay(currentValues)
+        ? descs.filter((d) => !FLEX_ONLY_KEYS.has(d.key))
+        : descs;
 
-    if (filteredDescs.length === 0) continue;
+    if (filteredDescs.length === 0) {
+      continue;
+    }
 
     const section = document.createElement("div");
     section.className = "prop-section";
@@ -320,7 +339,9 @@ export function renderSections(
     let collapsed = collapsedGroups.has(group);
     if (collapsed) {
       const chevron = header.querySelector(".prop-section-chevron");
-      if (chevron) chevron.classList.add("collapsed");
+      if (chevron) {
+        chevron.classList.add("collapsed");
+      }
       body.classList.add("collapsed");
     }
 
@@ -331,7 +352,9 @@ export function renderSections(
       } else {
         collapsedGroups.delete(group);
         // Notify listeners so deferred values can be read
-        for (const fn of expandListeners) fn(group);
+        for (const fn of expandListeners) {
+          fn(group);
+        }
       }
       const chevron = header.querySelector(".prop-section-chevron");
       if (chevron) {
@@ -340,7 +363,7 @@ export function renderSections(
       body.classList.toggle("collapsed", collapsed);
     });
 
-    section.appendChild(header);
+    section.append(header);
 
     // Controls
     const entries = splitCompound(filteredDescs);
@@ -352,34 +375,54 @@ export function renderSections(
       grid.className = "prop-size-grid";
       for (const entry of entries) {
         const factory = CONTROL_FACTORIES[entry.controlType];
-        if (!factory) continue;
-        const control = factory(entry.descriptors, currentValues, onPreview, onCommit, ctx);
+        if (!factory) {
+          continue;
+        }
+        const control = factory(
+          entry.descriptors,
+          currentValues,
+          onPreview,
+          onCommit,
+          ctx
+        );
         const cell = document.createElement("div");
         cell.className = "prop-size-cell";
         const label = document.createElement("span");
         label.className = "prop-size-label";
         label.textContent = entry.descriptors[0].label;
         label.title = entry.descriptors[0].label;
-        cell.appendChild(label);
-        cell.appendChild(control.element);
-        grid.appendChild(cell);
+        cell.append(label);
+        cell.append(control.element);
+        grid.append(cell);
         allControls.push(control);
       }
-      body.appendChild(grid);
-      section.appendChild(body);
-      container.appendChild(section);
+      body.append(grid);
+      section.append(body);
+      container.append(section);
       continue;
     }
 
     for (const entry of entries) {
       const factory = CONTROL_FACTORIES[entry.controlType];
-      if (!factory) continue;
+      if (!factory) {
+        continue;
+      }
 
-      const control = factory(entry.descriptors, currentValues, onPreview, onCommit, ctx);
+      const control = factory(
+        entry.descriptors,
+        currentValues,
+        onPreview,
+        onCommit,
+        ctx
+      );
 
       // Compound / self-headered controls own their layout — no label wrapper
-      if (entry.descriptors.length > 1 || entry.controlType === "box-model" || entry.controlType === "align-segmented") {
-        body.appendChild(control.element);
+      if (
+        entry.descriptors.length > 1 ||
+        entry.controlType === "box-model" ||
+        entry.controlType === "align-segmented"
+      ) {
+        body.append(control.element);
       } else {
         const row = document.createElement("div");
         row.className = "prop-control-row";
@@ -391,18 +434,18 @@ export function renderSections(
 
         const valueWrap = document.createElement("div");
         valueWrap.className = "prop-control-value";
-        valueWrap.appendChild(control.element);
+        valueWrap.append(control.element);
 
-        row.appendChild(label);
-        row.appendChild(valueWrap);
-        body.appendChild(row);
+        row.append(label);
+        row.append(valueWrap);
+        body.append(row);
       }
 
       allControls.push(control);
     }
 
-    section.appendChild(body);
-    container.appendChild(section);
+    section.append(body);
+    container.append(section);
   }
 
   if (onShowAll) {
@@ -410,7 +453,7 @@ export function renderSections(
     showAllLink.className = "prop-show-all";
     showAllLink.textContent = "Show all properties";
     showAllLink.addEventListener("click", onShowAll);
-    container.appendChild(showAllLink);
+    container.append(showAllLink);
   }
 
   return { container, controls: allControls };

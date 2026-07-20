@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import {
   buildCanvasTransformMatrix,
   pageToViewportAtTransform,
@@ -7,7 +8,9 @@ import {
 
 describe("canvas transform math", () => {
   it("uses an explicit matrix with viewport-space offsets", () => {
-    expect(buildCanvasTransformMatrix(2, 120, -48)).toBe("matrix(2, 0, 0, 2, 120, -48)");
+    expect(buildCanvasTransformMatrix(2, 120, -48)).toBe(
+      "matrix(2, 0, 0, 2, 120, -48)"
+    );
   });
 
   it("round-trips viewport and page coordinates under pan and zoom", () => {

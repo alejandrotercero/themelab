@@ -1,4 +1,8 @@
-export function buildCanvasTransformMatrix(scale: number, offsetX: number, offsetY: number): string {
+export function buildCanvasTransformMatrix(
+  scale: number,
+  offsetX: number,
+  offsetY: number
+): string {
   return `matrix(${scale}, 0, 0, ${scale}, ${offsetX}, ${offsetY})`;
 }
 
@@ -7,7 +11,7 @@ export function viewportToPageAtTransform(
   clientY: number,
   scale: number,
   offsetX: number,
-  offsetY: number,
+  offsetY: number
 ): { x: number; y: number } {
   return {
     x: (clientX - offsetX) / scale,
@@ -20,7 +24,7 @@ export function pageToViewportAtTransform(
   pageY: number,
   scale: number,
   offsetX: number,
-  offsetY: number,
+  offsetY: number
 ): { x: number; y: number } {
   return {
     x: pageX * scale + offsetX,

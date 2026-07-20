@@ -7,16 +7,22 @@ import type { ThemeStyles } from "./types";
 function toBase64Url(json: string): string {
   const bytes = new TextEncoder().encode(json);
   let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  for (const b of bytes) {
+    bin += String.fromCodePoint(b);
+  }
+  return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
 function fromBase64Url(encoded: string): string {
-  let b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
-  while (b64.length % 4 !== 0) b64 += "=";
+  let b64 = encoded.replaceAll("-", "+").replaceAll("_", "/");
+  while (b64.length % 4 !== 0) {
+    b64 += "=";
+  }
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  for (let i = 0; i < bin.length; i += 1) {
+    bytes[i] = bin.codePointAt(i) ?? 0;
+  }
   return new TextDecoder().decode(bytes);
 }
 

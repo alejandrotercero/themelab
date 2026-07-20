@@ -1,26 +1,30 @@
-"use client";
+"use client"
 
 // The in-tool "My Themes" dialog — wraps the shared LibraryGallery so saved
 // themes can be opened straight into the current editor (no navigation).
 
-import type { SavedTheme } from "@/lib/saved-themes";
-import { LibraryGallery } from "@/components/library/library-gallery";
+import { LibraryGallery } from "@/components/library/library-gallery"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/ui/dialog"
+import type { SavedTheme } from "@/lib/saved-themes"
 
 interface LibraryDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open: boolean
+  onOpenChange: (open: boolean) => void
   /** Load the chosen theme into the editor. The dialog closes afterwards. */
-  onOpen: (t: SavedTheme) => void;
+  onOpen: (t: SavedTheme) => void
 }
 
-export function LibraryDialog({ open, onOpenChange, onOpen }: LibraryDialogProps) {
+export function LibraryDialog({
+  open,
+  onOpenChange,
+  onOpen,
+}: LibraryDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -36,11 +40,11 @@ export function LibraryDialog({ open, onOpenChange, onOpen }: LibraryDialogProps
         <LibraryGallery
           gridClassName="grid-cols-2 sm:grid-cols-3"
           onOpen={(t) => {
-            onOpen(t);
-            onOpenChange(false);
+            onOpen(t)
+            onOpenChange(false)
           }}
         />
       </DialogContent>
     </Dialog>
-  );
+  )
 }

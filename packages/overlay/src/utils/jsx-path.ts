@@ -1,20 +1,197 @@
-import { getFiberFromHostInstance, getDisplayName, isCompositeFiber } from "bippy";
 import type { JSXStructuralPath, JSXPathSegment } from "@themelab/shared";
+import {
+  getFiberFromHostInstance,
+  getDisplayName,
+  isCompositeFiber,
+} from "bippy";
+import type { Fiber } from "bippy";
 
 // HTML tag names for filtering out React internals
 const HTML_TAGS = new Set([
-  "a","abbr","address","area","article","aside","audio","b","base","bdi","bdo",
-  "blockquote","body","br","button","canvas","caption","cite","code","col",
-  "colgroup","data","datalist","dd","del","details","dfn","dialog","div","dl",
-  "dt","em","embed","fieldset","figcaption","figure","footer","form","h1","h2",
-  "h3","h4","h5","h6","head","header","hgroup","hr","html","i","iframe","img",
-  "input","ins","kbd","label","legend","li","link","main","map","mark","menu",
-  "meta","meter","nav","noscript","object","ol","optgroup","option","output","p",
-  "picture","pre","progress","q","rp","rt","ruby","s","samp","script","search",
-  "section","select","slot","small","source","span","strong","sub","summary",
-  "sup","table","tbody","td","template","textarea","tfoot","th","thead","time",
-  "title","tr","track","u","ul","var","video","wbr",
+  "a",
+  "abbr",
+  "address",
+  "area",
+  "article",
+  "aside",
+  "audio",
+  "b",
+  "base",
+  "bdi",
+  "bdo",
+  "blockquote",
+  "body",
+  "br",
+  "button",
+  "canvas",
+  "caption",
+  "cite",
+  "code",
+  "col",
+  "colgroup",
+  "data",
+  "datalist",
+  "dd",
+  "del",
+  "details",
+  "dfn",
+  "dialog",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "embed",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "head",
+  "header",
+  "hgroup",
+  "hr",
+  "html",
+  "i",
+  "iframe",
+  "img",
+  "input",
+  "ins",
+  "kbd",
+  "label",
+  "legend",
+  "li",
+  "link",
+  "main",
+  "map",
+  "mark",
+  "menu",
+  "meta",
+  "meter",
+  "nav",
+  "noscript",
+  "object",
+  "ol",
+  "optgroup",
+  "option",
+  "output",
+  "p",
+  "picture",
+  "pre",
+  "progress",
+  "q",
+  "rp",
+  "rt",
+  "ruby",
+  "s",
+  "samp",
+  "script",
+  "search",
+  "section",
+  "select",
+  "slot",
+  "small",
+  "source",
+  "span",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "template",
+  "textarea",
+  "tfoot",
+  "th",
+  "thead",
+  "time",
+  "title",
+  "tr",
+  "track",
+  "u",
+  "ul",
+  "var",
+  "video",
+  "wbr",
 ]);
+
+/**
+ * Determine the path-segment name for a fiber, or null if this fiber should
+ * be skipped (not a host element or not a user-level composite component).
+ */
+function getSegmentName(
+  current: Fiber,
+  fiberType: Fiber["type"]
+): string | null {
+  if (typeof fiberType === "string") {
+    // Host fiber (div, span, etc.)
+    return fiberType;
+  }
+  if (isCompositeFiber(current)) {
+    // Composite fiber — get display name
+    const displayName = getDisplayName(current);
+    // Only include user-level components (uppercase first letter)
+    if (
+      displayName &&
+      displayName[0] === displayName[0].toUpperCase() &&
+      /^[A-Z]/.test(displayName)
+    ) {
+      return displayName;
+    }
+  }
+  return null;
+}
+
+/** Compute the discriminator (explicit key or sibling index) for a segment. */
+function computeDiscriminator(
+  current: Fiber,
+  fiberType: Fiber["type"]
+): JSXPathSegment["discriminator"] {
+  if (
+    current.key !== null &&
+    current.key !== undefined &&
+    !String(current.key).startsWith(".")
+  ) {
+    // Explicit key (not auto-generated)
+    return { type: "key", value: String(current.key) };
+  }
+
+  // Compute sibling index: count same-type fibers before this one
+  let siblingIndex = 0;
+  if (current.return) {
+    const { child: firstSibling } = current.return;
+    let sibling = firstSibling;
+    while (sibling && sibling !== current) {
+      // Match by type: === for functions, string comparison for host elements
+      if (sibling.type === fiberType) {
+        siblingIndex += 1;
+      }
+      ({ sibling } = sibling);
+    }
+  }
+  return { type: "index", value: siblingIndex };
+}
+
+/** First 3 classes if the fiber has a DOM element, otherwise undefined. */
+function computeClassHint(current: Fiber): string[] | undefined {
+  if (!(current.stateNode instanceof HTMLElement)) {
+    return undefined;
+  }
+  const { className } = current.stateNode;
+  if (className && typeof className === "string") {
+    const classes = className.split(/\s+/).filter(Boolean).slice(0, 3);
+    if (classes.length > 0) {
+      return classes;
+    }
+  }
+  return undefined;
+}
 
 /**
  * Build a deterministic JSX structural path from a DOM element up to its
@@ -26,10 +203,12 @@ const HTML_TAGS = new Set([
 export function buildJSXPath(
   element: HTMLElement,
   filePath: string,
-  componentName: string,
+  componentName: string
 ): JSXStructuralPath | null {
   const fiber = getFiberFromHostInstance(element);
-  if (!fiber) return null;
+  if (!fiber) {
+    return null;
+  }
 
   const segments: JSXPathSegment[] = [];
   let current: typeof fiber | null = fiber;
@@ -54,19 +233,7 @@ export function buildJSXPath(
       continue;
     }
 
-    let name: string | null = null;
-
-    if (typeof fiberType === "string") {
-      // Host fiber (div, span, etc.)
-      name = fiberType;
-    } else if (isCompositeFiber(current)) {
-      // Composite fiber — get display name
-      const displayName = getDisplayName(current);
-      // Only include user-level components (uppercase first letter)
-      if (displayName && displayName[0] === displayName[0].toUpperCase() && /^[A-Z]/.test(displayName)) {
-        name = displayName;
-      }
-    }
+    const name = getSegmentName(current, fiberType);
 
     if (name === null) {
       current = current.return;
@@ -79,46 +246,17 @@ export function buildJSXPath(
       continue;
     }
 
-    // Determine discriminator
-    let discriminator: JSXPathSegment["discriminator"];
-
-    if (current.key != null && !String(current.key).startsWith(".")) {
-      // Explicit key (not auto-generated)
-      discriminator = { type: "key", value: String(current.key) };
-    } else {
-      // Compute sibling index: count same-type fibers before this one
-      let siblingIndex = 0;
-      if (current.return) {
-        let sibling = current.return.child;
-        while (sibling && sibling !== current) {
-          // Match by type: === for functions, string comparison for host elements
-          if (sibling.type === fiberType) {
-            siblingIndex++;
-          }
-          sibling = sibling.sibling;
-        }
-      }
-      discriminator = { type: "index", value: siblingIndex };
-    }
-
-    // classHint: first 3 classes if the fiber has a DOM element
-    let classHint: string[] | undefined;
-    if (current.stateNode instanceof HTMLElement) {
-      const className = current.stateNode.className;
-      if (className && typeof className === "string") {
-        const classes = className.split(/\s+/).filter(Boolean).slice(0, 3);
-        if (classes.length > 0) {
-          classHint = classes;
-        }
-      }
-    }
+    const discriminator = computeDiscriminator(current, fiberType);
+    const classHint = computeClassHint(current);
 
     segments.push({ name, discriminator, classHint });
 
     current = current.return;
   }
 
-  if (!foundBoundary) return null;
+  if (!foundBoundary) {
+    return null;
+  }
 
   // Walk was bottom-up; path should be top-down
   segments.reverse();

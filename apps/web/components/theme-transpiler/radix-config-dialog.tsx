@@ -1,10 +1,9 @@
-"use client";
+"use client"
 
 // Radix mode's color inputs, in a modal: accent, neutral and background tweaked
 // separately for light and dark, so each appearance runs through Radix's
 // generator with its own inputs. Overlay-skinned.
 
-import type { RadixInputs, RadixModeColors } from "@/lib/theme-engine";
 import {
   Dialog,
   DialogClose,
@@ -12,27 +11,44 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { SwatchPopover } from "./swatch-popover";
+} from "@/components/ui/dialog"
+import type { RadixInputs, RadixModeColors } from "@/lib/theme-engine"
+
+import { SwatchPopover } from "./swatch-popover"
 
 interface RadixConfigDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  values: RadixInputs;
-  onChange: (next: RadixInputs) => void;
-  onGenerate: () => void;
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  values: RadixInputs
+  onChange: (next: RadixInputs) => void
+  onGenerate: () => void
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (hex: string) => void }) {
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (hex: string) => void
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-xs text-[var(--ov-text-dim)]">{label}</span>
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[11px] text-[var(--ov-text-dim)]">{value}</span>
-        <SwatchPopover value={value} onChange={onChange} title={`${label}: ${value}`} className="size-6" />
+        <span className="font-mono text-[11px] text-[var(--ov-text-dim)]">
+          {value}
+        </span>
+        <SwatchPopover
+          value={value}
+          onChange={onChange}
+          title={`${label}: ${value}`}
+          className="size-6"
+        />
       </div>
     </div>
-  );
+  )
 }
 
 function ModeSection({
@@ -40,25 +56,49 @@ function ModeSection({
   colors,
   onChange,
 }: {
-  title: string;
-  colors: RadixModeColors;
-  onChange: (next: RadixModeColors) => void;
+  title: string
+  colors: RadixModeColors
+  onChange: (next: RadixModeColors) => void
 }) {
-  const set = (patch: Partial<RadixModeColors>) => onChange({ ...colors, ...patch });
+  const set = (patch: Partial<RadixModeColors>) =>
+    onChange({ ...colors, ...patch })
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--ov-border)] pt-3">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--ov-text-ghost)]">{title}</span>
-      <Field label="Accent" value={colors.accent} onChange={(accent) => set({ accent })} />
-      <Field label="Neutral" value={colors.gray} onChange={(gray) => set({ gray })} />
-      <Field label="Background" value={colors.bg} onChange={(bg) => set({ bg })} />
+      <span className="text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
+        {title}
+      </span>
+      <Field
+        label="Accent"
+        value={colors.accent}
+        onChange={(accent) => set({ accent })}
+      />
+      <Field
+        label="Neutral"
+        value={colors.gray}
+        onChange={(gray) => set({ gray })}
+      />
+      <Field
+        label="Background"
+        value={colors.bg}
+        onChange={(bg) => set({ bg })}
+      />
     </div>
-  );
+  )
 }
 
-export function RadixConfigDialog({ open, onOpenChange, values, onChange, onGenerate }: RadixConfigDialogProps) {
+export function RadixConfigDialog({
+  open,
+  onOpenChange,
+  values,
+  onChange,
+  onGenerate,
+}: RadixConfigDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="tl-overlay max-w-sm gap-0 p-0" style={{ borderColor: "var(--ov-border)" }}>
+      <DialogContent
+        className="tl-overlay max-w-sm gap-0 p-0"
+        style={{ borderColor: "var(--ov-border)" }}
+      >
         <DialogHeader className="border-b border-[var(--ov-border)] p-4">
           <DialogTitle className="text-sm">Radix colors</DialogTitle>
           <DialogDescription className="text-xs">
@@ -67,8 +107,16 @@ export function RadixConfigDialog({ open, onOpenChange, values, onChange, onGene
         </DialogHeader>
 
         <div className="flex flex-col gap-3 p-4">
-          <ModeSection title="Light mode" colors={values.light} onChange={(light) => onChange({ ...values, light })} />
-          <ModeSection title="Dark mode" colors={values.dark} onChange={(dark) => onChange({ ...values, dark })} />
+          <ModeSection
+            title="Light mode"
+            colors={values.light}
+            onChange={(light) => onChange({ ...values, light })}
+          />
+          <ModeSection
+            title="Dark mode"
+            colors={values.dark}
+            onChange={(dark) => onChange({ ...values, dark })}
+          />
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-[var(--ov-border)] p-3">
@@ -77,8 +125,8 @@ export function RadixConfigDialog({ open, onOpenChange, values, onChange, onGene
             type="button"
             className="ov-btn ov-btn-primary"
             onClick={() => {
-              onGenerate();
-              onOpenChange(false);
+              onGenerate()
+              onOpenChange(false)
             }}
           >
             Generate
@@ -86,5 +134,5 @@ export function RadixConfigDialog({ open, onOpenChange, values, onChange, onGene
         </div>
       </DialogContent>
     </Dialog>
-  );
+  )
 }

@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 // One saved-theme tile: a swatch strip previewing the theme, its name + source,
 // a favorite star, and a "⋯" menu (Rename / Duplicate / Delete). All behaviour is
@@ -12,30 +12,38 @@ import {
   PencilSimpleIcon,
   TerminalWindowIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
-import { toast } from "sonner";
-import type { SavedTheme } from "@/lib/saved-themes";
-import { createInstallCommand, themeStylesToDesignMd } from "@/lib/theme-engine";
-import { downloadTextFile } from "@/lib/download";
+} from "@phosphor-icons/react"
+import { toast } from "sonner"
+
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ui/dropdown-menu"
+import { downloadTextFile } from "@/lib/download"
+import type { SavedTheme } from "@/lib/saved-themes"
+import { createInstallCommand, themeStylesToDesignMd } from "@/lib/theme-engine"
 
 // Tokens shown in the preview strip, in order. Read from dark mode (the studio's
 // default), falling back to light.
-const PREVIEW_TOKENS = ["background", "primary", "secondary", "accent", "muted", "foreground"];
+const PREVIEW_TOKENS = [
+  "background",
+  "primary",
+  "secondary",
+  "accent",
+  "muted",
+  "foreground",
+]
 
 interface SavedThemeCardProps {
-  theme: SavedTheme;
-  onOpen: (t: SavedTheme) => void;
-  onRename: (t: SavedTheme) => void;
-  onDuplicate: (t: SavedTheme) => void;
-  onDelete: (t: SavedTheme) => void;
-  onToggleFavorite: (t: SavedTheme) => void;
+  theme: SavedTheme
+  onOpen: (t: SavedTheme) => void
+  onRename: (t: SavedTheme) => void
+  onDuplicate: (t: SavedTheme) => void
+  onDelete: (t: SavedTheme) => void
+  onToggleFavorite: (t: SavedTheme) => void
 }
 
 export function SavedThemeCard({
@@ -46,20 +54,25 @@ export function SavedThemeCard({
   onDelete,
   onToggleFavorite,
 }: SavedThemeCardProps) {
-  const vars = theme.theme.dark && Object.keys(theme.theme.dark).length ? theme.theme.dark : theme.theme.light;
+  const vars =
+    theme.theme.dark && Object.keys(theme.theme.dark).length
+      ? theme.theme.dark
+      : theme.theme.light
 
   const copyInstallCommand = async () => {
     try {
       const command = createInstallCommand(
         { name: theme.name, radius: theme.radius, theme: theme.theme },
-        window.location.origin,
-      );
-      await navigator.clipboard.writeText(command);
-      toast.success("Install command copied");
+        window.location.origin
+      )
+      await navigator.clipboard.writeText(command)
+      toast.success("Install command copied")
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Couldn't copy this theme.");
+      toast.error(
+        error instanceof Error ? error.message : "Couldn't copy this theme."
+      )
     }
-  };
+  }
 
   const downloadDesignMd = () => {
     downloadTextFile(
@@ -69,10 +82,10 @@ export function SavedThemeCard({
         format: "oklch",
       }),
       "DESIGN.md",
-      "text/markdown",
-    );
-    toast.success("DESIGN.md downloaded");
-  };
+      "text/markdown"
+    )
+    toast.success("DESIGN.md downloaded")
+  }
 
   return (
     <div className="group/card flex flex-col overflow-hidden rounded-[var(--ov-radius-sm)] border border-[var(--ov-border)] bg-[var(--ov-surface-2)] text-left transition-colors hover:border-[var(--ov-accent)]">
@@ -84,7 +97,12 @@ export function SavedThemeCard({
         style={{ backgroundColor: vars.background }}
       >
         {PREVIEW_TOKENS.map((token) => (
-          <span key={token} className="flex-1" style={{ backgroundColor: vars[token] }} title={token} />
+          <span
+            key={token}
+            className="flex-1"
+            style={{ backgroundColor: vars[token] }}
+            title={token}
+          />
         ))}
       </button>
 
@@ -92,11 +110,16 @@ export function SavedThemeCard({
         <button
           type="button"
           onClick={() => onToggleFavorite(theme)}
-          aria-label={theme.favorite ? "Remove from favorites" : "Add to favorites"}
+          aria-label={
+            theme.favorite ? "Remove from favorites" : "Add to favorites"
+          }
           aria-pressed={theme.favorite}
           className="shrink-0 text-[var(--ov-text-ghost)] transition-colors hover:text-[var(--ov-accent)] aria-pressed:text-[var(--ov-accent)]"
         >
-          <StarIcon weight={theme.favorite ? "fill" : "regular"} className="size-4" />
+          <StarIcon
+            weight={theme.favorite ? "fill" : "regular"}
+            className="size-4"
+          />
         </button>
 
         <div className="min-w-0 flex-1">
@@ -108,7 +131,9 @@ export function SavedThemeCard({
           >
             {theme.name}
           </button>
-          <p className="truncate text-[10px] text-[var(--ov-text-ghost)]">{theme.source}</p>
+          <p className="truncate text-[10px] text-[var(--ov-text-ghost)]">
+            {theme.source}
+          </p>
         </div>
 
         <DropdownMenu>
@@ -137,7 +162,10 @@ export function SavedThemeCard({
               Download DESIGN.md
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(theme)}>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onDelete(theme)}
+            >
               <TrashIcon className="size-4" />
               Delete
             </DropdownMenuItem>
@@ -145,5 +173,5 @@ export function SavedThemeCard({
         </DropdownMenu>
       </div>
     </div>
-  );
+  )
 }

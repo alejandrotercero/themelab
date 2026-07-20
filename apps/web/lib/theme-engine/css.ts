@@ -5,13 +5,15 @@
 // Adapted from tweakcn (https://github.com/jnsahaj/tweakcn), Apache-2.0 —
 // utils/theme-style-generator.ts (Tailwind v4 branch). See apps/web/NOTICE.
 
-import type { ThemeStyles } from "@themelab/shared";
-import { THEME_TOKENS } from "./transpile";
-import { hslTriple, reformat, type ColorFormat } from "./oklch";
+import type { ThemeStyles } from "@themelab/shared"
+
+import { hslTriple, reformat } from "./oklch"
+import type { ColorFormat } from "./oklch"
+import { THEME_TOKENS } from "./transpile"
 
 /** The standard shadcn/tweakcn shadow scale, tinted by the theme's foreground. */
 function shadowVars(foreground: string): Record<string, string> {
-  const c = (a: string) => `hsl(${hslTriple(foreground)} / ${a})`;
+  const c = (a: string) => `hsl(${hslTriple(foreground)} / ${a})`
   return {
     "--shadow-2xs": `0px 1px 3px 0px ${c("0.05")}`,
     "--shadow-xs": `0px 1px 3px 0px ${c("0.05")}`,
@@ -21,7 +23,7 @@ function shadowVars(foreground: string): Record<string, string> {
     "--shadow-lg": `0px 1px 3px 0px ${c("0.10")}, 0px 4px 6px -1px ${c("0.10")}`,
     "--shadow-xl": `0px 1px 3px 0px ${c("0.10")}, 0px 8px 10px -1px ${c("0.10")}`,
     "--shadow-2xl": `0px 1px 3px 0px ${c("0.25")}`,
-  };
+  }
 }
 
 /**
@@ -31,19 +33,23 @@ function shadowVars(foreground: string): Record<string, string> {
  */
 function modeObject(
   vars: Record<string, string>,
-  opts: { radius: string; format: ColorFormat; meta: boolean },
+  opts: { radius: string; format: ColorFormat; meta: boolean }
 ): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (opts.meta) out["--radius"] = opts.radius;
-  for (const token of THEME_TOKENS) {
-    if (vars[token] != null) out[`--${token}`] = reformat(vars[token], opts.format);
-  }
-  Object.assign(out, shadowVars(vars.foreground ?? "#000000"));
+  const out: Record<string, string> = {}
   if (opts.meta) {
-    out["--tracking-normal"] = "0em";
-    out["--spacing"] = "0.25rem";
+    out["--radius"] = opts.radius
   }
-  return out;
+  for (const token of THEME_TOKENS) {
+    if (vars[token] !== undefined) {
+      out[`--${token}`] = reformat(vars[token], opts.format)
+    }
+  }
+  Object.assign(out, shadowVars(vars.foreground ?? "#000000"))
+  if (opts.meta) {
+    out["--tracking-normal"] = "0em"
+    out["--spacing"] = "0.25rem"
+  }
+  return out
 }
 
 /**
@@ -52,11 +58,15 @@ function modeObject(
  */
 export function themeToJson(
   vars: Record<string, string>,
-  opts: { radius?: string; format?: ColorFormat } = {},
+  opts: { radius?: string; format?: ColorFormat } = {}
 ): string {
-  const radius = opts.radius ?? "0.625rem";
-  const format = opts.format ?? "hex";
-  return JSON.stringify(modeObject(vars, { radius, format, meta: true }), null, 2);
+  const radius = opts.radius ?? "0.625rem"
+  const format = opts.format ?? "hex"
+  return JSON.stringify(
+    modeObject(vars, { radius, format, meta: true }),
+    null,
+    2
+  )
 }
 
 /**
@@ -66,39 +76,46 @@ export function themeToJson(
  */
 export function themeStylesToJson(
   theme: ThemeStyles,
-  opts: { radius?: string; format?: ColorFormat } = {},
+  opts: { radius?: string; format?: ColorFormat } = {}
 ): string {
-  const radius = opts.radius ?? "0.625rem";
-  const format = opts.format ?? "hex";
+  const radius = opts.radius ?? "0.625rem"
+  const format = opts.format ?? "hex"
   return JSON.stringify(
     {
       root: modeObject(theme.light, { radius, format, meta: true }),
       dark: modeObject(theme.dark, { radius, format, meta: false }),
     },
     null,
-    2,
-  );
+    2
+  )
 }
 
 export interface CssOptions {
   /** Base radius, e.g. "0.625rem". */
-  radius?: string;
+  radius?: string
   /** Color format to emit token values in. Defaults to "oklch". */
-  format?: ColorFormat;
+  format?: ColorFormat
 }
 
-export function themeStylesToCss(theme: ThemeStyles, opts: CssOptions = {}): string {
-  const radius = opts.radius ?? "0.625rem";
-  const format = opts.format ?? "oklch";
+export function themeStylesToCss(
+  theme: ThemeStyles,
+  opts: CssOptions = {}
+): string {
+  const radius = opts.radius ?? "0.625rem"
+  const format = opts.format ?? "oklch"
 
   const block = (vars: Record<string, string>, withRadius: boolean) => {
-    const lines: string[] = [];
-    if (withRadius) lines.push(`  --radius: ${radius};`);
-    for (const token of THEME_TOKENS) {
-      if (vars[token] != null) lines.push(`  --${token}: ${reformat(vars[token], format)};`);
+    const lines: string[] = []
+    if (withRadius) {
+      lines.push(`  --radius: ${radius};`)
     }
-    return lines.join("\n");
-  };
+    for (const token of THEME_TOKENS) {
+      if (vars[token] !== undefined) {
+        lines.push(`  --${token}: ${reformat(vars[token], format)};`)
+      }
+    }
+    return lines.join("\n")
+  }
 
   const themeInline = [
     "  --radius-sm: calc(var(--radius) - 4px);",
@@ -106,11 +123,11 @@ export function themeStylesToCss(theme: ThemeStyles, opts: CssOptions = {}): str
     "  --radius-lg: var(--radius);",
     "  --radius-xl: calc(var(--radius) + 4px);",
     ...THEME_TOKENS.map((t) => `  --color-${t}: var(--${t});`),
-  ].join("\n");
+  ].join("\n")
 
   return [
     `:root {\n${block(theme.light, true)}\n}`,
     `.dark {\n${block(theme.dark, false)}\n}`,
     `@theme inline {\n${themeInline}\n}`,
-  ].join("\n\n");
+  ].join("\n\n")
 }

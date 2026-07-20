@@ -2,17 +2,23 @@
 // AI locator settings (API key / base URL / model / enable) + the confirm
 // prompt for structural "AI proposals". All UI lives in the Shadow DOM.
 
-import { COLORS, RADII, SHADOWS, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
-import { send, onMessage } from "./bridge.js";
-import { showToast } from "./toolbar.js";
-import { addChangeEntry } from "./changelog.js";
+import type { AiSettingsView, ServerMessage } from "@themelab/shared";
+
 import { brandMark } from "./brand.js";
-import type { AiSettingsView } from "@themelab/shared";
+import { send, onMessage } from "./bridge.js";
+import { addChangeEntry } from "./changelog.js";
+import {
+  COLORS,
+  RADII,
+  SHADOWS,
+  TRANSITIONS,
+  FONT_FAMILY,
+} from "./design-tokens.js";
+import { showToast } from "./toolbar.js";
 
 let panelEl: HTMLDivElement | null = null;
 let overlayEl: HTMLDivElement | null = null;
 let open = false;
-let view: AiSettingsView | null = null;
 let inputs: {
   apiKey: HTMLInputElement;
   baseURL: HTMLInputElement;
@@ -123,7 +129,10 @@ function field(label: string, input: HTMLInputElement): HTMLDivElement {
   return wrap;
 }
 
-function mkInput(type: "text" | "password", placeholder: string): HTMLInputElement {
+function mkInput(
+  type: "text" | "password",
+  placeholder: string
+): HTMLInputElement {
   const i = document.createElement("input");
   i.type = type;
   i.placeholder = placeholder;
@@ -132,141 +141,20 @@ function mkInput(type: "text" | "password", placeholder: string): HTMLInputEleme
   return i;
 }
 
-export function initSettingsPanel(shadowRoot: ShadowRoot): void {
-  const style = document.createElement("style");
-  style.textContent = STYLES;
-  shadowRoot.appendChild(style);
-
-  panelEl = document.createElement("div");
-  panelEl.className = "rr-settings";
-
-  const head = document.createElement("div");
-  head.className = "rr-settings-head";
-  const heading = document.createElement("div");
-  heading.style.cssText = "display: flex; flex-direction: column; gap: 5px;";
-  heading.appendChild(brandMark(15));
-  heading.insertAdjacentHTML("beforeend", `<h3>AI locator settings</h3>`);
-  head.appendChild(heading);
-  const x = document.createElement("button");
-  x.className = "rr-settings-x";
-  x.textContent = "✕";
-  x.addEventListener("click", () => toggleSettingsPanel());
-  head.appendChild(x);
-
-  const body = document.createElement("div");
-  body.className = "rr-settings-body";
-
-  const apiKey = mkInput("password", "sk-ant-…");
-  const baseURL = mkInput("text", "https://api.anthropic.com (default)");
-  const model = mkInput("text", "claude-haiku-4-5 (default)");
-  const enabled = document.createElement("input");
-  enabled.type = "checkbox";
-
-  const enabledRow = document.createElement("div");
-  enabledRow.className = "rr-row";
-  const enabledLabel = document.createElement("label");
-  enabledLabel.style.cssText = "font-size:11px;color:" + COLORS.textPrimary + ";text-transform:none;letter-spacing:0;";
-  enabledLabel.textContent = "Enable AI locator";
-  enabledRow.append(enabled, enabledLabel);
-
-  const escalationEnabled = document.createElement("input");
-  escalationEnabled.type = "checkbox";
-  const escalationRow = document.createElement("div");
-  escalationRow.className = "rr-row";
-  const escalationLabel = document.createElement("label");
-  escalationLabel.style.cssText = "font-size:11px;color:" + COLORS.textPrimary + ";text-transform:none;letter-spacing:0;";
-  escalationLabel.textContent = "Smart retry (stronger model on failure)";
-  escalationRow.append(escalationEnabled, escalationLabel);
-
-  const escalationModel = mkInput("text", "claude-sonnet-4-6 (default)");
-
-  const hint = document.createElement("div");
-  hint.className = "rr-hint";
-  hint.textContent = "Used only when deterministic resolution can't pin the element (maps, instances, conditionals). Key is stored locally; leave blank to keep the current one.";
-
-  body.append(
-    field("Anthropic API key", apiKey),
-    field("Custom endpoint (base URL)", baseURL),
-    field("Model", model),
-    enabledRow,
-    escalationRow,
-    field("Retry model", escalationModel),
-    hint,
-  );
-
-  const foot = document.createElement("div");
-  foot.className = "rr-settings-foot";
-  const clearBtn = document.createElement("button");
-  clearBtn.className = "rr-btn ghost";
-  clearBtn.textContent = "Clear key";
-  clearBtn.addEventListener("click", () => {
-    send({ type: "saveSettings", ai: { apiKey: "" } });
-    apiKey.value = "";
-  });
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "rr-btn primary";
-  saveBtn.textContent = "Save";
-  saveBtn.addEventListener("click", () => {
-    const patch: Record<string, unknown> = {
-      baseURL: baseURL.value.trim(),
-      model: model.value.trim(),
-      enabled: enabled.checked,
-      escalationEnabled: escalationEnabled.checked,
-      escalationModel: escalationModel.value.trim(),
-    };
-    if (apiKey.value.trim()) patch.apiKey = apiKey.value.trim(); // blank = keep current
-    send({ type: "saveSettings", ai: patch });
-    showToast("AI settings saved", "success");
-  });
-  foot.append(clearBtn, saveBtn);
-
-  panelEl.append(head, body, foot);
-
-  // Centered modal: a full-screen backdrop holds the panel in the middle,
-  // matching the keyboard-shortcuts overlay. Clicking the backdrop closes it.
-  overlayEl = document.createElement("div");
-  overlayEl.className = "rr-settings-overlay";
-  overlayEl.appendChild(panelEl);
-  overlayEl.addEventListener("click", (e) => {
-    if (e.target === overlayEl) toggleSettingsPanel();
-  });
-  shadowRoot.appendChild(overlayEl);
-  inputs = { apiKey, baseURL, model, enabled, escalationEnabled, escalationModel };
-
-  // Esc closes the modal (capture + stopPropagation so it doesn't also deselect).
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      if (e.key === "Escape" && open) {
-        e.stopPropagation();
-        toggleSettingsPanel();
-      }
-    },
-    true,
-  );
-
-  buildIndicator(shadowRoot);
-
-  onMessage((msg) => {
-    if (msg.type === "settings") applyView(msg.ai);
-    else if (msg.type === "aiResolving") indResolving(msg.tier);
-    else if (msg.type === "aiProposal") { indFound("Located it — confirm below"); showProposal(msg); }
-    else if (msg.type === "aiProposalComplete") onProposalComplete(msg);
-    else if (msg.type === "optimizeProposal") { indFound("Generated — confirm below"); showOptimizeProposal(msg); }
-    else if (msg.type === "optimizeProposalComplete") onOptimizeComplete(msg);
-    else if (msg.type === "commitBatchComplete") {
-      if (msg.success || msg.results.some((r) => r.resolvedBy === "ai")) indFound("Found it");
-      else indMaybeNotFound();
-    } else if (msg.type === "updatePropertyComplete" || msg.type === "updateTextComplete") {
-      if (msg.success) indFound("Found it");
-      else indMaybeNotFound();
-    }
-  });
+function escapeHtml(s: string): string {
+  const entities: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+  };
+  return s.replaceAll(/[&<>"]/g, (c) => entities[c] ?? c);
 }
 
 function applyView(v: AiSettingsView): void {
-  view = v;
-  if (!inputs) return;
+  if (!inputs) {
+    return;
+  }
   inputs.baseURL.value = v.baseURL ?? "";
   inputs.model.value = v.model ?? "";
   inputs.enabled.checked = v.enabled;
@@ -275,9 +163,14 @@ function applyView(v: AiSettingsView): void {
   inputs.escalationModel.disabled = v.source.escalationModel === "env";
   // Never receive the raw key — reflect presence via placeholder.
   inputs.apiKey.value = "";
-  inputs.apiKey.placeholder = v.hasApiKey
-    ? (v.source.apiKey === "env" ? "set via ANTHROPIC_API_KEY (env)" : "•••••••• (stored)")
-    : "sk-ant-…";
+  if (v.hasApiKey) {
+    inputs.apiKey.placeholder =
+      v.source.apiKey === "env"
+        ? "set via ANTHROPIC_API_KEY (env)"
+        : "•••••••• (stored)";
+  } else {
+    inputs.apiKey.placeholder = "sk-ant-…";
+  }
   inputs.apiKey.disabled = v.source.apiKey === "env";
 }
 
@@ -286,7 +179,9 @@ export function isSettingsPanelOpen(): boolean {
 }
 
 export function toggleSettingsPanel(): void {
-  if (!overlayEl) return;
+  if (!overlayEl) {
+    return;
+  }
   open = !open;
   if (open) {
     send({ type: "getSettings" });
@@ -322,32 +217,50 @@ function buildIndicator(shadowRoot: ShadowRoot): void {
   indEl = document.createElement("div");
   indEl.className = "rr-ai-ind";
   indEl.innerHTML = `<span class="rr-spark">${SPARKLE_SVG}</span><span class="rr-ind-text"></span>`;
-  shadowRoot.appendChild(indEl);
+  shadowRoot.append(indEl);
 }
 
 function clearIndTimers(): void {
-  if (indSafetyTimer) { clearTimeout(indSafetyTimer); indSafetyTimer = null; }
-  if (indPendingTimer) { clearTimeout(indPendingTimer); indPendingTimer = null; }
+  if (indSafetyTimer) {
+    clearTimeout(indSafetyTimer);
+    indSafetyTimer = null;
+  }
+  if (indPendingTimer) {
+    clearTimeout(indPendingTimer);
+    indPendingTimer = null;
+  }
 }
 
 function indSetText(t: string): void {
   const span = indEl?.querySelector(".rr-ind-text");
-  if (span) span.textContent = t;
+  if (span) {
+    span.textContent = t;
+  }
+}
+
+function indHide(): void {
+  clearIndTimers();
+  indActive = false;
+  indEl?.classList.remove("visible");
 }
 
 function indResolving(tier?: 1 | 2): void {
-  if (!indEl) return;
+  if (!indEl) {
+    return;
+  }
   indActive = true;
   clearIndTimers();
   indEl.className = "rr-ai-ind resolving visible";
   indSetText(tier === 2 ? "Looking harder…" : "Locating with AI…");
   // Safety: never hang forever. Generous because tier 1 + tier 2 run
   // back-to-back; each aiResolving message re-arms the timer anyway.
-  indSafetyTimer = setTimeout(indHide, 45000);
+  indSafetyTimer = setTimeout(indHide, 45_000);
 }
 
 function indFound(text: string): void {
-  if (!indEl || !indActive) return;
+  if (!indEl || !indActive) {
+    return;
+  }
   indActive = false;
   clearIndTimers();
   indEl.className = "rr-ai-ind visible";
@@ -358,10 +271,14 @@ function indFound(text: string): void {
 /** A failed completion arrived while resolving — wait briefly for a proposal,
  *  then conclude "couldn't locate" if none follows. */
 function indMaybeNotFound(): void {
-  if (!indActive || indPendingTimer) return;
+  if (!indActive || indPendingTimer) {
+    return;
+  }
   indPendingTimer = setTimeout(() => {
     indPendingTimer = null;
-    if (!indActive || !indEl) return;
+    if (!indActive || !indEl) {
+      return;
+    }
     indActive = false;
     clearIndTimers();
     indEl.className = "rr-ai-ind notfound visible";
@@ -370,18 +287,23 @@ function indMaybeNotFound(): void {
   }, 350);
 }
 
-function indHide(): void {
-  clearIndTimers();
-  indActive = false;
-  indEl?.classList.remove("visible");
-}
-
 // ── Proposal confirm ───────────────────────────────────────────────────────
 
 let confirmEl: HTMLDivElement | null = null;
 
-function showProposal(msg: Extract<import("@themelab/shared").ServerMessage, { type: "aiProposal" }>): void {
-  if (!panelEl?.parentNode) return;
+function hideConfirm(): void {
+  confirmEl?.classList.remove("visible");
+  const el = confirmEl;
+  confirmEl = null;
+  setTimeout(() => el?.remove(), 200);
+}
+
+function showProposal(
+  msg: Extract<ServerMessage, { type: "aiProposal" }>
+): void {
+  if (!panelEl?.parentNode) {
+    return;
+  }
   confirmEl?.remove();
   const root = panelEl.parentNode;
   confirmEl = document.createElement("div");
@@ -402,25 +324,26 @@ function showProposal(msg: Extract<import("@themelab/shared").ServerMessage, { t
   const dismiss = document.createElement("button");
   dismiss.className = "rr-btn ghost";
   dismiss.textContent = "Dismiss";
-  dismiss.addEventListener("click", () => { send({ type: "confirmResolution", id: msg.id, accept: false }); hideConfirm(); });
+  dismiss.addEventListener("click", () => {
+    send({ type: "confirmResolution", id: msg.id, accept: false });
+    hideConfirm();
+  });
   const apply = document.createElement("button");
   apply.className = "rr-btn primary";
   apply.textContent = "Apply";
-  apply.addEventListener("click", () => { send({ type: "confirmResolution", id: msg.id, accept: true }); hideConfirm(); });
+  apply.addEventListener("click", () => {
+    send({ type: "confirmResolution", id: msg.id, accept: true });
+    hideConfirm();
+  });
   actions.append(dismiss, apply);
-  confirmEl.appendChild(actions);
-  root.appendChild(confirmEl);
+  confirmEl.append(actions);
+  root.append(confirmEl);
   requestAnimationFrame(() => confirmEl?.classList.add("visible"));
 }
 
-function hideConfirm(): void {
-  confirmEl?.classList.remove("visible");
-  const el = confirmEl;
-  confirmEl = null;
-  setTimeout(() => el?.remove(), 200);
-}
-
-function onProposalComplete(msg: Extract<import("@themelab/shared").ServerMessage, { type: "aiProposalComplete" }>): void {
+function onProposalComplete(
+  msg: Extract<ServerMessage, { type: "aiProposalComplete" }>
+): void {
   if (msg.success) {
     showToast("Applied AI-resolved edit", "success");
     addChangeEntry({
@@ -429,15 +352,22 @@ function onProposalComplete(msg: Extract<import("@themelab/shared").ServerMessag
       filePath: msg.filePath ?? "",
       summary: `AI-resolved edit (${msg.kind ?? "ai"})`,
       state: "active",
-      revertData: { type: "batchApplyUndo", undoIds: msg.undoId ? [msg.undoId] : [] },
+      revertData: {
+        type: "batchApplyUndo",
+        undoIds: msg.undoId ? [msg.undoId] : [],
+      },
     });
   } else {
     showToast(msg.error ?? "AI resolution failed", "error");
   }
 }
 
-function showOptimizeProposal(msg: Extract<import("@themelab/shared").ServerMessage, { type: "optimizeProposal" }>): void {
-  if (!panelEl?.parentNode) return;
+function showOptimizeProposal(
+  msg: Extract<ServerMessage, { type: "optimizeProposal" }>
+): void {
+  if (!panelEl?.parentNode) {
+    return;
+  }
   confirmEl?.remove();
   const root = panelEl.parentNode;
   confirmEl = document.createElement("div");
@@ -445,28 +375,36 @@ function showOptimizeProposal(msg: Extract<import("@themelab/shared").ServerMess
   confirmEl.innerHTML =
     `<div class="rr-confirm-title">Optimize for mobile</div>` +
     `<div class="rr-confirm-body">` +
-      `<span class="rr-hint">${escapeHtml(msg.filePath)}:${msg.line}</span><br>` +
-      `<div class="rr-diff-row"><span class="rr-diff-tag">−</span><code class="rr-diff-old">${escapeHtml(msg.oldClassName)}</code></div>` +
-      `<div class="rr-diff-row"><span class="rr-diff-tag">+</span><code class="rr-diff-new">${escapeHtml(msg.newClassName)}</code></div>` +
-      `<span class="rr-hint">${escapeHtml(msg.reasoning)}</span>` +
+    `<span class="rr-hint">${escapeHtml(msg.filePath)}:${msg.line}</span><br>` +
+    `<div class="rr-diff-row"><span class="rr-diff-tag">−</span><code class="rr-diff-old">${escapeHtml(msg.oldClassName)}</code></div>` +
+    `<div class="rr-diff-row"><span class="rr-diff-tag">+</span><code class="rr-diff-new">${escapeHtml(msg.newClassName)}</code></div>` +
+    `<span class="rr-hint">${escapeHtml(msg.reasoning)}</span>` +
     `</div>`;
   const actions = document.createElement("div");
   actions.className = "rr-confirm-actions";
   const dismiss = document.createElement("button");
   dismiss.className = "rr-btn ghost";
   dismiss.textContent = "Dismiss";
-  dismiss.addEventListener("click", () => { send({ type: "confirmOptimize", id: msg.id, accept: false }); hideConfirm(); });
+  dismiss.addEventListener("click", () => {
+    send({ type: "confirmOptimize", id: msg.id, accept: false });
+    hideConfirm();
+  });
   const apply = document.createElement("button");
   apply.className = "rr-btn primary";
   apply.textContent = "Apply";
-  apply.addEventListener("click", () => { send({ type: "confirmOptimize", id: msg.id, accept: true }); hideConfirm(); });
+  apply.addEventListener("click", () => {
+    send({ type: "confirmOptimize", id: msg.id, accept: true });
+    hideConfirm();
+  });
   actions.append(dismiss, apply);
-  confirmEl.appendChild(actions);
-  root.appendChild(confirmEl);
+  confirmEl.append(actions);
+  root.append(confirmEl);
   requestAnimationFrame(() => confirmEl?.classList.add("visible"));
 }
 
-function onOptimizeComplete(msg: Extract<import("@themelab/shared").ServerMessage, { type: "optimizeProposalComplete" }>): void {
+function onOptimizeComplete(
+  msg: Extract<ServerMessage, { type: "optimizeProposalComplete" }>
+): void {
   if (msg.success) {
     showToast("Applied mobile-first className", "success");
     addChangeEntry({
@@ -475,11 +413,179 @@ function onOptimizeComplete(msg: Extract<import("@themelab/shared").ServerMessag
       filePath: "",
       summary: "Optimized for mobile (mobile-first className)",
       state: "active",
-      revertData: { type: "batchApplyUndo", undoIds: msg.undoId ? [msg.undoId] : [] },
+      revertData: {
+        type: "batchApplyUndo",
+        undoIds: msg.undoId ? [msg.undoId] : [],
+      },
     });
   } else {
     showToast(msg.error ?? "Optimization failed", "error");
   }
+}
+
+export function initSettingsPanel(shadowRoot: ShadowRoot): void {
+  const style = document.createElement("style");
+  style.textContent = STYLES;
+  shadowRoot.append(style);
+
+  panelEl = document.createElement("div");
+  panelEl.className = "rr-settings";
+
+  const head = document.createElement("div");
+  head.className = "rr-settings-head";
+  const heading = document.createElement("div");
+  heading.style.cssText = "display: flex; flex-direction: column; gap: 5px;";
+  heading.append(brandMark(15));
+  heading.insertAdjacentHTML("beforeend", `<h3>AI locator settings</h3>`);
+  head.append(heading);
+  const x = document.createElement("button");
+  x.className = "rr-settings-x";
+  x.textContent = "✕";
+  x.addEventListener("click", () => toggleSettingsPanel());
+  head.append(x);
+
+  const body = document.createElement("div");
+  body.className = "rr-settings-body";
+
+  const apiKey = mkInput("password", "sk-ant-…");
+  const baseURL = mkInput("text", "https://api.anthropic.com (default)");
+  const model = mkInput("text", "claude-haiku-4-5 (default)");
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+
+  const enabledRow = document.createElement("div");
+  enabledRow.className = "rr-row";
+  const enabledLabel = document.createElement("label");
+  enabledLabel.style.cssText = `font-size:11px;color:${
+    COLORS.textPrimary
+  };text-transform:none;letter-spacing:0;`;
+  enabledLabel.textContent = "Enable AI locator";
+  enabledRow.append(enabled, enabledLabel);
+
+  const escalationEnabled = document.createElement("input");
+  escalationEnabled.type = "checkbox";
+  const escalationRow = document.createElement("div");
+  escalationRow.className = "rr-row";
+  const escalationLabel = document.createElement("label");
+  escalationLabel.style.cssText = `font-size:11px;color:${
+    COLORS.textPrimary
+  };text-transform:none;letter-spacing:0;`;
+  escalationLabel.textContent = "Smart retry (stronger model on failure)";
+  escalationRow.append(escalationEnabled, escalationLabel);
+
+  const escalationModel = mkInput("text", "claude-sonnet-4-6 (default)");
+
+  const hint = document.createElement("div");
+  hint.className = "rr-hint";
+  hint.textContent =
+    "Used only when deterministic resolution can't pin the element (maps, instances, conditionals). Key is stored locally; leave blank to keep the current one.";
+
+  body.append(
+    field("Anthropic API key", apiKey),
+    field("Custom endpoint (base URL)", baseURL),
+    field("Model", model),
+    enabledRow,
+    escalationRow,
+    field("Retry model", escalationModel),
+    hint
+  );
+
+  const foot = document.createElement("div");
+  foot.className = "rr-settings-foot";
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "rr-btn ghost";
+  clearBtn.textContent = "Clear key";
+  clearBtn.addEventListener("click", () => {
+    send({ type: "saveSettings", ai: { apiKey: "" } });
+    apiKey.value = "";
+  });
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "rr-btn primary";
+  saveBtn.textContent = "Save";
+  saveBtn.addEventListener("click", () => {
+    const patch: Record<string, unknown> = {
+      baseURL: baseURL.value.trim(),
+      model: model.value.trim(),
+      enabled: enabled.checked,
+      escalationEnabled: escalationEnabled.checked,
+      escalationModel: escalationModel.value.trim(),
+    };
+    if (apiKey.value.trim()) {
+      patch.apiKey = apiKey.value.trim();
+    } // blank = keep current
+    send({ type: "saveSettings", ai: patch });
+    showToast("AI settings saved", "success");
+  });
+  foot.append(clearBtn, saveBtn);
+
+  panelEl.append(head, body, foot);
+
+  // Centered modal: a full-screen backdrop holds the panel in the middle,
+  // matching the keyboard-shortcuts overlay. Clicking the backdrop closes it.
+  overlayEl = document.createElement("div");
+  overlayEl.className = "rr-settings-overlay";
+  overlayEl.append(panelEl);
+  overlayEl.addEventListener("click", (e) => {
+    if (e.target === overlayEl) {
+      toggleSettingsPanel();
+    }
+  });
+  shadowRoot.append(overlayEl);
+  inputs = {
+    apiKey,
+    baseURL,
+    model,
+    enabled,
+    escalationEnabled,
+    escalationModel,
+  };
+
+  // Esc closes the modal (capture + stopPropagation so it doesn't also deselect).
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && open) {
+        e.stopPropagation();
+        toggleSettingsPanel();
+      }
+    },
+    true
+  );
+
+  buildIndicator(shadowRoot);
+
+  onMessage((msg) => {
+    if (msg.type === "settings") {
+      applyView(msg.ai);
+    } else if (msg.type === "aiResolving") {
+      indResolving(msg.tier);
+    } else if (msg.type === "aiProposal") {
+      indFound("Located it — confirm below");
+      showProposal(msg);
+    } else if (msg.type === "aiProposalComplete") {
+      onProposalComplete(msg);
+    } else if (msg.type === "optimizeProposal") {
+      indFound("Generated — confirm below");
+      showOptimizeProposal(msg);
+    } else if (msg.type === "optimizeProposalComplete") {
+      onOptimizeComplete(msg);
+    } else if (msg.type === "commitBatchComplete") {
+      if (msg.success || msg.results.some((r) => r.resolvedBy === "ai")) {
+        indFound("Found it");
+      } else {
+        indMaybeNotFound();
+      }
+    } else if (
+      msg.type === "updatePropertyComplete" ||
+      msg.type === "updateTextComplete"
+    ) {
+      if (msg.success) {
+        indFound("Found it");
+      } else {
+        indMaybeNotFound();
+      }
+    }
+  });
 }
 
 let optimizeActionEl: HTMLDivElement | null = null;
@@ -517,11 +623,15 @@ export function maybeShowOptimizeAction(
     fileMtime?: number;
     fileSize?: number;
   },
-  breakpointCount: number,
+  breakpointCount: number
 ): void {
   hideOptimizeAction();
-  if (breakpointCount < 2) return;
-  if (!panelEl?.parentNode) return;
+  if (breakpointCount < 2) {
+    return;
+  }
+  if (!panelEl?.parentNode) {
+    return;
+  }
   const root = panelEl.parentNode;
 
   const el = document.createElement("div");
@@ -559,16 +669,14 @@ export function maybeShowOptimizeAction(
   dismiss.textContent = "×";
   dismiss.title = "Dismiss";
   dismiss.addEventListener("click", hideOptimizeAction);
-  el.appendChild(btn);
-  el.appendChild(dismiss);
-  root.appendChild(el);
+  el.append(btn);
+  el.append(dismiss);
+  root.append(el);
   optimizeActionEl = el;
   // Auto-dismiss after a while if not acted on.
   setTimeout(() => {
-    if (optimizeActionEl === el) hideOptimizeAction();
-  }, 20000);
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+    if (optimizeActionEl === el) {
+      hideOptimizeAction();
+    }
+  }, 20_000);
 }

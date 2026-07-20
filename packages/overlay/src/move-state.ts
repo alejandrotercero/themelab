@@ -1,10 +1,15 @@
 import type { ComponentRef, ElementIdentity } from "@themelab/shared";
-import { getFiberFromHostInstance, isCompositeFiber, getDisplayName } from "bippy";
+import {
+  getFiberFromHostInstance,
+  isCompositeFiber,
+  getDisplayName,
+} from "bippy";
 import { normalizeFileName, isSourceFile } from "bippy/source";
-import { getResolvedOwnerStack } from "./utils/server-symbolication.js";
+
 import { SHADOWS } from "./design-tokens.js";
+import { getDebugSource } from "./utils/fiber-debug-source.js";
+import { getResolvedOwnerStack } from "./utils/server-symbolication.js";
 import { setStyle } from "./utils/style-access.js";
-import { getDebugSource } from "./tools/resolve-helper.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,20 +57,32 @@ export function captureParentLayout(element: HTMLElement): ParentLayout {
 /** Properties to copy from getComputedStyle for an exact box-model match. */
 const PLACEHOLDER_PROPS = [
   "display",
-  "width", "height",
-  "marginTop", "marginRight", "marginBottom", "marginLeft",
-  "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+  "width",
+  "height",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
   "boxSizing",
   // Flex/grid child properties
-  "flex", "flexGrow", "flexShrink", "flexBasis",
-  "gridColumn", "gridRow",
-  "alignSelf", "justifySelf",
+  "flex",
+  "flexGrow",
+  "flexShrink",
+  "flexBasis",
+  "gridColumn",
+  "gridRow",
+  "alignSelf",
+  "justifySelf",
   "order",
 ] as const;
 
 export function createPlaceholder(element: HTMLElement): HTMLElement {
   const ph = document.createElement("div");
-  ph.setAttribute("data-themelab-placeholder", "true");
+  ph.dataset.themelabPlaceholder = "true";
   const computed = getComputedStyle(element);
   for (const prop of PLACEHOLDER_PROPS) {
     setStyle(ph, prop, computed[prop as keyof CSSStyleDeclaration] as string);
@@ -78,25 +95,40 @@ export function createPlaceholder(element: HTMLElement): HTMLElement {
 // Transform helpers
 // ---------------------------------------------------------------------------
 
-export function composeTransform(dx: number, dy: number, existingTransform: string): string {
-  const base = existingTransform && existingTransform !== "none" ? ` ${existingTransform}` : "";
+export function composeTransform(
+  dx: number,
+  dy: number,
+  existingTransform: string
+): string {
+  const base =
+    existingTransform && existingTransform !== "none"
+      ? ` ${existingTransform}`
+      : "";
   return `translate(${dx}px, ${dy}px)${base}`;
 }
 
 export function applyMoveTransform(entry: MoveEntry): void {
-  entry.element.style.transform = composeTransform(entry.delta.dx, entry.delta.dy, entry.existingTransform);
+  entry.element.style.transform = composeTransform(
+    entry.delta.dx,
+    entry.delta.dy,
+    entry.existingTransform
+  );
 }
 
 export function clearMoveTransform(entry: MoveEntry): void {
-  if (entry.existingTransform && entry.existingTransform !== "none") {
-    entry.element.style.transform = entry.existingTransform;
-  } else {
-    entry.element.style.transform = "";
-  }
+  entry.element.style.transform =
+    entry.existingTransform && entry.existingTransform !== "none"
+      ? entry.existingTransform
+      : "";
 }
 
 /** Apply dragging visual: elevated shadow + slight scale. */
-export function applyDragVisual(element: HTMLElement, dx: number, dy: number, existingTransform: string): void {
+export function applyDragVisual(
+  element: HTMLElement,
+  dx: number,
+  dy: number,
+  existingTransform: string
+): void {
   element.style.transform = `translate(${dx}px, ${dy}px) scale(1.02)${existingTransform && existingTransform !== "none" ? ` ${existingTransform}` : ""}`;
   element.style.boxShadow = SHADOWS.lg;
   element.style.transition = "none";
@@ -124,12 +156,18 @@ export function isOutOfFlow(element: HTMLElement): boolean {
 /** Count same-tag siblings before this element in its parent (0-indexed). */
 export function computeNthOfType(element: HTMLElement): number {
   const parent = element.parentElement;
-  if (!parent) return 0;
+  if (!parent) {
+    return 0;
+  }
   const tag = element.tagName;
   let count = 0;
-  for (const child of Array.from(parent.children)) {
-    if (child === element) break;
-    if (child.tagName === tag) count++;
+  for (const child of parent.children) {
+    if (child === element) {
+      break;
+    }
+    if (child.tagName === tag) {
+      count += 1;
+    }
   }
   return count;
 }
@@ -138,11 +176,15 @@ export function computeNthOfType(element: HTMLElement): number {
 // HMR Re-acquisition (mirrors property-controller.ts pattern)
 // ---------------------------------------------------------------------------
 
-export function reacquireMovedElement(identity: ElementIdentity): HTMLElement | null {
+export function reacquireMovedElement(
+  identity: ElementIdentity
+): HTMLElement | null {
   // Strategy 1: synchronous _debugSource fiber walk (React 18)
   const candidates = document.querySelectorAll(identity.tagName);
   for (const el of candidates) {
-    if (!(el instanceof HTMLElement)) continue;
+    if (!(el instanceof HTMLElement)) {
+      continue;
+    }
     try {
       let fiber = getFiberFromHostInstance(el);
       while (fiber) {
@@ -167,20 +209,37 @@ export function reacquireMovedElement(identity: ElementIdentity): HTMLElement | 
   return null;
 }
 
-export async function reacquireMovedElementAsync(identity: ElementIdentity): Promise<HTMLElement | null> {
+export async function reacquireMovedElementAsync(
+  identity: ElementIdentity
+): Promise<HTMLElement | null> {
   const candidates = document.querySelectorAll(identity.tagName);
   for (const el of candidates) {
-    if (!(el instanceof HTMLElement)) continue;
+    if (!(el instanceof HTMLElement)) {
+      continue;
+    }
     try {
       const fiber = getFiberFromHostInstance(el);
-      if (!fiber) continue;
+      if (!fiber) {
+        continue;
+      }
+      // oxlint-disable-next-line no-await-in-loop -- sequential early-return search: each candidate is resolved one at a time so the first match wins and remaining fiber walks are skipped
       const frames = await getResolvedOwnerStack(fiber);
-      if (!frames || frames.length === 0) continue;
+      if (!frames || frames.length === 0) {
+        continue;
+      }
       for (const frame of frames) {
-        if (!frame.functionName || frame.functionName !== identity.componentName) continue;
+        if (
+          !frame.functionName ||
+          frame.functionName !== identity.componentName
+        ) {
+          continue;
+        }
         if (frame.fileName) {
           const normalized = normalizeFileName(frame.fileName);
-          if (isSourceFile(normalized) && normalized.endsWith(identity.filePath)) {
+          if (
+            isSourceFile(normalized) &&
+            normalized.endsWith(identity.filePath)
+          ) {
             return el;
           }
         }

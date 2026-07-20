@@ -1,10 +1,11 @@
-import { Google_Sans_Code, Inter } from "next/font/google"
+import { Analytics } from "@vercel/analytics/next"
 
 import "./globals.css"
+import { Google_Sans_Code, Inter } from "next/font/google"
+
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { Analytics } from "@vercel/analytics/next";
 
 // Matches the ThemeLab overlay, which renders entirely in Google Sans Code for
 // its code-tool aesthetic (packages/overlay/src/design-tokens.ts → FONT_FAMILY).
@@ -32,11 +33,19 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("antialiased", googleSansCode.variable, inter.variable, "font-sans")}
+      className={cn(
+        "antialiased",
+        googleSansCode.variable,
+        inter.variable,
+        "font-sans"
+      )}
     >
       <head>
         {/* Geomanist — exposed via the `font-heading` utility (globals.css); not applied anywhere yet. */}
-        <link rel="stylesheet" href="https://cdn.strast.dev/fonts/geomanist.full.css" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.strast.dev/fonts/geomanist.full.css"
+        />
       </head>
       <body>
         <ThemeProvider>

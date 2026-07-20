@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest"
-import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
+
+import type { InstallPayloadError } from "../install-payload"
 import {
   decodeInstallPayload,
   encodeInstallPayload,
   createInstallCommand,
-  InstallPayloadError,
   MAX_INSTALL_PAYLOAD_LENGTH,
 } from "../install-payload"
+import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
 
 const theme = paletteToThemeStyles("#8b5cf6", "#64748b")
 
 function encodeRaw(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value))
-  return btoa(String.fromCharCode(...bytes))
+  return btoa(String.fromCodePoint(...bytes))
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replace(/=+$/u, "")

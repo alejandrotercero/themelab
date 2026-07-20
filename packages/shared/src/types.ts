@@ -69,7 +69,7 @@ export type BatchOperation =
       fileMtime?: number;
       fileSize?: number;
       jsxPath?: JSXStructuralPath;
-      updates: Array<{
+      updates: {
         tailwindPrefix: string;
         tailwindToken: string | null;
         value: string;
@@ -83,7 +83,7 @@ export type BatchOperation =
          * silently changing the base `mb-0` that a responsive variant overrides.
          */
         variant?: string;
-      }>;
+      }[];
     }
   | {
       op: "updateText";
@@ -246,7 +246,7 @@ export type ClientMessage =
   | {
       type: "updateTheme";
       filePath: string;
-      edits: Array<{ selector: string; vars: Record<string, string> }>;
+      edits: { selector: string; vars: Record<string, string> }[];
     }
   | {
       type: "updateProperty";
@@ -278,7 +278,7 @@ export type ClientMessage =
       filePath: string;
       lineNumber: number;
       columnNumber: number;
-      updates: Array<{
+      updates: {
         property: string;
         cssProperty: string;
         value: string;
@@ -288,7 +288,7 @@ export type ClientMessage =
         originalValue: string;
         classPattern?: string;
         standalone?: boolean;
-      }>;
+      }[];
       framework: "tailwind";
       tagName?: string;
       className?: string;
@@ -366,10 +366,15 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "reorderComplete"; success: boolean; error?: string }
-  | { type: "moveSiblingComplete"; success: boolean; error?: string; pending?: boolean }
+  | {
+      type: "moveSiblingComplete";
+      success: boolean;
+      error?: string;
+      pending?: boolean;
+    }
   | {
       type: "siblingsList";
-      siblings: Array<{ componentName: string; lineNumber: number }>;
+      siblings: { componentName: string; lineNumber: number }[];
     }
   | { type: "undoComplete"; success: boolean; error?: string }
   | { type: "devServerDisconnected" }
@@ -384,14 +389,32 @@ export type ServerMessage =
     }
   | { type: "tailwindTokens"; tokens: TailwindTokenMap }
   | { type: "themeStyles"; theme: ThemeStyles; source: ThemeSource | null }
-  | { type: "updateThemeComplete"; success: boolean; error?: string; undoId?: string }
-  | { type: "updateTextComplete"; success: boolean; error?: string; reason?: string; undoId?: string }
-  | { type: "revertComplete"; results: Array<{ undoId: string; success: boolean; error?: string }> }
-  | { type: "discoverFileResult"; componentName: string; filePath: string | null }
+  | {
+      type: "updateThemeComplete";
+      success: boolean;
+      error?: string;
+      undoId?: string;
+    }
+  | {
+      type: "updateTextComplete";
+      success: boolean;
+      error?: string;
+      reason?: string;
+      undoId?: string;
+    }
+  | {
+      type: "revertComplete";
+      results: { undoId: string; success: boolean; error?: string }[];
+    }
+  | {
+      type: "discoverFileResult";
+      componentName: string;
+      filePath: string | null;
+    }
   | {
       type: "commitBatchComplete";
       success: boolean;
-      results: Array<{
+      results: {
         op: BatchOperation["op"];
         file: string;
         line: number;
@@ -401,7 +424,7 @@ export type ServerMessage =
         resolvedBy?: "ai";
         aiKind?: string;
         aiReasoning?: string;
-      }>;
+      }[];
       error?: string;
       undoIds: string[];
     }
@@ -487,7 +510,7 @@ export interface ComponentInfo {
   filePath: string;
   lineNumber: number;
   columnNumber: number;
-  stack: Array<{
+  stack: {
     filePath: string;
     lineNumber: number;
     columnNumber: number;
@@ -498,7 +521,7 @@ export interface ComponentInfo {
     // for presentation only.
     origin?: "app" | "package" | "unknown";
     packageName?: string | null;
-  }>;
+  }[];
   boundingRect: {
     top: number;
     left: number;
@@ -520,10 +543,10 @@ export interface ComponentInfo {
 export interface UndoEntry {
   id: string;
   filePath: string;
-  content: string;          // beforeContent — the file state before the write
-  afterContent: string;     // the file state after the write — for conflict detection
+  content: string; // beforeContent — the file state before the write
+  afterContent: string; // the file state after the write — for conflict detection
   timestamp: number;
-  reverted?: boolean;       // marked true when reverted via revertChanges (not removed from stack)
+  reverted?: boolean; // marked true when reverted via revertChanges (not removed from stack)
 }
 
 export interface SiblingInfo {
@@ -533,8 +556,19 @@ export interface SiblingInfo {
 
 // --- Property Inspector Types ---
 
-export type ControlType = "number-scrub" | "segmented" | "color-swatch" | "box-model" | "align-segmented";
-export type PropertyGroup = "layout" | "spacing" | "size" | "typography" | "background" | "border";
+export type ControlType =
+  | "number-scrub"
+  | "segmented"
+  | "color-swatch"
+  | "box-model"
+  | "align-segmented";
+export type PropertyGroup =
+  | "layout"
+  | "spacing"
+  | "size"
+  | "typography"
+  | "background"
+  | "border";
 
 export interface PropertyDescriptor {
   key: string;
@@ -695,13 +729,26 @@ export type Annotation = TextAnnotation | ColorOverride | TextEditAnnotation;
 // ColorOverrideRuntime (in canvas-state.ts) which adds the runtime-only field.
 export type CanvasUndoAction =
   | { type: "moveCreate"; moveId: string }
-  | { type: "moveDelta"; moveId: string; previousDelta: { dx: number; dy: number } }
+  | {
+      type: "moveDelta";
+      moveId: string;
+      previousDelta: { dx: number; dy: number };
+    }
   | { type: "annotationAdd"; annotationId: string }
-  | { type: "colorChange"; annotationId: string; property: string; previousColor: string }
+  | {
+      type: "colorChange";
+      annotationId: string;
+      property: string;
+      previousColor: string;
+    }
   | {
       type: "propertyChange";
       elementIdentity: ElementIdentity;
-      overrides: Array<{ cssProperty: string; previousValue: string; newValue: string }>;
+      overrides: {
+        cssProperty: string;
+        previousValue: string;
+        newValue: string;
+      }[];
     }
   | {
       type: "textEditRestore";
@@ -718,8 +765,17 @@ export type RevertData =
   | { type: "noop" }
   | { type: "cliUndo"; undoIds: string[] }
   | { type: "moveRemove"; moveId: string }
-  | { type: "moveRestore"; moveId: string; previousDelta: { dx: number; dy: number } }
-  | { type: "annotationRemove"; annotationId: string; originalInnerHTML: string; elementIdentity: ElementIdentity }
+  | {
+      type: "moveRestore";
+      moveId: string;
+      previousDelta: { dx: number; dy: number };
+    }
+  | {
+      type: "annotationRemove";
+      annotationId: string;
+      originalInnerHTML: string;
+      elementIdentity: ElementIdentity;
+    }
   | { type: "batchApplyUndo"; undoIds: string[] }
   | { type: "cloneRemove"; cloneId: string }
   | { type: "deleteRestore"; deleteId: string };
@@ -727,7 +783,14 @@ export type RevertData =
 export interface ChangeEntry {
   id: string;
   timestamp: number;
-  type: "property" | "move" | "textEdit" | "textAnnotation" | "commitBatch" | "clone" | "delete";
+  type:
+    | "property"
+    | "move"
+    | "textEdit"
+    | "textAnnotation"
+    | "commitBatch"
+    | "clone"
+    | "delete";
   componentName: string;
   filePath: string;
   summary: string;

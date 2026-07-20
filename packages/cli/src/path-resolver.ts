@@ -1,8 +1,14 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
 
-function isWithinProjectRoot(resolvedPath: string, projectRoot: string): boolean {
-  return resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
+function isWithinProjectRoot(
+  resolvedPath: string,
+  projectRoot: string
+): boolean {
+  return (
+    resolvedPath === projectRoot ||
+    resolvedPath.startsWith(projectRoot + path.sep)
+  );
 }
 
 /**
@@ -16,7 +22,9 @@ function canonicalize(p: string): string {
   // Walk up until an existing path is found (or we hit the filesystem root).
   while (!fs.existsSync(cur)) {
     const parent = path.dirname(cur);
-    if (parent === cur) return p; // reached root; nothing exists — return as-is
+    if (parent === cur) {
+      return p;
+    } // reached root; nothing exists — return as-is
     tail.unshift(path.basename(cur));
     cur = parent;
   }
@@ -39,16 +47,25 @@ function canonicalize(p: string): string {
  * - `/abs/path/outside/project/file.tsx`
  * - `escape/secret.txt` where `escape` is a symlink pointing outside the root
  */
-export function resolveProjectFilePath(filePath: string, projectRoot: string): string | null {
+export function resolveProjectFilePath(
+  filePath: string,
+  projectRoot: string
+): string | null {
   const normalizedRoot = path.resolve(projectRoot);
   const canonicalRoot = canonicalize(normalizedRoot);
   const incomingPath = filePath.trim();
-  if (!incomingPath) return null;
+  if (!incomingPath) {
+    return null;
+  }
 
   if (path.isAbsolute(incomingPath)) {
     const absoluteCandidate = path.resolve(incomingPath);
     if (isWithinProjectRoot(absoluteCandidate, normalizedRoot)) {
-      if (!isWithinProjectRoot(canonicalize(absoluteCandidate), canonicalRoot)) return null;
+      if (
+        !isWithinProjectRoot(canonicalize(absoluteCandidate), canonicalRoot)
+      ) {
+        return null;
+      }
       return absoluteCandidate;
     }
 
@@ -61,19 +78,35 @@ export function resolveProjectFilePath(filePath: string, projectRoot: string): s
 
     const projectRelativeCandidate = path.resolve(
       normalizedRoot,
-      incomingPath.replace(/^[/\\]+/, ""),
+      incomingPath.replace(/^[/\\]+/, "")
     );
-    if (!isWithinProjectRoot(projectRelativeCandidate, normalizedRoot)) return null;
-    if (!isWithinProjectRoot(canonicalize(projectRelativeCandidate), canonicalRoot)) return null;
+    if (!isWithinProjectRoot(projectRelativeCandidate, normalizedRoot)) {
+      return null;
+    }
+    if (
+      !isWithinProjectRoot(
+        canonicalize(projectRelativeCandidate),
+        canonicalRoot
+      )
+    ) {
+      return null;
+    }
     return projectRelativeCandidate;
   }
 
   const relativeCandidate = path.resolve(normalizedRoot, incomingPath);
-  if (!isWithinProjectRoot(relativeCandidate, normalizedRoot)) return null;
-  if (!isWithinProjectRoot(canonicalize(relativeCandidate), canonicalRoot)) return null;
+  if (!isWithinProjectRoot(relativeCandidate, normalizedRoot)) {
+    return null;
+  }
+  if (!isWithinProjectRoot(canonicalize(relativeCandidate), canonicalRoot)) {
+    return null;
+  }
   return relativeCandidate;
 }
 
-export function isProjectFilePathSafe(filePath: string, projectRoot: string): boolean {
+export function isProjectFilePathSafe(
+  filePath: string,
+  projectRoot: string
+): boolean {
   return resolveProjectFilePath(filePath, projectRoot) !== null;
 }

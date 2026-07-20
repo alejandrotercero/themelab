@@ -30,10 +30,10 @@ const BUNDLER_PREFIXES = [
  * Suffixes appended by bundlers that aren't part of the real path.
  */
 const BUNDLER_SUFFIXES = [
-  /\?[a-f0-9]+$/,      // ?abc123 cache busters
-  /\?v=\d+$/,          // ?v=123 version params
-  /\?t=\d+$/,          // ?t=123 timestamp params
-  /\?import$/,         // Vite import suffix
+  /\?[a-f0-9]+$/, // ?abc123 cache busters
+  /\?v=\d+$/, // ?v=123 version params
+  /\?t=\d+$/, // ?t=123 timestamp params
+  /\?import$/, // Vite import suffix
 ];
 
 /**
@@ -50,13 +50,19 @@ export function isServerComponentUrl(url: string): boolean {
 /** Strip the virtual server-component wrapper, returning the inner URL. */
 export function devirtualizeServerUrl(url: string): string {
   for (const prefix of SERVER_COMPONENT_URL_PREFIXES) {
-    if (!url.startsWith(prefix)) continue;
+    if (!url.startsWith(prefix)) {
+      continue;
+    }
     const environmentEndIndex = url.indexOf("/", prefix.length);
-    if (environmentEndIndex === -1) continue;
+    if (environmentEndIndex === -1) {
+      continue;
+    }
     const pathStart = environmentEndIndex + 1;
     const querySuffixIndex = url.lastIndexOf("?");
     const rawPath =
-      querySuffixIndex > pathStart ? url.slice(pathStart, querySuffixIndex) : url.slice(pathStart);
+      querySuffixIndex > pathStart
+        ? url.slice(pathStart, querySuffixIndex)
+        : url.slice(pathStart);
     try {
       return decodeURIComponent(rawPath);
     } catch {
@@ -76,7 +82,9 @@ export function devirtualizeServerUrl(url: string): string {
  *   "src/App.tsx"                                 → "src/App.tsx" (passthrough)
  */
 export function extractFilePath(rawFileName: string): string {
-  if (!rawFileName) return "";
+  if (!rawFileName) {
+    return "";
+  }
 
   // Unwrap server-component virtual URLs first — the inner path is a normal
   // bundler URL that the prefix stripping below already handles.
@@ -94,9 +102,11 @@ export function extractFilePath(rawFileName: string): string {
 
   // Strip Next.js static chunk path
   // e.g. "/_next/static/chunks/app/src/components/Button.tsx"
-  const nextStaticMatch = cleaned.match(/\/_next\/static\/chunks\/(?:app\/)?(.+)/);
-  if (nextStaticMatch) {
-    cleaned = nextStaticMatch[1];
+  const nextStaticMatch = cleaned.match(
+    /\/_next\/static\/chunks\/(?:app\/)?(?<rest>.+)/
+  );
+  if (nextStaticMatch?.groups) {
+    ({ rest: cleaned } = nextStaticMatch.groups);
   }
 
   // Strip query string suffixes
@@ -118,21 +128,51 @@ export function extractFilePath(rawFileName: string): string {
 }
 
 /**
+ * Detect bundler output chunk names that are NOT real source files and would
+ * cause ENOENT writes if treated as source paths — e.g. Turbopack's
+ * `src_99ffcf5b._.js` or webpack hashed chunks like `app-pages._a1b2c3d4.js`.
+ * Real source filenames (`app-header.tsx`, `Button.jsx`) never contain the
+ * `._.` marker or a long hex hash segment immediately before the extension.
+ */
+export function isBundlerChunkName(filePath: string): boolean {
+  const base = filePath.split("/").pop() ?? filePath;
+  // Turbopack's `._.` marker never appears in hand-authored source filenames.
+  if (base.includes("._.")) {
+    return true;
+  }
+  // Hashed chunk: a 6+ hex-char segment right before the .js/.cjs/.mjs extension.
+  if (/[._-][0-9a-f]{6,}\.[cm]?js$/i.test(base)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Resolve a frame's fileName to a usable source file path.
  * Tries bippy's normalizeFileName + isSourceFile first (handles known good cases).
  * Falls back to extractFilePath for bundler URLs that bippy rejects.
  */
-export function resolveFrameFilePath(rawFileName: string | undefined | null): string {
-  if (!rawFileName) return "";
+export function resolveFrameFilePath(
+  rawFileName: string | undefined | null
+): string {
+  if (!rawFileName) {
+    return "";
+  }
 
   // Bundler output chunks (e.g. Turbopack's src_*._.js) can have a .js extension
   // that bippy's isSourceFile happily accepts — reject them up front so they
   // never reach the CLI as a (non-existent) source path.
-  if (isBundlerChunkName(rawFileName)) return "";
+  if (isBundlerChunkName(rawFileName)) {
+    return "";
+  }
 
   // Try bippy's built-in normalization first
   const normalized = normalizeFileName(rawFileName);
-  if (normalized && isSourceFile(normalized) && !isBundlerChunkName(normalized)) {
+  if (
+    normalized &&
+    isSourceFile(normalized) &&
+    !isBundlerChunkName(normalized)
+  ) {
     return normalized;
   }
 
@@ -153,30 +193,14 @@ export function resolveFrameFilePath(rawFileName: string | undefined | null): st
   // denylist, so the only hard rejects left are bundler output and node_modules.
   if (
     extracted &&
-    /\.(tsx?|jsx?|mjs|mdx?)$/.test(extracted) &&
+    /\.(?<ext>tsx?|jsx?|mjs|mdx?)$/.test(extracted) &&
     !extracted.includes("node_modules") &&
-    !extracted.includes("/dist/") &&           // built library output
-    !extracted.includes("/build/") &&          // built library output
-    !isBundlerChunkName(extracted)             // bundler output chunk, not real source
+    !extracted.includes("/dist/") && // built library output
+    !extracted.includes("/build/") && // built library output
+    !isBundlerChunkName(extracted) // bundler output chunk, not real source
   ) {
     return extracted;
   }
 
   return "";
-}
-
-/**
- * Detect bundler output chunk names that are NOT real source files and would
- * cause ENOENT writes if treated as source paths — e.g. Turbopack's
- * `src_99ffcf5b._.js` or webpack hashed chunks like `app-pages._a1b2c3d4.js`.
- * Real source filenames (`app-header.tsx`, `Button.jsx`) never contain the
- * `._.` marker or a long hex hash segment immediately before the extension.
- */
-export function isBundlerChunkName(filePath: string): boolean {
-  const base = filePath.split("/").pop() ?? filePath;
-  // Turbopack's `._.` marker never appears in hand-authored source filenames.
-  if (base.includes("._.")) return true;
-  // Hashed chunk: a 6+ hex-char segment right before the .js/.cjs/.mjs extension.
-  if (/[._-][0-9a-f]{6,}\.[cm]?js$/i.test(base)) return true;
-  return false;
 }

@@ -10,24 +10,32 @@
 // transform in packages/cli/src/transform.ts (canonicalVariantPrefix).
 
 import type { TailwindTokenMap } from "@themelab/shared";
-import { setProjectScreens, pickWinningVariant, decomposeClass } from "../utils/class-matches-prefix.js";
+
 import { setMode as setThemePickerMode, canEditDark } from "../theme-state.js";
+import {
+  setProjectScreens,
+  pickWinningVariant,
+  decomposeClass,
+} from "../utils/class-matches-prefix.js";
 
 export interface TailwindMeta {
   /** breakpoint name → raw min-width (e.g. "768px" or "48rem"); smallest-first. */
-  screens: Array<{ name: string; minWidth: number }>;
+  screens: { name: string; minWidth: number }[];
   darkMode: { strategy: "class" | "media"; selector: string };
 }
 
 /** Guaranteed-available defaults if the CLI payload lacks metadata (older CLI). */
-const DEFAULT_SCREENS: Array<{ name: string; minWidth: number }> = [
+const DEFAULT_SCREENS: { name: string; minWidth: number }[] = [
   { name: "sm", minWidth: 640 },
   { name: "md", minWidth: 768 },
   { name: "lg", minWidth: 1024 },
   { name: "xl", minWidth: 1280 },
   { name: "2xl", minWidth: 1536 },
 ];
-const DEFAULT_DARK: TailwindMeta["darkMode"] = { strategy: "media", selector: ".dark" };
+const DEFAULT_DARK: TailwindMeta["darkMode"] = {
+  strategy: "media",
+  selector: ".dark",
+};
 
 let meta: TailwindMeta = { screens: DEFAULT_SCREENS, darkMode: DEFAULT_DARK };
 
@@ -40,24 +48,35 @@ export interface VariantTarget {
 
 let target: VariantTarget = { breakpoint: "", dark: false };
 
-export type VariantTargetListener = (target: VariantTarget, meta: TailwindMeta) => void;
+export type VariantTargetListener = (
+  target: VariantTarget,
+  meta: TailwindMeta
+) => void;
 let listeners: VariantTargetListener[] = [];
 
 function notify(): void {
-  for (const fn of listeners) fn(target, meta);
+  for (const fn of listeners) {
+    fn(target, meta);
+  }
 }
 
 // --- Metadata ---------------------------------------------------------------
 
 /** Parse a raw Tailwind screen value ("768px", "48rem", "48em") into a pixel min-width. */
 function screenToPx(value: string): number {
-  const px = /^(\d+(?:\.\d+)?)px$/i.exec(value.trim());
-  if (px) return Math.round(parseFloat(px[1]));
-  const em = /^(\d+(?:\.\d+)?)r?em$/i.exec(value.trim());
-  if (em) return Math.round(parseFloat(em[1]) * 16);
-  const bare = /^(\d+(?:\.\d+)?)$/.exec(value.trim());
-  if (bare) return Math.round(parseFloat(bare[1]));
-  return NaN;
+  const px = /^(?<num>\d+(?:\.\d+)?)px$/i.exec(value.trim());
+  if (px?.groups) {
+    return Math.round(Number(px.groups.num));
+  }
+  const em = /^(?<num>\d+(?:\.\d+)?)r?em$/i.exec(value.trim());
+  if (em?.groups) {
+    return Math.round(Number(em.groups.num));
+  }
+  const bare = /^(?<num>\d+(?:\.\d+)?)$/.exec(value.trim());
+  if (bare?.groups) {
+    return Math.round(Number(bare.groups.num));
+  }
+  return Number.NaN;
 }
 
 /**
@@ -68,14 +87,16 @@ function screenToPx(value: string): number {
 export function setTailwindMeta(tokens: Partial<TailwindTokenMap>): void {
   let screens = DEFAULT_SCREENS;
   if (tokens.screens) {
-    const parsed: Array<{ name: string; minWidth: number }> = [];
     // Preserve the project's declared order; screens are naturally smallest-first in
     // Tailwind configs, sort defensively in case they aren't.
     const entries = Object.entries(tokens.screens)
       .map(([name, raw]) => ({ name, minWidth: screenToPx(raw) }))
-      .filter((s) => !isNaN(s.minWidth))
+      .filter((s) => !Number.isNaN(s.minWidth))
+      // oxlint-disable-next-line unicorn/no-array-sort -- sorts a freshly created array (no shared reference to mutate); Array#toSorted is unavailable under lib ES2022
       .sort((a, b) => a.minWidth - b.minWidth);
-    if (entries.length) screens = entries;
+    if (entries.length) {
+      screens = entries;
+    }
   }
   // Clamp the active breakpoint into the new set if it vanished.
   if (target.breakpoint && !screens.some((s) => s.name === target.breakpoint)) {
@@ -106,13 +127,42 @@ export function getVariantTarget(): VariantTarget {
   return target;
 }
 
-export function setVariantTarget(next: Partial<VariantTarget>): void {
-  const prev = target;
-  target = { ...target, ...next };
-  if (target.breakpoint !== prev.breakpoint || target.dark !== prev.dark) {
-    applyDarkState();
-    notify();
+// --- Dark preview -----------------------------------------------------------
+
+// Whether we are currently previewing dark mode, and what the page's dark state
+// was BEFORE we touched it (so turning the preview off restores it — and we never
+// strip a `.dark` the host app owns).
+let darkPreviewActive = false;
+let pageHadDarkBeforePreview = false;
+
+// Idempotent: only acts on the off→on / on→off transition, so it's safe to call
+// on every target change (breakpoint clicks, selection changes) without flipping
+// ownership mid-preview — the bug that made the toggle stop working after a few
+// uses. The previous version released ownership whenever it re-ran while dark was
+// already on, leaving the class stuck on with no way to remove it.
+function applyDarkPreview(): void {
+  const root = document.documentElement;
+  const selector = meta.darkMode.selector.replace(/^\./, "");
+  // Only the class strategy can be previewed; media strategy is read-only.
+  const wantDark = target.dark && meta.darkMode.strategy === "class";
+
+  if (wantDark && !darkPreviewActive) {
+    pageHadDarkBeforePreview = root.classList.contains(selector);
+    root.classList.add(selector);
+    darkPreviewActive = true;
+  } else if (!wantDark && darkPreviewActive) {
+    // Restore the pre-preview state: only strip `.dark` if the app didn't own it.
+    if (!pageHadDarkBeforePreview) {
+      root.classList.remove(selector);
+    }
+    darkPreviewActive = false;
   }
+  // Same-state calls are no-ops (idempotent).
+}
+
+/** Whether the live dark preview is currently engaged. */
+export function isDarkPreviewActive(): boolean {
+  return darkPreviewActive;
 }
 
 /**
@@ -124,7 +174,18 @@ export function setVariantTarget(next: Partial<VariantTarget>): void {
 function applyDarkState(): void {
   applyDarkPreview();
   // setMode no-ops when the project has no dark theme block (canEditDark()).
-  if (canEditDark()) setThemePickerMode(target.dark ? "dark" : "light");
+  if (canEditDark()) {
+    setThemePickerMode(target.dark ? "dark" : "light");
+  }
+}
+
+export function setVariantTarget(next: Partial<VariantTarget>): void {
+  const prev = target;
+  target = { ...target, ...next };
+  if (target.breakpoint !== prev.breakpoint || target.dark !== prev.dark) {
+    applyDarkState();
+    notify();
+  }
 }
 
 export function onVariantTargetChange(fn: VariantTargetListener): () => void {
@@ -154,7 +215,9 @@ export function getBreakpointsWithOverrides(): Set<string> {
   const found = new Set<string>();
   for (const cls of activeClasses) {
     for (const v of decomposeClass(cls).variants) {
-      if (names.has(v)) found.add(v);
+      if (names.has(v)) {
+        found.add(v);
+      }
     }
   }
   return found;
@@ -167,8 +230,12 @@ export function getBreakpointsWithOverrides(): Set<string> {
  */
 export function getVariantTokens(): string[] {
   const tokens: string[] = [];
-  if (target.dark) tokens.push("dark");
-  if (target.breakpoint) tokens.push(target.breakpoint);
+  if (target.dark) {
+    tokens.push("dark");
+  }
+  if (target.breakpoint) {
+    tokens.push(target.breakpoint);
+  }
   return tokens;
 }
 
@@ -184,12 +251,14 @@ export function getVariantString(): string | undefined {
  */
 export function resetVariantTargetOnSelect(
   classes: string[],
-  matchesBare: (bare: string) => boolean,
+  matchesBare: (bare: string) => boolean
 ): void {
   const winning = pickWinningVariant(classes, matchesBare, window.innerWidth);
-  const pageDark = document.documentElement.matches(meta.darkMode.strategy === "class"
-    ? meta.darkMode.selector
-    : "(prefers-color-scheme: dark)");
+  const pageDark = document.documentElement.matches(
+    meta.darkMode.strategy === "class"
+      ? meta.darkMode.selector
+      : "(prefers-color-scheme: dark)"
+  );
   const next: VariantTarget = { breakpoint: winning, dark: pageDark };
   if (next.breakpoint !== target.breakpoint || next.dark !== target.dark) {
     target = next;
@@ -206,40 +275,4 @@ export function resetVariantTargetOnDeselect(): void {
     applyDarkState();
   }
   notify();
-}
-
-// --- Dark preview -----------------------------------------------------------
-
-// Whether we are currently previewing dark mode, and what the page's dark state
-// was BEFORE we touched it (so turning the preview off restores it — and we never
-// strip a `.dark` the host app owns).
-let darkPreviewActive = false;
-let pageHadDarkBeforePreview = false;
-
-// Idempotent: only acts on the off→on / on→off transition, so it's safe to call
-// on every target change (breakpoint clicks, selection changes) without flipping
-// ownership mid-preview — the bug that made the toggle stop working after a few
-// uses. The previous version released ownership whenever it re-ran while dark was
-// already on, leaving the class stuck on with no way to remove it.
-function applyDarkPreview(): void {
-  const root = document.documentElement;
-  const selector = meta.darkMode.selector.replace(/^\./, "");
-  // Only the class strategy can be previewed; media strategy is read-only.
-  const wantDark = target.dark && meta.darkMode.strategy === "class";
-
-  if (wantDark && !darkPreviewActive) {
-    pageHadDarkBeforePreview = root.classList.contains(selector);
-    root.classList.add(selector);
-    darkPreviewActive = true;
-  } else if (!wantDark && darkPreviewActive) {
-    // Restore the pre-preview state: only strip `.dark` if the app didn't own it.
-    if (!pageHadDarkBeforePreview) root.classList.remove(selector);
-    darkPreviewActive = false;
-  }
-  // Same-state calls are no-ops (idempotent).
-}
-
-/** Whether the live dark preview is currently engaged. */
-export function isDarkPreviewActive(): boolean {
-  return darkPreviewActive;
 }

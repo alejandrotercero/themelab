@@ -1,8 +1,22 @@
-// packages/overlay/src/toolbar.ts
-import { send, onMessage, setOnMaxRetries, setOnTabTakenOver, setOnReconnected, manualReconnect } from "./bridge.js";
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY } from "./design-tokens.js";
-import { isTextInput, isEditableFocused } from "./utils/active-element.js";
 import { mountBrandBadge, destroyBrandBadge } from "./brand.js";
+// packages/overlay/src/toolbar.ts
+import {
+  send,
+  onMessage,
+  setOnMaxRetries,
+  setOnTabTakenOver,
+  setOnReconnected,
+  manualReconnect,
+} from "./bridge.js";
+import {
+  COLORS,
+  SHADOWS,
+  RADII,
+  TRANSITIONS,
+  FONT_FAMILY,
+} from "./design-tokens.js";
+import { isTextInput, isEditableFocused } from "./utils/active-element.js";
+
 let shadowRoot: ShadowRoot | null = null;
 let undoBtn: HTMLButtonElement | null = null;
 let undoCount = 0;
@@ -222,6 +236,28 @@ function wireInputSelectAll(root: ShadowRoot): void {
   });
 }
 
+function isTextInputFocused(): boolean {
+  // Resolve through the overlay's shadow DOM, not just document.activeElement.
+  return isEditableFocused();
+}
+
+export function showToast(
+  message: string,
+  _level: "info" | "success" | "warning" | "error" = "info"
+): void {
+  if (!toastEl) {
+    return;
+  }
+  toastEl.textContent = message;
+  toastEl.classList.add("visible");
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+  }
+  toastTimeout = setTimeout(() => {
+    toastEl?.classList.remove("visible");
+  }, 2000);
+}
+
 export function mountToolbar(onClose: () => void): void {
   const hostEl = document.createElement("div");
   hostEl.id = "themelab-root";
@@ -232,7 +268,7 @@ export function mountToolbar(onClose: () => void): void {
   // transformed ancestor, shifting/clipping the whole toolbar. <html> is outside
   // React's body subtree and outside the canvas wrapper, so fixed positioning
   // stays viewport-relative no matter what the app does to <body>.
-  document.documentElement.appendChild(hostEl);
+  document.documentElement.append(hostEl);
 
   // Survive React hydration regeneration. In Next.js App Router (full-document
   // hydration) — and especially when the app has a hydration mismatch, which makes
@@ -242,7 +278,9 @@ export function mountToolbar(onClose: () => void): void {
   // the app finishes loading. Re-attach the host whenever it's detached; the node
   // (and its shadow DOM) is reused, so all overlay state and listeners persist.
   reattachObserver = new MutationObserver(() => {
-    if (host && !host.isConnected) document.documentElement.appendChild(host);
+    if (host && !host.isConnected) {
+      document.documentElement.append(host);
+    }
   });
   reattachObserver.observe(document.documentElement, { childList: true });
 
@@ -273,8 +311,8 @@ export function mountToolbar(onClose: () => void): void {
     </button>
   `;
 
-  shadowRoot.appendChild(style);
-  shadowRoot.appendChild(toolbar);
+  shadowRoot.append(style);
+  shadowRoot.append(toolbar);
 
   undoBtn = toolbar.querySelector(".undo-btn");
   generateBtn = toolbar.querySelector(".generate-btn");
@@ -286,12 +324,12 @@ export function mountToolbar(onClose: () => void): void {
   // Toast element
   toastEl = document.createElement("div");
   toastEl.className = "toast";
-  shadowRoot.appendChild(toastEl);
+  shadowRoot.append(toastEl);
 
   // Decorative ThemeLab wordmark, pinned bottom-right.
   mountBrandBadge(shadowRoot);
 
-  undoBtn!.addEventListener("click", () => {
+  undoBtn?.addEventListener("click", () => {
     send({ type: "undo" });
     if (undoBtn) {
       undoBtn.innerHTML = `<div class="spinner"></div>`;
@@ -299,20 +337,30 @@ export function mountToolbar(onClose: () => void): void {
     }
   });
 
-  closeBtn!.addEventListener("click", onClose);
+  closeBtn?.addEventListener("click", onClose);
 
   // Generate button (Path A only)
-  generateBtn!.addEventListener("click", () => {
-    if (onGenerate) onGenerate();
+  generateBtn?.addEventListener("click", () => {
+    if (onGenerate) {
+      onGenerate();
+    }
   });
-  generateAiBtn!.addEventListener("click", () => {
-    if (onGenerateAi) onGenerateAi();
+  generateAiBtn?.addEventListener("click", () => {
+    if (onGenerateAi) {
+      onGenerateAi();
+    }
   });
 
   // Keyboard shortcut: Ctrl/Cmd+Z for canvas undo
   document.addEventListener("keydown", (e) => {
-    if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey && !isTextInputFocused()) {
-      if (onCanvasUndo?.()) e.preventDefault();
+    if (
+      e.key === "z" &&
+      (e.ctrlKey || e.metaKey) &&
+      !e.shiftKey &&
+      !isTextInputFocused() &&
+      onCanvasUndo?.()
+    ) {
+      e.preventDefault();
     }
   });
 
@@ -330,15 +378,17 @@ export function mountToolbar(onClose: () => void): void {
   // Reset undo counter on reconnect (server clears undo stack on disconnect)
   setOnReconnected(() => {
     undoCount = 0;
-    if (undoBtn) undoBtn.disabled = true;
+    if (undoBtn) {
+      undoBtn.disabled = true;
+    }
   });
 
   // Listen for server messages
   onMessage((msg) => {
     switch (msg.type) {
-      case "reorderComplete":
+      case "reorderComplete": {
         if (msg.success) {
-          undoCount++;
+          undoCount += 1;
           if (undoBtn) {
             undoBtn.innerHTML = CHECK_SVG;
             setTimeout(() => {
@@ -352,8 +402,9 @@ export function mountToolbar(onClose: () => void): void {
           showToast(msg.error);
         }
         break;
+      }
 
-      case "undoComplete":
+      case "undoComplete": {
         if (msg.success) {
           undoCount = Math.max(0, undoCount - 1);
           if (undoBtn) {
@@ -369,25 +420,31 @@ export function mountToolbar(onClose: () => void): void {
           showToast(msg.error);
         }
         break;
+      }
 
-      case "devServerDisconnected":
+      case "devServerDisconnected": {
         showToast("Dev server disconnected");
         break;
+      }
 
-      case "devServerReconnected":
+      case "devServerReconnected": {
         showToast("Dev server reconnected");
         break;
+      }
+
+      default: {
+        break;
+      }
     }
   });
 }
-
 
 export function destroyToolbar(): void {
   // Stop the re-attach guard before removing, or it would immediately re-add the host.
   reattachObserver?.disconnect();
   reattachObserver = null;
   destroyBrandBadge();
-  (host ?? document.getElementById("themelab-root"))?.remove();
+  (host ?? document.querySelector("#themelab-root"))?.remove();
   host = null;
   shadowRoot = null;
   undoBtn = null;
@@ -403,27 +460,40 @@ export function getToolbarToolsSlot(): HTMLElement | null {
   return shadowRoot?.querySelector(".toolbar-tools") ?? null;
 }
 
-export function setOnGenerate(fn: () => void): void { onGenerate = fn; }
-export function setOnGenerateAi(fn: () => void): void { onGenerateAi = fn; }
-export function setOnCanvasUndo(fn: () => boolean): void { onCanvasUndo = fn; }
-
-export function updateGenerateButton(enabled: boolean): void {
-  if (generateBtn) generateBtn.disabled = !enabled;
-  if (generateAiBtn) generateAiBtn.disabled = !enabled;
+export function setOnGenerate(fn: () => void): void {
+  onGenerate = fn;
+}
+export function setOnGenerateAi(fn: () => void): void {
+  onGenerateAi = fn;
+}
+export function setOnCanvasUndo(fn: () => boolean): void {
+  onCanvasUndo = fn;
 }
 
+export function updateGenerateButton(enabled: boolean): void {
+  if (generateBtn) {
+    generateBtn.disabled = !enabled;
+  }
+  if (generateAiBtn) {
+    generateAiBtn.disabled = !enabled;
+  }
+}
 
 /**
  * Update the component detail section in the action bar.
  * Shows tag name, component name, and file path.
  */
-export function updateComponentDetail(info: {
-  tagName: string;
-  componentName: string;
-  filePath: string;
-  lineNumber: number;
-} | null): void {
-  if (!componentDetailEl) return;
+export function updateComponentDetail(
+  info: {
+    tagName: string;
+    componentName: string;
+    filePath: string;
+    lineNumber: number;
+  } | null
+): void {
+  if (!componentDetailEl) {
+    return;
+  }
   if (!info) {
     componentDetailEl.className = "component-detail empty";
     componentDetailEl.textContent = "No selection";
@@ -431,25 +501,7 @@ export function updateComponentDetail(info: {
   }
   componentDetailEl.className = "component-detail";
   const shortPath = info.filePath
-    ? info.filePath.replace(/^.*?\/src\//, "src/") + ":" + info.lineNumber
+    ? `${info.filePath.replace(/^.*?\/src\//, "src/")}:${info.lineNumber}`
     : "";
   componentDetailEl.innerHTML = `<span class="tag">&lt;${info.tagName}&gt;</span><span class="name">${info.componentName}</span>${shortPath ? `<span class="path">${shortPath}</span>` : ""}`;
-}
-
-export function showToast(
-  message: string,
-  level: "info" | "success" | "warning" | "error" = "info",
-): void {
-  if (!toastEl) return;
-  toastEl.textContent = message;
-  toastEl.classList.add("visible");
-  if (toastTimeout) clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => {
-    toastEl?.classList.remove("visible");
-  }, 2000);
-}
-
-function isTextInputFocused(): boolean {
-  // Resolve through the overlay's shadow DOM, not just document.activeElement.
-  return isEditableFocused();
 }

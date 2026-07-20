@@ -18,8 +18,14 @@ const SHARED_UI_SOURCE_PATH_SEGMENTS: readonly string[] = [
   "/primitives/",
 ];
 
-export function isSharedUiSourcePath(fileName: string | null | undefined): boolean {
-  if (!fileName) return false;
-  const normalizedPath = `/${fileName}/`.toLowerCase().replace(/\/+/g, "/");
-  return SHARED_UI_SOURCE_PATH_SEGMENTS.some((segment) => normalizedPath.includes(segment));
+export function isSharedUiSourcePath(
+  fileName: string | null | undefined
+): boolean {
+  if (!fileName) {
+    return false;
+  }
+  const normalizedPath = `/${fileName}/`.toLowerCase().replaceAll(/\/+/g, "/");
+  return SHARED_UI_SOURCE_PATH_SEGMENTS.some((segment) =>
+    normalizedPath.includes(segment)
+  );
 }

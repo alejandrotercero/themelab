@@ -1,39 +1,108 @@
+import {
+  initAnnotationLayer,
+  destroyAnnotationLayer,
+  clearAnnotationLayer,
+  removeAnnotationElement,
+} from "./annotation-layer.js";
 // packages/overlay/src/index.ts
 import { connect, disconnect, send, onMessage } from "./bridge.js";
-import { mountToolbar, destroyToolbar, setOnGenerate, setOnGenerateAi, setOnCanvasUndo, updateGenerateButton, showToast, getShadowRoot } from "./toolbar.js";
-import { initSelection, deactivateSelection, clearSelection, setEnabled, clearResolutionCache } from "./selection.js";
-import { initHighlightCanvas, destroyHighlightCanvas } from "./highlight-canvas.js";
+import {
+  onToolChange,
+  onStateChange,
+  getActiveTool,
+  setActiveTool,
+  canvasUndo,
+  canUndo,
+  resetCanvas,
+  hasChanges,
+  onAnnotationRemoved,
+  getMoves,
+  removeMove,
+  getClones,
+  removeCloneEntry,
+  buildBatchOperations,
+} from "./canvas-state.js";
+import {
+  destroyCanvasTransform,
+  resetCanvasTransform,
+  saveCanvasState,
+  restoreCanvasState,
+  clearSavedCanvasState,
+} from "./canvas-transform.js";
+import {
+  initChangelog,
+  destroyChangelog,
+  addChangeEntry,
+  isChangelogOpen,
+  setChangelogOpen,
+  clearChangelog,
+} from "./changelog.js";
+import { updateCloneFileStat } from "./clone-state.js";
+import { updateDeleteFileStat } from "./delete-state.js";
+import {
+  SHADOWS,
+  RADII,
+  TRANSITIONS,
+  FONT_FAMILY,
+  ensurePanelFont,
+} from "./design-tokens.js";
 import { initDrag, deactivateDrag } from "./drag.js";
-import { initAnnotationLayer, destroyAnnotationLayer, clearAnnotationLayer, removeAnnotationElement } from "./annotation-layer.js";
+import {
+  initHighlightCanvas,
+  destroyHighlightCanvas,
+} from "./highlight-canvas.js";
+import {
+  initInlineTextEdit,
+  destroyInlineTextEdit,
+  cancelTextEditSession,
+} from "./inline-text-edit.js";
+import {
+  initInteraction,
+  destroyInteraction,
+  activateInteraction,
+} from "./interaction.js";
 import type { MoveEntry } from "./move-state.js";
 import {
   reacquireMovedElement,
   reacquireMovedElementAsync,
   applyMoveTransform,
 } from "./move-state.js";
-import { initToolsPanel, destroyToolsPanel, updateActiveToolUI, setOnClearAll, setOnCanvasUndo as setOnCanvasUndoPanel, updateCanvasUndoButton, flashToolButton } from "./tools-panel.js";
-import { initInteraction, destroyInteraction, activateInteraction, registerToolHandler } from "./interaction.js";
-import { clearElementCache } from "./utils/element-cache.js";
-import { clearVisibilityCache } from "./utils/component-filter.js";
 import { showOnboardingHint, dismissOnboarding } from "./onboarding.js";
 import {
-  onToolChange, onStateChange, getActiveTool, setActiveTool,
-  canvasUndo, canUndo, resetCanvas, hasChanges,
-  onAnnotationRemoved,
-  getMoves, removeMove,
-  getClones, removeCloneEntry,
-  buildBatchOperations,
-} from "./canvas-state.js";
-import { updateCloneFileStat } from "./clone-state.js";
-import { updateDeleteFileStat } from "./delete-state.js";
-import { initPropertyController, destroyPropertyController } from "./properties/property-controller.js";
-import { initInlineTextEdit, destroyInlineTextEdit, cancelTextEditSession } from "./inline-text-edit.js";
-import { initCanvasTransform, destroyCanvasTransform, resetCanvasTransform, saveCanvasState, restoreCanvasState, clearSavedCanvasState } from "./canvas-transform.js";
-import { COLORS, SHADOWS, RADII, TRANSITIONS, FONT_FAMILY, ensurePanelFont } from "./design-tokens.js";
-import { initChangelog, destroyChangelog, addChangeEntry, isChangelogOpen, setChangelogOpen, clearChangelog } from "./changelog.js";
+  initPropertyController,
+  destroyPropertyController,
+} from "./properties/property-controller.js";
 import { clearSelectionHistory } from "./selection-history.js";
-import { initThemePanel, destroyThemePanel } from "./theme-panel.js";
+import {
+  initSelection,
+  deactivateSelection,
+  clearSelection,
+  setEnabled,
+  clearResolutionCache,
+} from "./selection.js";
 import { initSettingsPanel } from "./settings-panel.js";
+import { initThemePanel, destroyThemePanel } from "./theme-panel.js";
+import {
+  mountToolbar,
+  destroyToolbar,
+  setOnGenerate,
+  setOnGenerateAi,
+  setOnCanvasUndo,
+  updateGenerateButton,
+  showToast,
+  getShadowRoot,
+} from "./toolbar.js";
+import {
+  initToolsPanel,
+  destroyToolsPanel,
+  updateActiveToolUI,
+  setOnClearAll,
+  setOnCanvasUndo as setOnCanvasUndoPanel,
+  updateCanvasUndoButton,
+  flashToolButton,
+} from "./tools-panel.js";
+import { clearVisibilityCache } from "./utils/component-filter.js";
+import { clearElementCache } from "./utils/element-cache.js";
 
 declare global {
   interface Window {
@@ -50,41 +119,47 @@ let errorToastTimeout: ReturnType<typeof setTimeout> | null = null;
 
 /** Check if an error likely originated from overlay code */
 function isOverlayError(error: unknown): boolean {
-  const stack = (error instanceof Error && error.stack) ? error.stack : String(error);
+  const stack =
+    error instanceof Error && error.stack ? error.stack : String(error);
   return /themelab|overlay/i.test(stack);
 }
 
 /** Show a minimal error toast inside the Shadow DOM */
 function showErrorToast(message: string): void {
   const root = getShadowRoot();
-  if (!root) return;
+  if (!root) {
+    return;
+  }
 
   // Remove existing error toast if present
-  if (errorToastEl && errorToastEl.parentNode) {
-    errorToastEl.parentNode.removeChild(errorToastEl);
+  errorToastEl?.remove();
+  if (errorToastTimeout) {
+    clearTimeout(errorToastTimeout);
   }
-  if (errorToastTimeout) clearTimeout(errorToastTimeout);
 
   const container = document.createElement("div");
-  container.setAttribute("style", [
-    "position: fixed",
-    "bottom: 72px",
-    "right: 16px",
-    `z-index: 2147483647`,
-    `background: rgba(30, 30, 30, 0.92)`,
-    `color: #fff`,
-    `font-family: ${FONT_FAMILY}`,
-    `font-size: 12px`,
-    `padding: 10px 14px`,
-    `border-radius: ${RADII.sm}`,
-    `box-shadow: ${SHADOWS.md}`,
-    `max-width: 320px`,
-    `display: flex`,
-    `align-items: center`,
-    `gap: 10px`,
-    `opacity: 0`,
-    `transition: opacity ${TRANSITIONS.medium}`,
-  ].join("; "));
+  container.setAttribute(
+    "style",
+    [
+      "position: fixed",
+      "bottom: 72px",
+      "right: 16px",
+      `z-index: 2147483647`,
+      `background: rgba(30, 30, 30, 0.92)`,
+      `color: #fff`,
+      `font-family: ${FONT_FAMILY}`,
+      `font-size: 12px`,
+      `padding: 10px 14px`,
+      `border-radius: ${RADII.sm}`,
+      `box-shadow: ${SHADOWS.md}`,
+      `max-width: 320px`,
+      `display: flex`,
+      `align-items: center`,
+      `gap: 10px`,
+      `opacity: 0`,
+      `transition: opacity ${TRANSITIONS.medium}`,
+    ].join("; ")
+  );
 
   const text = document.createElement("span");
   text.textContent = message;
@@ -92,27 +167,32 @@ function showErrorToast(message: string): void {
 
   const dismissBtn = document.createElement("button");
   dismissBtn.textContent = "Dismiss";
-  dismissBtn.setAttribute("style", [
-    "background: rgba(255,255,255,0.15)",
-    "border: none",
-    "color: #fff",
-    `font-family: ${FONT_FAMILY}`,
-    "font-size: 11px",
-    "padding: 3px 8px",
-    `border-radius: ${RADII.xs}`,
-    "cursor: pointer",
-    "white-space: nowrap",
-  ].join("; "));
+  dismissBtn.setAttribute(
+    "style",
+    [
+      "background: rgba(255,255,255,0.15)",
+      "border: none",
+      "color: #fff",
+      `font-family: ${FONT_FAMILY}`,
+      "font-size: 11px",
+      "padding: 3px 8px",
+      `border-radius: ${RADII.xs}`,
+      "cursor: pointer",
+      "white-space: nowrap",
+    ].join("; ")
+  );
   dismissBtn.addEventListener("click", () => {
     container.style.opacity = "0";
     setTimeout(() => container.remove(), 200);
-    if (errorToastTimeout) clearTimeout(errorToastTimeout);
+    if (errorToastTimeout) {
+      clearTimeout(errorToastTimeout);
+    }
     errorToastEl = null;
   });
 
-  container.appendChild(text);
-  container.appendChild(dismissBtn);
-  root.appendChild(container);
+  container.append(text);
+  container.append(dismissBtn);
+  root.append(container);
   errorToastEl = container;
 
   // Fade in
@@ -144,12 +224,15 @@ function installGlobalErrorHandlers(): void {
     // Non-overlay errors pass through untouched
   });
 
-  window.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) => {
-    if (isOverlayError(event.reason)) {
-      handleOverlayError(event.reason);
-      event.preventDefault();
+  window.addEventListener(
+    "unhandledrejection",
+    (event: PromiseRejectionEvent) => {
+      if (isOverlayError(event.reason)) {
+        handleOverlayError(event.reason);
+        event.preventDefault();
+      }
     }
-  });
+  );
 }
 
 let moveObserver: MutationObserver | null = null;
@@ -167,24 +250,58 @@ function resetOverlayState(): void {
   clearVisibilityCache();
   clearResolutionCache();
 
-  if (getActiveTool() !== "select") {
-    setActiveTool("select");
-  } else {
+  if (getActiveTool() === "select") {
     setEnabled(true);
     activateInteraction("select");
     updateActiveToolUI("select");
+  } else {
+    setActiveTool("select");
   }
 }
 
-function restoreMoveToElement(id: string, entry: MoveEntry, newEl: HTMLElement): void {
+function restoreMoveToElement(
+  id: string,
+  entry: MoveEntry,
+  newEl: HTMLElement
+): void {
   entry.originalCssText = newEl.style.cssText;
   entry.element = newEl;
   applyMoveTransform(entry);
 }
 
+function close(): void {
+  clearElementCache();
+  clearVisibilityCache();
+  clearResolutionCache();
+  deactivateSelection();
+  destroyHighlightCanvas();
+  deactivateDrag();
+  destroyPropertyController();
+  destroyAnnotationLayer();
+  moveObserver?.disconnect();
+  destroyToolsPanel();
+  destroyChangelog();
+  destroyThemePanel();
+  destroyInlineTextEdit();
+  destroyInteraction();
+  resetCanvas();
+  window.removeEventListener("beforeunload", saveCanvasState);
+  clearSavedCanvasState();
+  destroyCanvasTransform();
+  disconnect();
+  destroyToolbar();
+}
+
+/** Re-enter canvas mode after `load` + a frame — always post-hydration, see init(). */
+function deferredRestore(): void {
+  requestAnimationFrame(() => setTimeout(restoreCanvasState, 200));
+}
+
 function init(): void {
   // Only run in the top-level frame — skip iframes to avoid duplicate WS connections
-  if (window !== window.top) return;
+  if (window !== window.top) {
+    return;
+  }
 
   const wsPort = window.__THEMELAB_WS_PORT__;
   if (!wsPort) {
@@ -192,7 +309,9 @@ function init(): void {
     return;
   }
 
-  if (document.getElementById("themelab-root")) return; // Already initialized
+  if (document.querySelector("#themelab-root")) {
+    return;
+  } // Already initialized
 
   ensurePanelFont(); // Load Google Sans Code before any UI paints
   connect(wsPort);
@@ -224,20 +343,23 @@ function init(): void {
       if (!document.contains(entry.element)) {
         setTimeout(() => {
           // Try sync reacquisition first
-          let newEl = reacquireMovedElement(entry.identity);
+          const newEl = reacquireMovedElement(entry.identity);
           if (newEl) {
             restoreMoveToElement(id, entry, newEl);
             return;
           }
           // Try async reacquisition
-          reacquireMovedElementAsync(entry.identity).then((asyncEl) => {
+          void (async () => {
+            const asyncEl = await reacquireMovedElementAsync(entry.identity);
             if (asyncEl) {
               restoreMoveToElement(id, entry, asyncEl);
             } else {
               removeMove(id);
-              showToast(`Component ${entry.componentRef.componentName} removed — move cleared`);
+              showToast(
+                `Component ${entry.componentRef.componentName} removed — move cleared`
+              );
             }
-          });
+          })();
         }, 80);
       }
     }
@@ -249,12 +371,14 @@ function init(): void {
           if (document.contains(entry.originalElement)) {
             const parent = entry.originalElement.parentElement;
             if (parent) {
-              parent.insertBefore(entry.element, entry.originalElement.nextSibling);
+              entry.originalElement.after(entry.element);
               return;
             }
           }
           removeCloneEntry(id);
-          showToast(`Clone of ${entry.sourceLocation.componentName} removed — original no longer present`);
+          showToast(
+            `Clone of ${entry.sourceLocation.componentName} removed — original no longer present`
+          );
         }, 80);
       }
     }
@@ -279,7 +403,7 @@ function init(): void {
   // Only text tool needs an interaction handler.
 
   // Tool change listener — handles mode switching
-  onToolChange((tool, prev) => {
+  onToolChange((tool, _prev) => {
     dismissOnboarding();
     flashToolButton(tool);
 
@@ -304,7 +428,9 @@ function init(): void {
   // Canvas undo from tools panel sidebar
   setOnCanvasUndoPanel(() => {
     const description = canvasUndo();
-    if (description) showToast(`Undo: ${description}`);
+    if (description) {
+      showToast(`Undo: ${description}`);
+    }
   });
 
   // Confirm button — deterministic batch for moves/colors/text edits.
@@ -325,10 +451,18 @@ function init(): void {
       generating = true;
       updateGenerateButton(false);
       const n = batchOps.length;
-      showToast(`Applying ${n} change${n !== 1 ? "s" : ""}${forceAi ? " with AI…" : "..."}`);
-      send({ type: "commitBatch", operations: batchOps, forceAi: forceAi || undefined });
+      showToast(
+        `Applying ${n} change${n === 1 ? "" : "s"}${forceAi ? " with AI…" : "..."}`
+      );
+      send({
+        type: "commitBatch",
+        operations: batchOps,
+        forceAi: forceAi || undefined,
+      });
     } else {
-      showToast("Could not resolve source files for these changes — try re-selecting");
+      showToast(
+        "Could not resolve source files for these changes — try re-selecting"
+      );
     }
   };
   setOnGenerate(() => doCommit(false));
@@ -339,7 +473,9 @@ function init(): void {
     if (msg.type === "commitBatchComplete") {
       // Property sidebar saves also use commitBatch now; only the explicit
       // confirm/apply flow should drive the global generate/apply UI.
-      if (!generating) return;
+      if (!generating) {
+        return;
+      }
 
       generating = false;
       updateGenerateButton(hasChanges());
@@ -374,14 +510,22 @@ function init(): void {
           state: "active",
           revertData: { type: "batchApplyUndo", undoIds },
         });
-        showToast(`Applied ${successCount}/${totalCount} — ${totalCount - successCount} failed`);
+        showToast(
+          `Applied ${successCount}/${totalCount} — ${totalCount - successCount} failed`
+        );
         clearSelection();
         clearAnnotationLayer();
         resetCanvas();
         setTimeout(() => window.location.reload(), 600);
       } else {
-        const failedDetails = msg.results?.filter((r: any) => !r.success).map((r: any) => r.error).filter(Boolean).join("; ");
-        showToast(`Error: ${failedDetails || msg.error || "Batch apply failed"}`);
+        const failedDetails = msg.results
+          ?.filter((r) => !r.success)
+          .map((r) => r.error)
+          .filter(Boolean)
+          .join("; ");
+        showToast(
+          `Error: ${failedDetails || msg.error || "Batch apply failed"}`
+        );
         console.error("[ThemeLab] Batch apply failed:", msg.results);
         generating = false;
         updateGenerateButton(hasChanges());
@@ -421,42 +565,21 @@ function init(): void {
   // reconciliation and wipes unknown nodes — including the overlay. The manual
   // toggle is safe precisely because it's always post-hydration, so we mirror
   // that by waiting for `load` + a frame before re-entering the canvas.
-  const deferredRestore = () => requestAnimationFrame(() => setTimeout(restoreCanvasState, 200));
-  if (document.readyState === "complete") deferredRestore();
-  else window.addEventListener("load", deferredRestore, { once: true });
+  if (document.readyState === "complete") {
+    deferredRestore();
+  } else {
+    window.addEventListener("load", deferredRestore, { once: true });
+  }
 
   console.log("[ThemeLab] Overlay initialized with Phase 2A canvas tools");
-}
-
-function close(): void {
-  clearElementCache();
-  clearVisibilityCache();
-  clearResolutionCache();
-  deactivateSelection();
-  destroyHighlightCanvas();
-  deactivateDrag();
-  destroyPropertyController();
-  destroyAnnotationLayer();
-  moveObserver?.disconnect();
-  destroyToolsPanel();
-  destroyChangelog();
-  destroyThemePanel();
-  destroyInlineTextEdit();
-  destroyInteraction();
-  resetCanvas();
-  window.removeEventListener("beforeunload", saveCanvasState);
-  clearSavedCanvasState();
-  destroyCanvasTransform();
-  disconnect();
-  destroyToolbar();
 }
 
 function safeInit(): void {
   try {
     init();
     installGlobalErrorHandlers();
-  } catch (err) {
-    handleOverlayError(err);
+  } catch (error) {
+    handleOverlayError(error);
   }
 }
 

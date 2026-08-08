@@ -50,8 +50,16 @@ the web studio's navy OKLCH tokens, a sandboxed shell renderer, an isolated `Web
 validated preview-bounds IPC, and local reuse of the built CLI proxy/SketchServer. The package
 builds and typechecks. A live Next.js fixture has now been launched and the proxy response is
 confirmed to contain the overlay bundle and WebSocket bootstrap. The desktop shell receives
-live selection identity and computed-style snapshots; its native Inspector can apply and discard
-guarded, in-memory preview overrides without writing source files.
+live selection identity and computed-style snapshots. Supported theme and Tailwind-class edits
+now flow through a shared reviewable proposal store, guarded transaction apply, project-local
+recovery record, and conflict-aware undo; renderer and preview code never write source directly.
+
+The current workspace layer also canonicalizes successful project roots, persists bounded recent
+roots in Electron app data, reports framework and Git branch/dirty state, and contains a restricted
+dev-process service. It can attach to an existing expected-port server or start only the detected
+`dev`/`start` package script; it does not expose arbitrary command execution. Preview navigation,
+popups, downloads, and permission requests are denied by policy. Full live HMR and Vite proof
+remain open acceptance work, not implied by these foundations.
 
 ## 2. Product thesis
 

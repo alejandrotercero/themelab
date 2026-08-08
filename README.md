@@ -225,6 +225,34 @@ pnpm dev
 
 You will still need a separate supported React app running locally to test the tool end to end.
 
+## Desktop workspace (experimental)
+
+ThemeLab Desktop is the in-repo Electron workspace application. It is deliberately a separate
+workflow from the CLI overlay: the overlay is still the fast browser-native editor, while Desktop
+adds explicit project access, an isolated embedded preview, reviewable source changes, recovery,
+and the foundation for user-owned coding agents.
+
+```bash
+# Build the Electron shell and its shared packages
+pnpm build:desktop
+
+# Run it against a supported project whose dev server is already running
+THEMELAB_WORKSPACE=/absolute/path/to/project pnpm dev:desktop
+```
+
+Current desktop capabilities:
+
+- Isolated loopback-proxy preview with overlay bridge and native Inspector
+- Project picker, framework/Git inspection, persisted recent project roots, and bounded dev-server logs
+- Reviewable theme and supported Tailwind class proposals with baseline-hash conflict protection
+- Atomic applies, project-local recovery manifests, persistent undo history, and Git dirty-state context
+- Reuse of the shared Web color/theme engine and Kibo-style picker interaction
+
+Desktop is not yet a packaged end-user release. The remaining work includes live Next/Vite
+selection → patch → HMR → undo proof, the full shared Theme Workspace token controls, and ACP
+agent adapters. See [`tasks/spec-desktop-app.md`](./tasks/spec-desktop-app.md) for the authoritative
+implementation plan and verification status.
+
 ## Web theme studio (`apps/web`)
 
 Alongside the CLI/overlay, the repo hosts a Next.js app — a standalone theme studio for
@@ -257,8 +285,11 @@ apps/
   web/      Next.js theme studio (/100r and /create)
 packages/
   cli/      CLI, proxy server, and source transforms
+  core/     Workspace-safe proposals, transactions, recovery, and undo
   overlay/  Injected browser overlay
   shared/   Shared TypeScript types
+  theme-engine/  Browser-safe Web theme/color engine
+  theme-ui/      Portable theme-picker and token-control primitives
 ```
 
 ## License

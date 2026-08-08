@@ -57,9 +57,11 @@ recovery record, and conflict-aware undo; renderer and preview code never write 
 The current workspace layer also canonicalizes successful project roots, persists bounded recent
 roots in Electron app data, reports framework and Git branch/dirty state, and contains a restricted
 dev-process service. It can attach to an existing expected-port server or start only the detected
-`dev`/`start` package script; it does not expose arbitrary command execution. Preview navigation,
-popups, downloads, and permission requests are denied by policy. Full live HMR and Vite proof
-remain open acceptance work, not implied by these foundations.
+`dev`/`start` package script; it does not expose arbitrary command execution. The renderer exposes
+that service as a compact Project server status/log surface, including explicit attach, start,
+disconnect, and owned-process stop states. Preview navigation, popups, downloads, and permission
+requests are denied by policy. Full live HMR and Vite proof remain open acceptance work, not
+implied by these foundations.
 
 ## 2. Product thesis
 

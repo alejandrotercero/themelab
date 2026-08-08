@@ -183,6 +183,7 @@ body { overflow: hidden; }
   font-family: "Google Sans Code", ui-monospace, monospace;
 }
 .header-action { font-size: 10px; line-height: 1; }
+.header-server-status { display: inline-flex; align-items: center; gap: 5px; height: 28px; border: 1px solid #333950; border-radius: 5px; background: #1d222d; color: #8b8b95; padding: 0 8px; font: 500 10px/1 "Google Sans Code", ui-monospace, monospace; }.header-server-status i, .dev-panel-status i { width: 6px; height: 6px; border-radius: 50%; background: #6f7585; }.header-server-status.running i, .header-server-status.attached i, .dev-panel-status i.running, .dev-panel-status i.attached { background: #6fbf83; }.header-server-status.starting i, .dev-panel-status i.starting { background: #e6ae83; }.header-server-status.error i, .dev-panel-status i.error { background: #ec7088; }.header-server-status:hover { border-color: #43506d; color: #d1cdcd; }
 .bottom-confirm, .bottom-secondary { font-size: 12px; line-height: 1; }
 .property-variants button, .overlay-style-control input, .native-segment { font-size: 10px; line-height: 1; }
 .theme-dock-heading strong { font-size: 13px; line-height: 1; }
@@ -197,6 +198,14 @@ body { overflow: hidden; }
 .preview-canvas.theme-open { left: 380px; }
 .preview-stage.theme-open .native-bottom-bar { left: calc(50% + 190px); }
 .theme-token { position: relative; min-width: 0; }
+.theme-token-list { padding: 8px; }
+.theme-token-groups { display: flex; flex-direction: column; gap: 12px; }
+.theme-token-group { display: flex; flex-direction: column; gap: 2px; }
+.theme-token-group-label { margin: 0; padding: 2px 4px; color: #6f7585; font: 600 9px/1 "Google Sans Code", ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.theme-contrast-readout { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 4px 10px; }
+.theme-contrast-readout span { max-width: 100%; overflow: hidden; border: 1px solid #333950; border-radius: 999px; padding: 3px 6px; color: #9096a7; font: 500 9px/1 "Google Sans Code", ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.theme-contrast-readout .pass { border-color: #355843; color: #a8d4b1; }
+.theme-contrast-readout .fail { border-color: #75414d; color: #ec9cac; }
 .theme-token-swatch {
   flex: 0 0 auto; width: 18px; height: 18px; padding: 0;
   border: 1px solid #333950; border-radius: 4px; cursor: pointer;
@@ -279,6 +288,7 @@ body { overflow: hidden; }
 .theme-change-review pre { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px; border: 1px solid #333950; border-radius: 5px; background: #0d0e14; color: #c6cbd7; font: 400 10px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
 .theme-change-review .theme-footer { padding: 0; border-top: 0; }
 .changes-panel { position: absolute; z-index: 2; right: 14px; bottom: 54px; left: 14px; display: flex; max-height: min(420px, calc(100% - 94px)); flex-direction: column; overflow: hidden; border: 1px solid #333950; border-radius: 8px; background: #12121a; box-shadow: 0 18px 48px #00000055, 0 2px 8px #00000044; color: #d1cdcd; }
+.dev-panel { position: absolute; z-index: 2; top: 12px; left: 14px; width: min(430px, calc(100% - 28px)); overflow: hidden; border: 1px solid #333950; border-radius: 8px; background: #12121a; box-shadow: 0 18px 48px #00000055, 0 2px 8px #00000044; color: #d1cdcd; }.dev-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 10px; border-bottom: 1px solid #303447; background: #1a1e2a; }.dev-panel-header div { display: flex; align-items: center; gap: 7px; }.dev-panel-header strong { font: 600 11px/1 "Google Sans Code", ui-monospace, monospace; }.dev-panel-header button { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #8b8b95; }.dev-panel-header button:hover { background: #262d3b; color: #e7e9ef; }.dev-panel-status { display: flex; align-items: center; gap: 7px; margin: 0; padding: 9px 10px 4px; color: #aeb4c3; font: 400 10px/1.4 "Google Sans Code", ui-monospace, monospace; }.dev-panel-status i { flex: 0 0 auto; }.dev-panel > code { display: block; overflow: hidden; padding: 3px 10px 9px; color: #7f8799; font: 400 9px/1.4 "Google Sans Code", ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }.dev-panel pre { max-height: 172px; min-height: 56px; overflow: auto; margin: 0 10px 10px; padding: 8px; border: 1px solid #292f40; border-radius: 5px; background: #0d0e14; color: #aeb4c3; font: 400 10px/1.45 "Google Sans Code", ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }.dev-panel-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 10px; border-top: 1px solid #303447; }.dev-panel-actions button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #383d52; border-radius: 5px; background: #202431; color: #d7d9e1; padding: 6px 9px; font: 600 10px/1 "Google Sans Code", ui-monospace, monospace; transition: background-color 100ms ease, border-color 100ms ease, transform 100ms ease; }.dev-panel-actions button.primary { border-color: #ec003f; background: #ec003f; color: #fff; }.dev-panel-actions button:active:not(:disabled) { transform: scale(.96); }.dev-panel-actions button:disabled { cursor: default; opacity: .45; }
 .changes-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 7px 10px 0; border-top: 1px solid #252a38; }
 .changes-tabs button { max-width: 180px; overflow: hidden; border: 1px solid #333950; border-radius: 4px; background: #1d222d; color: #9297a7; padding: 5px 7px; text-overflow: ellipsis; white-space: nowrap; font: 500 10px/1 "Google Sans Code", ui-monospace, monospace; }
 .changes-tabs button[aria-pressed="true"] { border-color: #ec003f; background: #292332; color: #f3edf0; }

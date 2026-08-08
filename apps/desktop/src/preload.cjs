@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld("themelabDesktop", {
     ipcRenderer.on("dev:status", listener);
     return () => ipcRenderer.removeListener("dev:status", listener);
   },
+  onDevLog(callback) {
+    const listener = (_event, entry) => callback(entry);
+    ipcRenderer.on("dev:log", listener);
+    return () => ipcRenderer.removeListener("dev:log", listener);
+  },
   proposeTheme(edits) {
     return ipcRenderer.invoke("theme:propose", { edits });
   },

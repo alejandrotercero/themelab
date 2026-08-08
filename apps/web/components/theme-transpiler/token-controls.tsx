@@ -6,7 +6,7 @@
 
 import { ColorPicker } from "./color-picker"
 import type { SourceColor } from "./color-picker"
-import { THEME_TOKEN_GROUPS } from "@themelab/theme-ui"
+import { ThemeTokenSections } from "@themelab/theme-ui"
 
 interface TokenControlsProps {
   vars: Record<string, string>
@@ -75,25 +75,22 @@ export function TokenControls({
           </div>
         </div>
 
-        {THEME_TOKEN_GROUPS.map((group) => (
-          <div key={group.label} className="flex flex-col gap-1">
-            <h4 className="px-1 text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
-              {group.label}
-            </h4>
-            <div className="flex flex-col">
-              {group.tokens.map((token) => (
-                <ColorPicker
-                  key={token}
-                  token={token}
-                  value={vars[token] ?? "oklch(0 0 0)"}
-                  edited={edited.has(token)}
-                  palette={palette}
-                  onChange={(v) => onToken(token, v)}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
+        <ThemeTokenSections
+          vars={vars}
+          className="flex flex-col gap-4"
+          groupClassName="flex flex-col gap-1"
+          labelClassName="px-1 text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase"
+          renderToken={(token, value) => (
+            <ColorPicker
+              key={token}
+              token={token}
+              value={value}
+              edited={edited.has(token)}
+              palette={palette}
+              onChange={(v) => onToken(token, v)}
+            />
+          )}
+        />
       </div>
     </div>
   )

@@ -12,6 +12,7 @@ declare global {
       startDevServer: () => Promise<{ status: "idle" | "starting" | "running" | "attached" | "error" | "stopped"; command?: string; message?: string }>;
       stopDevServer: () => Promise<{ status: "idle" | "starting" | "running" | "attached" | "error" | "stopped"; command?: string; message?: string }>;
       onDevStatus: (callback: (status: { status: "idle" | "starting" | "running" | "attached" | "error" | "stopped"; command?: string; message?: string }) => void) => () => void;
+      onDevLog: (callback: (entry: { stream: "stdout" | "stderr"; text: string; at: number }) => void) => () => void;
       proposeTheme: (edits: Record<string, string>) => Promise<{ id: string; label: string; createdAt: number; origin: "theme" | "inspector" | "agent" | "other"; operation: string | null; selectionKey: string | null; diff: string; files: string[] } | null>;
       applyThemeProposal: (proposalId: string) => Promise<{ proposalId?: string; recoveryPath?: string; files?: string[]; error?: string } | null>;
       discardThemeProposal: (proposalId: string) => Promise<boolean>;

@@ -7,11 +7,14 @@ import {
   GearSixIcon,
   ListBulletsIcon,
   PaletteIcon,
+  PlayIcon,
   QuestionIcon,
   SparkleIcon,
+  StopIcon,
+  TerminalWindowIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { ThemeColorPicker } from "@themelab/theme-ui";
+import { ThemeColorPicker, ThemeTokenSections, tokenContrast } from "@themelab/theme-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type {
@@ -33,6 +36,8 @@ type ThemePayload = { theme: ThemeStyles; source: ThemeSource | null } | null;
 type ThemeProposal = { id: string; label: string; createdAt: number; origin: "theme" | "inspector" | "agent" | "other"; operation: string | null; selectionKey: string | null; diff: string; files: string[] };
 type RecoveryEntry = { proposalId: string; label: string; createdAt: number; origin: "theme" | "inspector" | "agent" | "other"; operation: string | null; selectionKey: string | null; files: string[]; status: "undoable" | "undone" | "conflicted" };
 type WorkspaceSummary = NonNullable<Awaited<ReturnType<Window["themelabDesktop"]["getWorkspaceSummary"]>>>;
+type DevState = Awaited<ReturnType<Window["themelabDesktop"]["getDevStatus"]>>;
+type DevLog = Awaited<ReturnType<Window["themelabDesktop"]["getDevLogs"]>>[number];
 type TailwindProposalUpdate = {
   tailwindPrefix: string;
   tailwindToken: string | null;
@@ -245,6 +250,9 @@ export function App() {
   const [status, setStatus] = useState("Connecting preview");
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [workspaceSummary, setWorkspaceSummary] = useState<WorkspaceSummary | null>(null);
+  const [devState, setDevState] = useState<DevState>({ status: "idle" });
+  const [devLogs, setDevLogs] = useState<DevLog[]>([]);
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [selection, setSelection] = useState<ComponentInfo | null>(null);
   const [theme, setTheme] = useState<ThemePayload>(null);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -272,6 +280,7 @@ export function App() {
   useEffect(() => {
     void window.themelabDesktop.getWorkspaceRoot().then((root) => setWorkspaceName(root?.split("/").at(-1) ?? null));
     refreshWorkspaceSummary();
+    void window.themelabDesktop.getDevStatus().then(setDevState);
     void window.themelabDesktop.listChanges().then((changes) => {
       setPendingChanges(changes);
       setActiveProposal(changes.at(-1) ?? null);
@@ -283,7 +292,11 @@ export function App() {
     const removeStatusListener = window.themelabDesktop.onPreviewStatus((event) => setStatus(event.status === "error" ? event.message ?? "Preview error" : "Preview connected"));
     const removeSelectionListener = window.themelabDesktop.onPreviewSelection(setSelection);
     const removeThemeListener = window.themelabDesktop.onPreviewTheme(setTheme);
-    return () => { removeBoundsListener(); removeStatusListener(); removeSelectionListener(); removeThemeListener(); };
+    const removeDevListener = window.themelabDesktop.onDevStatus(setDevState);
+    const removeDevLogListener = window.themelabDesktop.onDevLog((entry) => {
+      setDevLogs((current) => [...current, entry].slice(-250));
+    });
+    return () => { removeBoundsListener(); removeStatusListener(); removeSelectionListener(); removeThemeListener(); removeDevListener(); removeDevLogListener(); };
   }, []);
 
   const chooseWorkspace = () => {
@@ -302,6 +315,20 @@ export function App() {
         }
       });
     });
+  };
+
+  const openDevPanel = () => {
+    setDevPanelOpen((open) => {
+      if (!open) void window.themelabDesktop.getDevLogs().then(setDevLogs);
+      return !open;
+    });
+  };
+  const startDevServer = () => {
+    setDevPanelOpen(true);
+    void window.themelabDesktop.startDevServer().then(setDevState);
+  };
+  const stopDevServer = () => {
+    void window.themelabDesktop.stopDevServer().then(setDevState);
   };
 
   const refreshRecoveryHistory = () => {
@@ -408,10 +435,12 @@ export function App() {
     return () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
   }, []);
   const themeEntries = useMemo(() => Object.entries(theme?.theme[themeMode] ?? {}), [theme, themeMode]);
+  const themeValue = (name: string, committed: string) => themeEdits[`${themeMode}:${name}`] ?? committed;
+  const themeVars = useMemo(() => Object.fromEntries(themeEntries.map(([name, value]) => [name, themeValue(name, value)])), [themeEntries, themeEdits, themeMode]);
+  const themeContrasts = useMemo(() => tokenContrast(themeVars), [themeVars]);
   const activeThemeProposal = activeProposal?.origin === "theme" ? activeProposal : null;
   const paddingSides = expandBoxSides(styleValue("padding", "padding"));
   const marginSides = expandBoxSides(styleValue("margin", "margin"));
-  const themeValue = (name: string, committed: string) => themeEdits[`${themeMode}:${name}`] ?? committed;
   const setMode = (mode: "light" | "dark") => {
     setThemeMode(mode);
     setActiveColor(null);
@@ -555,6 +584,39 @@ export function App() {
       setThemeStatus(`Applied ${result.applied} token${result.applied === 1 ? "" : "s"}${result.skipped ? `, skipped ${result.skipped}` : ""}. Hit Apply to save.`);
     });
   };
+  const renderThemeToken = (name: string, value: string) => {
+    const renderable = toRenderableCss(value);
+    return (
+      <div className="theme-token" key={name}>
+        <button
+          aria-label={`Edit ${name}`}
+          className="theme-token-swatch"
+          disabled={!renderable}
+          onClick={(event) => {
+            const row = event.currentTarget.closest(".theme-token") as HTMLElement | null;
+            setThemePalette(null);
+            setActiveColor({ name, value, top: row?.offsetTop ?? 0 });
+          }}
+          style={{ background: renderable ?? "repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 8px 8px" }}
+          type="button"
+        />
+        <span title={name}>{name}</span>
+        <input aria-label={name} onChange={(event) => stageThemeValue(name, event.target.value)} title={value} value={value} />
+        <button
+          aria-label={`Pick a Tailwind color for ${name}`}
+          className="theme-tailwind-button"
+          onClick={(event) => {
+            setActiveColor(null);
+            setThemePalette((current) => current?.name === name ? null : { name, anchor: event.currentTarget });
+          }}
+          type="button"
+        >
+          <TailwindIcon />
+        </button>
+        {activeColor?.name === name ? <ColorPicker onChange={(next) => stageThemeValue(name, next)} onClose={() => setActiveColor(null)} top={activeColor.top} value={value} /> : null}
+      </div>
+    );
+  };
 
   return (
     <div className="overlay-desktop-shell">
@@ -563,6 +625,7 @@ export function App() {
         <span className="header-separator" />
         <span className="desktop-status"><i className={status === "Preview connected" ? "online" : ""} />{status}</span>
         <button className="header-project" onClick={chooseWorkspace} title={workspaceName ? `Change project (current: ${workspaceName})` : "Choose a React project"} type="button">{workspaceName ?? "Open project"}</button>
+        <button aria-expanded={devPanelOpen} className={`header-server-status ${devState.status}`} onClick={openDevPanel} title={devState.message ?? "Project dev server"} type="button"><i />{devState.status === "running" ? "Server" : devState.status === "attached" ? "Attached" : devState.status === "starting" ? "Starting" : "Server"}</button>
         <div className="header-spacer" />
         <button aria-pressed={changesOpen} className="header-action" onClick={() => setChangesOpen((open) => !open)} type="button">Changes{pendingChanges.length ? ` (${pendingChanges.length})` : ""}</button>
         <button className="header-action" type="button"><SparkleIcon size={15} weight="bold" /> Agent</button>
@@ -576,7 +639,20 @@ export function App() {
           {themeOpen ? <aside className="native-theme-dock">
             <div className="theme-dock-heading"><strong>Theme</strong><div className="theme-mode-switch"><button className={themeMode === "light" ? "active" : ""} onClick={() => setMode("light")} type="button">Light</button><button className={themeMode === "dark" ? "active" : ""} onClick={() => setMode("dark")} type="button">Dark</button></div><button aria-label="Collapse Theme" onClick={() => { setActiveColor(null); setThemePalette(null); setThemeOpen(false); }} type="button">×</button></div>
             <div className="theme-actions"><div><button onClick={() => void window.themelabDesktop.openThemeEditor()} type="button">↗ Open in editor</button><button onClick={() => { setPasteOpen((open) => !open); setThemeStatus(""); }} type="button">{pasteOpen ? "Close paste" : "Paste theme"}</button></div><span>Format: {theme?.source ? "CSS variables" : "Detected"}</span><small title={theme?.source?.filePath}>{theme?.source?.filePath ?? "No theme source"}</small>{pasteOpen ? <div className="theme-paste-box"><textarea onChange={(event) => setPasteDraft(event.target.value)} placeholder="Paste the studio export — shadcn CSS or JSON" rows={5} spellCheck={false} value={pasteDraft} /><button onClick={applyPastedTheme} type="button">Apply pasted</button></div> : null}{themeStatus ? <small className="theme-status">{themeStatus}</small> : null}</div>
-            <div className="theme-token-list">{themeEntries.length ? themeEntries.map(([name, committed]) => { const value = themeValue(name, committed); const renderable = toRenderableCss(value); return <div className="theme-token" key={name}><button aria-label={`Edit ${name}`} className="theme-token-swatch" disabled={!renderable} onClick={(event) => { const row = event.currentTarget.closest(".theme-token") as HTMLElement | null; setThemePalette(null); setActiveColor({ name, value, top: row?.offsetTop ?? 0 }); }} style={{ background: renderable ?? "repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 8px 8px" }} type="button" /><span title={name}>{name}</span><input aria-label={name} onChange={(event) => stageThemeValue(name, event.target.value)} title={value} value={value} /><button aria-label={`Pick a Tailwind color for ${name}`} className="theme-tailwind-button" onClick={(event) => { setActiveColor(null); setThemePalette((current) => current?.name === name ? null : { name, anchor: event.currentTarget }); }} type="button"><TailwindIcon /></button>{activeColor?.name === name ? <ColorPicker onChange={(next) => stageThemeValue(name, next)} onClose={() => setActiveColor(null)} top={activeColor.top} value={value} /> : null}</div>; }) : <p>No theme tokens found.</p>}</div>
+            <div className="theme-token-list">
+              {themeEntries.length ? <>
+                <div className="theme-contrast-readout" aria-label="Theme contrast checks">
+                  {themeContrasts.map((pair) => <span className={pair.passesAA ? "pass" : pair.passesAA === false ? "fail" : "unknown"} key={`${pair.background}-${pair.foreground}`} title={`${pair.background} / ${pair.foreground}`}>{pair.background} {pair.ratio === null ? "—" : `${pair.ratio.toFixed(1)}:1`}</span>)}
+                </div>
+                <ThemeTokenSections
+                  vars={themeVars}
+                  className="theme-token-groups"
+                  groupClassName="theme-token-group"
+                  labelClassName="theme-token-group-label"
+                  renderToken={renderThemeToken}
+                />
+              </> : <p>No theme tokens found.</p>}
+            </div>
             {themePalette ? <TailwindPalette anchor={themePalette.anchor} inThemeDock onClose={() => setThemePalette(null)} onPick={(_token, css) => stageThemeValue(themePalette.name, css)} /> : null}
             {activeThemeProposal ? <section className="theme-change-review"><strong>Pending change</strong><span>{activeThemeProposal.files.join(", ")}</span><pre>{activeThemeProposal.diff}</pre><div className="theme-footer"><button onClick={discardActiveChange} type="button">Discard</button><button onClick={applyActiveChange} type="button">Apply change</button></div></section> : <div className="theme-footer"><button disabled={!Object.keys(themeEdits).length} onClick={resetThemeDraft} type="button">Reset</button><button disabled={!Object.keys(themeEdits).length} onClick={commitTheme} type="button">Review changes</button></div>}
           </aside> : null}
@@ -584,6 +660,14 @@ export function App() {
           {changesOpen ? <section aria-label="Pending changes" className="changes-panel">
             <div className="changes-panel-header"><div><strong>Changes</strong><span>{pendingChanges.length ? `${pendingChanges.length} pending review${pendingChanges.length === 1 ? "" : "s"}` : recoveryHistory.length ? `${recoveryHistory.length} recorded change${recoveryHistory.length === 1 ? "" : "s"}` : "No pending changes"}</span>{workspaceSummary?.git.available ? <span className="changes-git" title={workspaceSummary.git.root ?? undefined}>Git {workspaceSummary.git.branch ?? "detached"}{workspaceSummary.git.changedFiles ? ` · ${workspaceSummary.git.changedFiles} local` : " · clean"}</span> : null}</div><button aria-label="Close changes" onClick={() => setChangesOpen(false)} type="button">×</button></div>
             {activeProposal ? <><div className="changes-tabs">{pendingChanges.map((change) => <button aria-pressed={change.id === activeProposal.id} key={change.id} onClick={() => setActiveProposal(change)} type="button">{change.label}</button>)}</div><div className="changes-file"><code>{activeProposal.origin}{activeProposal.operation ? ` · ${activeProposal.operation}` : ""}</code>{activeProposal.files.map((file) => <code key={file}>{file}</code>)}</div><pre>{activeProposal.diff}</pre><div className="changes-panel-actions"><button onClick={discardActiveChange} type="button">Discard</button><button onClick={applyActiveChange} type="button">Apply change</button></div></> : <div className="changes-history">{lastAppliedChange ? <div className="changes-history-row"><span>Applied: {lastAppliedChange.label}</span><button onClick={undoLastChange} type="button">Undo last change</button></div> : null}{recoveryHistory.map((entry) => <div className="changes-history-row" key={entry.proposalId}><div><strong>{entry.label}</strong><span>{entry.origin}{entry.operation ? ` · ${entry.operation}` : ""} · {entry.files.join(", ")}</span></div><span className={`change-status ${entry.status}`}>{entry.status === "undoable" ? "Undo available" : entry.status === "undone" ? "Undone" : "Source changed"}</span>{entry.status === "undoable" ? <button onClick={() => undoRecoveryChange(entry)} type="button">Undo</button> : null}</div>)}{!lastAppliedChange && !recoveryHistory.length ? <p className="changes-empty">Visual edits will appear here as reviewable source patches.</p> : null}</div>}
+          </section> : null}
+
+          {devPanelOpen ? <section aria-label="Project dev server" className="dev-panel">
+            <div className="dev-panel-header"><div><TerminalWindowIcon size={15} weight="bold" /><strong>Project server</strong></div><button aria-label="Close project server" onClick={() => setDevPanelOpen(false)} type="button"><XIcon size={15} weight="bold" /></button></div>
+            <p className="dev-panel-status"><i className={devState.status} />{devState.message ?? "Choose a project to start or attach a server."}</p>
+            {devState.command ? <code>{devState.command}</code> : null}
+            <pre>{devLogs.length ? devLogs.slice(-12).map((entry) => entry.text).join("") : "No process output yet."}</pre>
+            <div className="dev-panel-actions">{devState.status === "running" || devState.status === "attached" || devState.status === "starting" ? <button onClick={stopDevServer} type="button"><StopIcon size={13} weight="fill" />{devState.status === "attached" ? "Disconnect" : "Stop server"}</button> : <button className="primary" disabled={!workspaceName} onClick={startDevServer} type="button"><PlayIcon size={13} weight="fill" />Start detected server</button>}</div>
           </section> : null}
 
           <div className="native-bottom-bar">

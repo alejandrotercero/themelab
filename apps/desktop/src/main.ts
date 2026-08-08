@@ -645,6 +645,9 @@ ipcMain.handle("dev:start", async () => {
 });
 ipcMain.handle("dev:stop", async () => {
   await shutdown();
+  if (devState.status === "attached") {
+    publishDevState({ status: "stopped", message: "ThemeLab disconnected from the project dev server." });
+  }
   return devState;
 });
 

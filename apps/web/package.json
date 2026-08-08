@@ -17,6 +17,8 @@
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/colors": "^3.0.0",
     "@themelab/shared": "workspace:*",
+    "@themelab/theme-engine": "workspace:*",
+    "@themelab/theme-ui": "workspace:*",
     "@vercel/analytics": "^2.0.1",
     "bezier-easing": "^2.1.0",
     "class-variance-authority": "^0.7.1",

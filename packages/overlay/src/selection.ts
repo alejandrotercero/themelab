@@ -1,4 +1,8 @@
-import type { ComponentInfo, JSXStructuralPath } from "@themelab/shared";
+import type {
+  ComponentInfo,
+  ComponentStyleSnapshot,
+  JSXStructuralPath,
+} from "@themelab/shared";
 // packages/overlay/src/selection.ts
 //
 // Coordinate space note (infinite canvas):
@@ -217,16 +221,104 @@ function unfreezeSelected(): void {
 // identity so re-renders/HMR don't spam the socket. Call after any change to
 // `currentSelection`; null reports a deselect.
 let lastReportedSelectionKey = "";
-function reportSelectionToCli(): void {
+function reportSelectionToCli(force = false): void {
   const sel = currentSelection;
   const key = sel
     ? `${sel.componentName}|${sel.filePath}|${sel.lineNumber}|${sel.columnNumber}`
     : "";
-  if (key === lastReportedSelectionKey) {
+  if (!force && key === lastReportedSelectionKey) {
     return;
   }
   lastReportedSelectionKey = key;
   send({ type: "setSelection", selection: sel });
+}
+
+function getComputedStyleSnapshot(element: HTMLElement): ComponentStyleSnapshot {
+  const style = getComputedStyle(element);
+  return {
+    display: style.display,
+    flexDirection: style.flexDirection,
+    justifyContent: style.justifyContent,
+    alignItems: style.alignItems,
+    width: style.width,
+    height: style.height,
+    minWidth: style.minWidth,
+    minHeight: style.minHeight,
+    maxWidth: style.maxWidth,
+    maxHeight: style.maxHeight,
+    padding: style.padding,
+    margin: style.margin,
+    gap: style.gap,
+    backgroundColor: style.backgroundColor,
+    borderRadius: style.borderRadius,
+    borderWidth: style.borderWidth,
+    borderColor: style.borderColor,
+    borderStyle: style.borderStyle,
+    opacity: style.opacity,
+    color: style.color,
+    fontSize: style.fontSize,
+    fontWeight: style.fontWeight,
+    lineHeight: style.lineHeight,
+    letterSpacing: style.letterSpacing,
+    textTransform: style.textTransform,
+    textAlign: style.textAlign,
+  };
+}
+
+const desktopPreviewOriginalStyles = new Map<HTMLElement, Map<string, string>>();
+
+export function refreshDesktopSelection(): ComponentInfo | null {
+  if (!selectedElement || !currentSelection) {
+    return null;
+  }
+  const rect = selectedElement.getBoundingClientRect();
+  currentSelection = {
+    ...currentSelection,
+    className: selectedElement.className,
+    computedStyle: getComputedStyleSnapshot(selectedElement),
+    boundingRect: {
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    },
+  };
+  reportSelectionToCli(true);
+  return currentSelection;
+}
+
+/** Desktop-only, in-memory overrides. They never write source files. */
+export function previewDesktopStyle(
+  property: string,
+  value: string
+): ComponentInfo | null {
+  if (!selectedElement) {
+    return null;
+  }
+  let originals = desktopPreviewOriginalStyles.get(selectedElement);
+  if (!originals) {
+    originals = new Map();
+    desktopPreviewOriginalStyles.set(selectedElement, originals);
+  }
+  if (!originals.has(property)) {
+    originals.set(property, selectedElement.style.getPropertyValue(property));
+  }
+  selectedElement.style.setProperty(property, value);
+  return refreshDesktopSelection();
+}
+
+export function clearDesktopPreviewStyles(): ComponentInfo | null {
+  for (const [element, originals] of desktopPreviewOriginalStyles) {
+    for (const [property, originalValue] of originals) {
+      if (originalValue) {
+        element.style.setProperty(property, originalValue);
+      } else {
+        element.style.removeProperty(property);
+      }
+    }
+  }
+  desktopPreviewOriginalStyles.clear();
+  return refreshDesktopSelection();
 }
 
 // Multi-selection state
@@ -931,6 +1023,8 @@ export async function selectElement(
         width: displayRect.width,
         height: displayRect.height,
       },
+      className: el.className,
+      computedStyle: getComputedStyleSnapshot(el),
       trace: resolved.trace,
       jsxPath: resolved.jsxPath,
     };

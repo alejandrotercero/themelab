@@ -54,6 +54,8 @@ import type { ColorKind } from "./utils/color-format.js";
 declare global {
   interface Window {
     __THEMELAB_STUDIO_URL__?: string;
+    __THEMELAB_DESKTOP_OPEN_THEME_EDITOR__?: () => boolean;
+    __THEMELAB_DESKTOP_PASTE_THEME__?: (value: string) => { applied: number; skipped: number; modes: string } | null;
   }
 }
 
@@ -291,6 +293,7 @@ function render(): void {
   }
   if (!dock) {
     dock = document.createElement("div");
+    dock.className = "theme-panel";
     root.append(dock);
   }
   lastStructuralKey = `${getMode()}|${getTokenNames().join(",")}|${hasTheme()}`;
@@ -555,6 +558,17 @@ function footer(): HTMLElement {
 
 export function initThemePanel(shadowRoot: ShadowRoot): void {
   root = shadowRoot;
+  if (new URLSearchParams(window.location.search).has("themelabDesktop")) {
+    window.__THEMELAB_DESKTOP_OPEN_THEME_EDITOR__ = () => {
+      openInEditor();
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_PASTE_THEME__ = (value) => {
+      const parsed = parseThemeInput(value);
+      if (!parsed) return null;
+      return batchApplyTheme(parsed);
+    };
+  }
   const style = document.createElement("style");
   style.textContent = `@keyframes rrThemeSlideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }`;
   shadowRoot.append(style);
@@ -590,6 +604,8 @@ export function destroyThemePanel(): void {
   dock = null;
   root = null;
   expanded = false;
+  delete window.__THEMELAB_DESKTOP_OPEN_THEME_EDITOR__;
+  delete window.__THEMELAB_DESKTOP_PASTE_THEME__;
 }
 
 export function onThemePanelToggle(fn: VisListener): () => void {

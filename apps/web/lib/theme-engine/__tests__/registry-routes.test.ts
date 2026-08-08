@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { GET as getCatalog } from "../../../app/r/registry.json/route"
 import { GET as getTheme } from "../../../app/r/themes/[payload]/route"
 import { encodeInstallPayload } from "../install-payload"
-import { paletteToThemeStyles } from "../transpile"
+import { paletteToThemeStyles } from "@themelab/theme-engine"
 
 describe("registry routes", () => {
   it("returns the stable JSON catalog with public cache headers", async () => {

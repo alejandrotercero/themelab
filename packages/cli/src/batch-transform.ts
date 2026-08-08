@@ -122,6 +122,14 @@ export interface BatchResult {
   }[];
 }
 
+export interface ExecuteBatchOptions {
+  /**
+   * Keep the existing CLI behavior by default. Desktop passes false to resolve
+   * and serialize source changes without mutating the workspace.
+   */
+  write?: boolean;
+}
+
 export interface OperationResult {
   op: BatchOperation["op"];
   file: string;
@@ -2204,7 +2212,8 @@ function processMdxFile(
   resolvedPath: string,
   source: string,
   results: OperationResult[],
-  undoEntries: BatchResult["undoEntries"]
+  undoEntries: BatchResult["undoEntries"],
+  write: boolean
 ): void {
   const beforeContent = source;
   logger.info(`[MDX] Processing MDX file: ${resolvedPath}`);
@@ -2277,7 +2286,7 @@ function processMdxFile(
     return;
   }
   try {
-    fs.writeFileSync(resolvedPath, currentSource, "utf-8");
+    if (write) fs.writeFileSync(resolvedPath, currentSource, "utf-8");
     undoEntries.push({
       filePath: resolvedPath,
       content: beforeContent,
@@ -2369,7 +2378,8 @@ function processJsxFile(
   resolvedPath: string,
   source: string,
   results: OperationResult[],
-  undoEntries: BatchResult["undoEntries"]
+  undoEntries: BatchResult["undoEntries"],
+  write: boolean
 ): void {
   const beforeContent = source;
   const { j, root, quoteStyle } = parseSource(source, resolvedPath);
@@ -2453,7 +2463,7 @@ function processJsxFile(
   }
   try {
     const afterContent = root.toSource({ quote: quoteStyle });
-    fs.writeFileSync(resolvedPath, afterContent, "utf-8");
+    if (write) fs.writeFileSync(resolvedPath, afterContent, "utf-8");
     undoEntries.push({
       filePath: resolvedPath,
       content: beforeContent,
@@ -2477,7 +2487,8 @@ function processFile(
   ops: OpGroup,
   projectRoot: string,
   results: OperationResult[],
-  undoEntries: BatchResult["undoEntries"]
+  undoEntries: BatchResult["undoEntries"],
+  write: boolean
 ): void {
   if (!isProjectFilePathSafe(file, projectRoot)) {
     failAllOps(results, ops, file, "File path is outside the project root");
@@ -2504,7 +2515,7 @@ function processFile(
   }
 
   if (isMdxTextFile(resolvedPath)) {
-    processMdxFile(ops, file, resolvedPath, source, results, undoEntries);
+    processMdxFile(ops, file, resolvedPath, source, results, undoEntries, write);
     return;
   }
 
@@ -2525,7 +2536,7 @@ function processFile(
     if (nonDuplicateOps.length === 0) {
       if (source !== beforeContent) {
         try {
-          fs.writeFileSync(resolvedPath, source, "utf-8");
+          if (write) fs.writeFileSync(resolvedPath, source, "utf-8");
           undoEntries.push({
             filePath: resolvedPath,
             content: beforeContent,
@@ -2552,14 +2563,17 @@ function processFile(
     resolvedPath,
     source,
     results,
-    undoEntries
+    undoEntries,
+    write
   );
 }
 
 export function executeBatch(
   operations: BatchOperation[],
-  projectRoot: string
+  projectRoot: string,
+  options: ExecuteBatchOptions = {}
 ): BatchResult {
+  const write = options.write ?? true;
   const results: OperationResult[] = Array.from({ length: operations.length });
   const undoEntries: BatchResult["undoEntries"] = [];
 
@@ -2576,13 +2590,14 @@ export function executeBatch(
 
   // Process each file atomically
   for (const [file, ops] of byFile) {
-    processFile(operations, file, ops, projectRoot, results, undoEntries);
+    processFile(operations, file, ops, projectRoot, results, undoEntries, write);
   }
 
   // ── MDX fallback: redirect text edits that targeted JSX wrappers ──────
   // When MDX content is compiled and imported by a JSX file, the overlay
   // resolves to the JSX wrapper (e.g., BlogPost.jsx) instead of the .mdx
   // source. Detect this and retry against the actual MDX file.
+  if (!write) return { results, undoEntries };
   for (let i = 0; i < operations.length; i += 1) {
     const op = operations[i];
     if (op.op !== "updateText") {

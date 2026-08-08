@@ -6,7 +6,7 @@ import {
   createRegistryCatalog,
   installPayloadToRegistryItem,
 } from "../registry"
-import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
+import { paletteToThemeStyles, THEME_TOKENS } from "@themelab/theme-engine"
 
 const theme = paletteToThemeStyles("#0ea5e9", "#737373")
 

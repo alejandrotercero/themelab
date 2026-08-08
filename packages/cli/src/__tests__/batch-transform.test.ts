@@ -148,6 +148,28 @@ describe("executeBatch", () => {
     expect(updated).not.toContain("bg-white");
   });
 
+  it("returns a class transform without writing when used for a proposal", () => {
+    const { filePath, original } = setup("classname-string.tsx");
+    const pos = findPosition(original, "div");
+
+    const result = executeBatch(
+      [{
+        op: "updateClass",
+        file: filePath,
+        line: pos.line,
+        col: pos.col,
+        updates: [{ tailwindPrefix: "bg", tailwindToken: "red-500", value: "" }],
+      }],
+      path.dirname(filePath),
+      { write: false }
+    );
+
+    expect(result.results[0].success).toBe(true);
+    expect(result.undoEntries).toHaveLength(1);
+    expect(result.undoEntries[0].afterContent).toContain("bg-red-500");
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(original);
+  });
+
   it("replaces an element's entire className via the replaceClassName op", () => {
     const { filePath, original } = setup("classname-variants.tsx");
     const pos = findPosition(original, "section");

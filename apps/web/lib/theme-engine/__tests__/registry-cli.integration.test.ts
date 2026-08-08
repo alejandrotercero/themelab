@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import { encodeInstallPayload } from "../install-payload"
 import { installPayloadToRegistryItem } from "../registry"
-import { paletteToThemeStyles } from "../transpile"
+import { paletteToThemeStyles } from "@themelab/theme-engine"
 
 const execFileAsync = promisify(execFile)
 const cleanup: string[] = []

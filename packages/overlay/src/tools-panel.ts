@@ -536,7 +536,7 @@ function openShortcutsOverlay(): void {
   document.addEventListener("keydown", shortcutsKeyHandler, true);
 }
 
-function toggleShortcutsOverlay(): void {
+export function toggleShortcutsOverlay(): void {
   if (shortcutsOverlayEl) {
     closeShortcutsOverlay();
   } else {

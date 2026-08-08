@@ -7,7 +7,7 @@ import {
   createInstallCommand,
   MAX_INSTALL_PAYLOAD_LENGTH,
 } from "../install-payload"
-import { paletteToThemeStyles, THEME_TOKENS } from "../transpile"
+import { paletteToThemeStyles, THEME_TOKENS } from "@themelab/theme-engine"
 
 const theme = paletteToThemeStyles("#8b5cf6", "#64748b")
 

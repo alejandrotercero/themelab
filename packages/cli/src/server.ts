@@ -79,6 +79,14 @@ function send(ws: WebSocket, msg: ServerMessage) {
 
 interface SketchServerOptions {
   port: number;
+  /** Project root used for source resolution and writes. Defaults to cwd. */
+  projectRoot?: string;
+  /** Called whenever the overlay selection changes (desktop shell bridge). */
+  onSelectionChange?: (selection: ComponentInfo | null) => void;
+  /** Called when the project theme is resolved for a connected overlay. */
+  onThemeChange?: (
+    theme: { theme: ThemeStyles; source: ThemeSource | null } | null
+  ) => void;
   /** Force-enable/disable the AI locator. Defaults to !!process.env.ANTHROPIC_API_KEY. */
   enableAi?: boolean;
 }
@@ -144,7 +152,19 @@ export function createSketchServer(
     verifyClient: (info: { origin: string; secure: boolean }) =>
       isAllowedWsOrigin(info.origin),
   });
-  const projectRoot = path.resolve(process.cwd());
+  const projectRoot = path.resolve(
+    typeof portOrOptions === "object" && portOrOptions.projectRoot
+      ? portOrOptions.projectRoot
+      : process.cwd()
+  );
+  const onSelectionChange =
+    typeof portOrOptions === "object"
+      ? portOrOptions.onSelectionChange
+      : undefined;
+  const onThemeChange =
+    typeof portOrOptions === "object"
+      ? portOrOptions.onThemeChange
+      : undefined;
 
   // AI locator config: merged from the persisted settings file + env overrides.
   // `enableAi:false` on the server options force-disables regardless.
@@ -1076,6 +1096,7 @@ export function createSketchServer(
       const resolved = resolveTheme(projectRoot);
       if (resolved) {
         currentTheme = { theme: resolved.theme, source: resolved.source };
+        onThemeChange?.(currentTheme);
         send(ws, {
           type: "themeStyles",
           theme: resolved.theme,
@@ -1115,6 +1136,7 @@ export function createSketchServer(
         case "setSelection": {
           // Overlay reported a selection change — store it for MCP reads. No reply.
           currentSelection = msg.selection;
+          onSelectionChange?.(currentSelection);
           break;
         }
 
@@ -1229,6 +1251,7 @@ export function createSketchServer(
         undoStack.length = 0; // Clear undo stack on disconnect
         queue.length = 0;
         currentSelection = null; // Stale once the overlay is gone
+        onSelectionChange?.(null);
       }
     });
   });

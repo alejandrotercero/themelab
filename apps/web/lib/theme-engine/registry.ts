@@ -1,7 +1,9 @@
-import { themeStylesToDesignMd } from "./design-md"
 import { decodeInstallPayload } from "./install-payload"
-import { reformat } from "./oklch"
-import { THEME_TOKENS } from "./transpile"
+import {
+  reformat,
+  THEME_TOKENS,
+  themeStylesToDesignMd,
+} from "@themelab/theme-engine"
 
 const REGISTRY_SCHEMA = "https://ui.shadcn.com/schema/registry.json"
 const REGISTRY_ITEM_SCHEMA = "https://ui.shadcn.com/schema/registry-item.json"

@@ -56,3 +56,22 @@
 - Z-stack + selection history landed in a follow-up pass (see above).
 - Still deferred: page-freeze system (pin :hover/pause animations during
   selection) — biggest remaining UX win, start without dispatcher patching.
+
+# Desktop overlay parity pass
+
+## Plan
+
+- [x] Inventory the original overlay toolbar, inspector, theme dock, and color controls.
+- [x] Wire desktop controls through the injected overlay runtime instead of placeholder actions.
+- [x] Restore semantic color bindings, the Kibo-style picker, variant controls, and floating toolbar behavior.
+- [x] Reuse the overlay Tailwind v4 palette for property colors and theme-token rows, preserving token-class write-back.
+- [x] Replace approximate toolbar glyphs with source SVGs, remove deferred infinite-canvas control, and bind the box model to real selected spacing values.
+- [x] Add responsive preview ownership and a resizable native inspector without stale compositor bounds.
+- [x] Verify a live element selection populates its source identity, computed styles, color tokens, and native controls.
+- [ ] Finish a manual side-by-side visual pass for remaining small geometry and typography differences.
+
+## Review (in progress)
+
+- `@themelab/desktop` and `@themelab/overlay` typechecks pass; `pnpm build:desktop` passes and launches Electron against the real overlay runtime.
+- Live Electron inspection confirmed the desktop inspector receives `app/page.tsx` selection data and exposes `var(--primary)` / `var(--primary-foreground)` values for Background and Color.
+- CLI regression suite: 15 files, 228 tests passing.

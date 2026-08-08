@@ -1,4 +1,3 @@
-import { mountBrandBadge, destroyBrandBadge } from "./brand.js";
 // packages/overlay/src/toolbar.ts
 import {
   send,
@@ -38,6 +37,19 @@ const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.9997
 const TOOLBAR_STYLES = `
   :host {
     all: initial;
+  }
+  /* The desktop shell recreates this chrome natively. The injected overlay
+     remains an invisible runtime bridge for hit-testing and source resolution. */
+  :host(.desktop-mode) .toolbar,
+  :host(.desktop-mode) .tools-panel,
+  :host(.desktop-mode) .selection-label,
+  :host(.desktop-mode) .changelog-panel,
+  :host(.desktop-mode) .prop-sidebar,
+  :host(.desktop-mode) .rr-settings-overlay,
+  :host(.desktop-mode) .shortcuts-overlay,
+  :host(.desktop-mode) .theme-panel,
+  :host(.desktop-mode) .toast {
+    display: none !important;
   }
   .toolbar {
     position: fixed;
@@ -258,9 +270,15 @@ export function showToast(
   }, 2000);
 }
 
-export function mountToolbar(onClose: () => void): void {
+export function mountToolbar(
+  onClose: () => void,
+  options?: { desktop?: boolean }
+): void {
   const hostEl = document.createElement("div");
   hostEl.id = "themelab-root";
+  if (options?.desktop) {
+    hostEl.classList.add("desktop-mode");
+  }
   host = hostEl;
   // Mount on <html>, not <body>. Frameworks that own <body> via React (Next.js
   // App Router) reconcile its children and can pull the overlay into the
@@ -325,9 +343,6 @@ export function mountToolbar(onClose: () => void): void {
   toastEl = document.createElement("div");
   toastEl.className = "toast";
   shadowRoot.append(toastEl);
-
-  // Decorative ThemeLab wordmark, pinned bottom-right.
-  mountBrandBadge(shadowRoot);
 
   undoBtn?.addEventListener("click", () => {
     send({ type: "undo" });
@@ -443,7 +458,6 @@ export function destroyToolbar(): void {
   // Stop the re-attach guard before removing, or it would immediately re-add the host.
   reattachObserver?.disconnect();
   reattachObserver = null;
-  destroyBrandBadge();
   (host ?? document.querySelector("#themelab-root"))?.remove();
   host = null;
   shadowRoot = null;

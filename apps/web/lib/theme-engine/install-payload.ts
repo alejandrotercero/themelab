@@ -1,8 +1,6 @@
 import type { ThemeStyles } from "@themelab/shared"
 
-import { sanitizeThemeName } from "./design-md"
-import { toOklch } from "./oklch"
-import { THEME_TOKENS } from "./transpile"
+import { sanitizeThemeName, THEME_TOKENS, toOklch } from "@themelab/theme-engine"
 
 export const INSTALL_PAYLOAD_VERSION = 1 as const
 export const MAX_INSTALL_PAYLOAD_LENGTH = 8192

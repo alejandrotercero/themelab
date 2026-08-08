@@ -504,6 +504,35 @@ export interface AiSettingsView {
   };
 }
 
+export interface ComponentStyleSnapshot {
+  display: string;
+  flexDirection: string;
+  justifyContent: string;
+  alignItems: string;
+  width: string;
+  height: string;
+  minWidth: string;
+  minHeight: string;
+  maxWidth: string;
+  maxHeight: string;
+  padding: string;
+  margin: string;
+  gap: string;
+  backgroundColor: string;
+  borderRadius: string;
+  borderWidth: string;
+  borderColor: string;
+  borderStyle: string;
+  opacity: string;
+  color: string;
+  fontSize: string;
+  fontWeight: string;
+  lineHeight: string;
+  letterSpacing: string;
+  textTransform: string;
+  textAlign: string;
+}
+
 export interface ComponentInfo {
   tagName: string;
   componentName: string;
@@ -528,6 +557,9 @@ export interface ComponentInfo {
     width: number;
     height: number;
   };
+  /** DOM class list and computed values captured at selection time. */
+  className?: string;
+  computedStyle?: ComponentStyleSnapshot;
   // Compact, signal-aware ancestor trace derived from `stack` (app frames with
   // locations, dependency/shared-UI frames as free name-only context). Surfaced
   // to agents via the MCP get_selection tool.

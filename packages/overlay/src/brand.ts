@@ -1,8 +1,7 @@
 // packages/overlay/src/brand.ts
 // The ThemeLab wordmark (logo.svg), recolored to `currentColor` so it inherits
-// whatever surface it sits on. Rendered as a small, decorative badge pinned to
-// the bottom-right corner of the viewport.
-import { COLORS, FONT_FAMILY } from "./design-tokens.js";
+// whatever surface it sits on.
+import { COLORS } from "./design-tokens.js";
 
 export const BRAND_LOGO_SVG = `<svg viewBox="0 0 263 30" fill="currentColor" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ThemeLab">
 <path d="M25.012 5.00017H15.0068V30H10.0052V5.00017H0V0H25.012V5.00017Z"/>
@@ -39,36 +38,4 @@ export function brandMark(
     svg.style.display = "block";
   }
   return span;
-}
-
-let badgeEl: HTMLDivElement | null = null;
-
-/** Mounts a small, decorative ThemeLab wordmark in the bottom-right corner.
- *  Non-interactive (pointer-events: none) so it never blocks clicks. */
-export function mountBrandBadge(shadowRoot: ShadowRoot): void {
-  badgeEl = document.createElement("div");
-  badgeEl.className = "rr-brand-badge";
-  badgeEl.style.cssText = `
-    position: fixed;
-    bottom: 12px;
-    right: 14px;
-    z-index: 2147483647;
-    pointer-events: none;
-    color: ${COLORS.textPrimary};
-    opacity: 0.9;
-    font-family: ${FONT_FAMILY};
-  `;
-  badgeEl.innerHTML = BRAND_LOGO_SVG;
-  const svg = badgeEl.querySelector("svg");
-  if (svg) {
-    svg.style.height = "18px";
-    svg.style.width = "auto";
-    svg.style.display = "block";
-  }
-  shadowRoot.append(badgeEl);
-}
-
-export function destroyBrandBadge(): void {
-  badgeEl?.remove();
-  badgeEl = null;
 }

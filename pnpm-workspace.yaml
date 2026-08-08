@@ -3,5 +3,6 @@ packages:
   - "apps/*"
 
 onlyBuiltDependencies:
+  - electron
   - sharp
   - unrs-resolver

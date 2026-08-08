@@ -28,6 +28,7 @@ import {
   saveCanvasState,
   restoreCanvasState,
   clearSavedCanvasState,
+  toggleCanvasTransform,
 } from "./canvas-transform.js";
 import {
   initChangelog,
@@ -71,7 +72,13 @@ import { showOnboardingHint, dismissOnboarding } from "./onboarding.js";
 import {
   initPropertyController,
   destroyPropertyController,
+  bindToken,
+  pickTailwindColor,
+  preview as previewProperty,
+  commit as commitProperty,
+  cancel as cancelProperty,
 } from "./properties/property-controller.js";
+import { setVariantTarget } from "./properties/variant-target.js";
 import { clearSelectionHistory } from "./selection-history.js";
 import {
   initSelection,
@@ -79,9 +86,21 @@ import {
   clearSelection,
   setEnabled,
   clearResolutionCache,
+  previewDesktopStyle,
+  clearDesktopPreviewStyles,
+  refreshDesktopSelection,
+  navigate,
+  moveSelectedSibling,
 } from "./selection.js";
-import { initSettingsPanel } from "./settings-panel.js";
+import type { ComponentInfo } from "@themelab/shared";
+import { initSettingsPanel, toggleSettingsPanel } from "./settings-panel.js";
 import { initThemePanel, destroyThemePanel } from "./theme-panel.js";
+import {
+  commit as commitTheme,
+  previewVar,
+  resetPreview as resetThemePreview,
+  setMode as setThemeMode,
+} from "./theme-state.js";
 import {
   mountToolbar,
   destroyToolbar,
@@ -100,6 +119,7 @@ import {
   setOnCanvasUndo as setOnCanvasUndoPanel,
   updateCanvasUndoButton,
   flashToolButton,
+  toggleShortcutsOverlay,
 } from "./tools-panel.js";
 import { clearVisibilityCache } from "./utils/component-filter.js";
 import { clearElementCache } from "./utils/element-cache.js";
@@ -107,6 +127,42 @@ import { clearElementCache } from "./utils/element-cache.js";
 declare global {
   interface Window {
     __THEMELAB_WS_PORT__?: number;
+    __THEMELAB_DESKTOP_PREVIEW_STYLE__?: (
+      property: string,
+      value: string
+    ) => ComponentInfo | null;
+    __THEMELAB_DESKTOP_CLEAR_PREVIEW_STYLES__?: () => ComponentInfo | null;
+    __THEMELAB_DESKTOP_PREVIEW_THEME__?: (
+      mode: "light" | "dark",
+      name: string,
+      value: string
+    ) => boolean;
+    __THEMELAB_DESKTOP_PREVIEW_THEME_MODE__?: (
+      mode: "light" | "dark"
+    ) => boolean;
+    __THEMELAB_DESKTOP_RESET_THEME__?: () => boolean;
+    __THEMELAB_DESKTOP_COMMIT_THEME__?: () => boolean;
+    __THEMELAB_DESKTOP_NAVIGATE__?: (
+      direction: "up" | "down" | "left" | "right"
+    ) => boolean;
+    __THEMELAB_DESKTOP_MOVE__?: (direction: "up" | "down") => boolean;
+    __THEMELAB_DESKTOP_UNDO__?: () => boolean;
+    __THEMELAB_DESKTOP_CANVAS_UNDO__?: () => boolean;
+    __THEMELAB_DESKTOP_RESET__?: () => boolean;
+    __THEMELAB_DESKTOP_TOGGLE_CANVAS__?: () => boolean;
+    __THEMELAB_DESKTOP_TOGGLE_HISTORY__?: () => boolean;
+    __THEMELAB_DESKTOP_CLOSE__?: () => boolean;
+    __THEMELAB_DESKTOP_BIND_TOKEN__?: (key: string, token: string) => boolean;
+    __THEMELAB_DESKTOP_PICK_TAILWIND__?: (
+      key: string,
+      token: string,
+      css: string
+    ) => boolean;
+    __THEMELAB_DESKTOP_SET_VARIANT__?: (breakpoint: string, dark: boolean) => boolean;
+    __THEMELAB_DESKTOP_COMMIT__?: () => boolean;
+    __THEMELAB_DESKTOP_COMMIT_AI__?: () => boolean;
+    __THEMELAB_DESKTOP_TOGGLE_SHORTCUTS__?: () => boolean;
+    __THEMELAB_DESKTOP_TOGGLE_SETTINGS__?: () => boolean;
   }
 }
 
@@ -237,6 +293,44 @@ function installGlobalErrorHandlers(): void {
 
 let moveObserver: MutationObserver | null = null;
 
+const DESKTOP_PROPERTY_KEYS: Record<string, string> = {
+  display: "display",
+  "flex-direction": "flexDirection",
+  "justify-content": "justifyContent",
+  "align-items": "alignItems",
+  gap: "gap",
+  width: "width",
+  height: "height",
+  "min-width": "minWidth",
+  "min-height": "minHeight",
+  "max-width": "maxWidth",
+  "max-height": "maxHeight",
+  "font-size": "fontSize",
+  "font-weight": "fontWeight",
+  "text-transform": "textTransform",
+  "line-height": "lineHeight",
+  "letter-spacing": "letterSpacing",
+  "text-align": "textAlign",
+  color: "color",
+  "background-color": "backgroundColor",
+  "border-radius": "borderRadius",
+  "border-width": "borderWidth",
+};
+
+function previewDesktopProperty(property: string, value: string): ComponentInfo | null {
+  const key = DESKTOP_PROPERTY_KEYS[property];
+  if (key) {
+    previewProperty(key, value);
+    return refreshDesktopSelection();
+  }
+  return previewDesktopStyle(property, value);
+}
+
+function clearDesktopPreview(): ComponentInfo | null {
+  cancelProperty();
+  return clearDesktopPreviewStyles();
+}
+
 function resetOverlayState(): void {
   cancelTextEditSession();
   clearSelection();
@@ -270,6 +364,28 @@ function restoreMoveToElement(
 }
 
 function close(): void {
+  delete window.__THEMELAB_DESKTOP_PREVIEW_STYLE__;
+  delete window.__THEMELAB_DESKTOP_CLEAR_PREVIEW_STYLES__;
+  delete window.__THEMELAB_DESKTOP_PREVIEW_THEME__;
+  delete window.__THEMELAB_DESKTOP_PREVIEW_THEME_MODE__;
+  delete window.__THEMELAB_DESKTOP_RESET_THEME__;
+  delete window.__THEMELAB_DESKTOP_COMMIT_THEME__;
+  delete window.__THEMELAB_DESKTOP_NAVIGATE__;
+  delete window.__THEMELAB_DESKTOP_MOVE__;
+  delete window.__THEMELAB_DESKTOP_UNDO__;
+  delete window.__THEMELAB_DESKTOP_CANVAS_UNDO__;
+  delete window.__THEMELAB_DESKTOP_RESET__;
+  delete window.__THEMELAB_DESKTOP_TOGGLE_CANVAS__;
+  delete window.__THEMELAB_DESKTOP_TOGGLE_HISTORY__;
+  delete window.__THEMELAB_DESKTOP_CLOSE__;
+  delete window.__THEMELAB_DESKTOP_BIND_TOKEN__;
+  delete window.__THEMELAB_DESKTOP_PICK_TAILWIND__;
+  delete window.__THEMELAB_DESKTOP_SET_VARIANT__;
+  delete window.__THEMELAB_DESKTOP_COMMIT__;
+  delete window.__THEMELAB_DESKTOP_COMMIT_AI__;
+  delete window.__THEMELAB_DESKTOP_TOGGLE_SHORTCUTS__;
+  delete window.__THEMELAB_DESKTOP_TOGGLE_SETTINGS__;
+  cancelProperty();
   clearElementCache();
   clearVisibilityCache();
   clearResolutionCache();
@@ -315,7 +431,82 @@ function init(): void {
 
   ensurePanelFont(); // Load Google Sans Code before any UI paints
   connect(wsPort);
-  mountToolbar(close);
+  const desktopMode = new URLSearchParams(window.location.search).has(
+    "themelabDesktop"
+  );
+  mountToolbar(close, { desktop: desktopMode });
+  if (desktopMode) {
+    window.__THEMELAB_DESKTOP_PREVIEW_STYLE__ = previewDesktopProperty;
+    window.__THEMELAB_DESKTOP_CLEAR_PREVIEW_STYLES__ = clearDesktopPreview;
+    window.__THEMELAB_DESKTOP_PREVIEW_THEME__ = (mode, name, value) => {
+      setThemeMode(mode);
+      previewVar(name, value);
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_PREVIEW_THEME_MODE__ = (mode) => {
+      setThemeMode(mode);
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_RESET_THEME__ = () => {
+      resetThemePreview();
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_COMMIT_THEME__ = () => commitTheme();
+    window.__THEMELAB_DESKTOP_NAVIGATE__ = (direction) => {
+      navigate(direction);
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_MOVE__ = (direction) => {
+      moveSelectedSibling(direction);
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_UNDO__ = () => {
+      send({ type: "undo" });
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_CANVAS_UNDO__ = () => {
+      const description = canvasUndo();
+      if (description) showToast(`Undo: ${description}`);
+      return Boolean(description);
+    };
+    window.__THEMELAB_DESKTOP_RESET__ = () => {
+      resetOverlayState();
+      showToast("Everything reset");
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_TOGGLE_CANVAS__ = () => {
+      toggleCanvasTransform();
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_TOGGLE_HISTORY__ = () => {
+      setChangelogOpen(!isChangelogOpen());
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_CLOSE__ = () => {
+      close();
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_BIND_TOKEN__ = (key, token) => {
+      bindToken(key, token);
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_PICK_TAILWIND__ = (key, token, css) => {
+      pickTailwindColor(key, token, css);
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_SET_VARIANT__ = (breakpoint, dark) => {
+      setVariantTarget({ breakpoint, dark });
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_TOGGLE_SHORTCUTS__ = () => {
+      toggleShortcutsOverlay();
+      return true;
+    };
+    window.__THEMELAB_DESKTOP_TOGGLE_SETTINGS__ = () => {
+      toggleSettingsPanel();
+      return true;
+    };
+  }
 
   // Initialize property controller (requires Shadow DOM from mountToolbar)
   const shadowRoot = getShadowRoot();
@@ -441,6 +632,7 @@ function init(): void {
       showToast("Operation in progress");
       return;
     }
+    commitProperty();
     if (!hasChanges()) {
       showToast("Nothing to confirm — make some visual changes first");
       return;
@@ -467,6 +659,10 @@ function init(): void {
   };
   setOnGenerate(() => doCommit(false));
   setOnGenerateAi(() => doCommit(true));
+  if (desktopMode) {
+    window.__THEMELAB_DESKTOP_COMMIT__ = () => { doCommit(false); return true; };
+    window.__THEMELAB_DESKTOP_COMMIT_AI__ = () => { doCommit(true); return true; };
+  }
 
   // Handle commitBatch completion from CLI
   onMessage((msg) => {
@@ -558,17 +754,24 @@ function init(): void {
     showToast("Everything reset");
   });
 
-  // Persist the canvas view across the reload an applied edit triggers.
-  window.addEventListener("beforeunload", saveCanvasState);
+  // Persist the canvas view across the reload an applied edit triggers. The
+  // desktop shell owns the viewport and intentionally keeps the preview in a
+  // responsive document flow, so it must not restore the CLI's infinite-canvas
+  // transform from a previous session.
+  if (!desktopMode) {
+    window.addEventListener("beforeunload", saveCanvasState);
+  }
   // Restore only AFTER the framework has hydrated. Wrapping <body> children
   // mid-hydration (e.g. Next App Router, which owns <body>) corrupts React's
   // reconciliation and wipes unknown nodes — including the overlay. The manual
   // toggle is safe precisely because it's always post-hydration, so we mirror
   // that by waiting for `load` + a frame before re-entering the canvas.
-  if (document.readyState === "complete") {
-    deferredRestore();
-  } else {
-    window.addEventListener("load", deferredRestore, { once: true });
+  if (!desktopMode) {
+    if (document.readyState === "complete") {
+      deferredRestore();
+    } else {
+      window.addEventListener("load", deferredRestore, { once: true });
+    }
   }
 
   console.log("[ThemeLab] Overlay initialized with Phase 2A canvas tools");

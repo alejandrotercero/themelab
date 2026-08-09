@@ -7,7 +7,9 @@
   "scripts": {
     "build": "pnpm --filter @themelab/shared build && pnpm --filter @themelab/core build && pnpm --filter @themelab/overlay build && pnpm --filter themelab-cli build && tsc -p tsconfig.main.json && vite build && node scripts/copy-static.mjs",
     "dev": "pnpm run build && electron dist/main.js",
-    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit"
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "test": "vitest run",
+    "test:lifecycle": "vitest run src/project/dev-server-live.test.ts --no-file-parallelism"
   },
   "dependencies": {
     "culori": "^4.0.1",
@@ -28,6 +30,7 @@
     "@types/node": "^22",
     "electron": "^38.0.0",
     "typescript": "^5.7.0",
-    "vite": "^6.1.0"
+    "vite": "^6.1.0",
+    "vitest": "^3.0.0"
   }
 }

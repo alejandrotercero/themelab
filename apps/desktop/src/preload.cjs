@@ -1,14 +1,113 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+let activeSessionId = null;
+const invokeSession = (channel, ...args) => ipcRenderer.invoke(channel, activeSessionId, ...args);
+
 contextBridge.exposeInMainWorld("themelabDesktop", {
+  // Lifecycle API: grouped by authority. The compatibility methods below are
+  // retained while the non-lifecycle preview/editor surface is migrated.
+  workspace: {
+    getRoot: () => ipcRenderer.invoke("workspace:get-root"),
+    summary: () => ipcRenderer.invoke("workspace:summary"),
+    choose: () => ipcRenderer.invoke("workspace:choose"),
+    recents: () => ipcRenderer.invoke("workspace:recents"),
+    openRecent: (root) => ipcRenderer.invoke("workspace:open-recent", root),
+    chooseApp: (sessionId, appRoot) => ipcRenderer.invoke("workspace:choose-app", sessionId, appRoot),
+    chooseNode: (sessionId) => ipcRenderer.invoke("workspace:choose-node", sessionId),
+    close: (sessionId) => ipcRenderer.invoke("workspace:close", sessionId),
+    start: () => ipcRenderer.invoke("workspace:start"),
+  },
+  dependencies: {
+    status: () => ipcRenderer.invoke("workspace:install-status"),
+    logs: () => ipcRenderer.invoke("workspace:install-logs"),
+    plan: (sessionId) => ipcRenderer.invoke("workspace:install-plan", sessionId),
+    confirm: (sessionId, planId) => ipcRenderer.invoke("workspace:install-confirm", sessionId, planId),
+    cancel: (sessionId) => ipcRenderer.invoke("workspace:install-cancel", sessionId),
+    subscribe: (callback) => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on("install:status", listener);
+      return () => ipcRenderer.removeListener("install:status", listener);
+    },
+    subscribeLogs: (callback) => {
+      const listener = (_event, entry) => callback(entry);
+      ipcRenderer.on("install:log", listener);
+      return () => ipcRenderer.removeListener("install:log", listener);
+    },
+  },
+  dev: {
+    status: () => ipcRenderer.invoke("dev:status"),
+    logs: () => ipcRenderer.invoke("dev:logs"),
+    start: (sessionId) => ipcRenderer.invoke("dev:start", sessionId),
+    chooseEndpoint: (sessionId, url) => ipcRenderer.invoke("dev:choose-endpoint", sessionId, url),
+    attach: (sessionId, url) => ipcRenderer.invoke("dev:attach", sessionId, url),
+    stop: (sessionId) => ipcRenderer.invoke("dev:stop", sessionId),
+    subscribe: (callback) => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on("dev:status", listener);
+      return () => ipcRenderer.removeListener("dev:status", listener);
+    },
+    subscribeLogs: (callback) => {
+      const listener = (_event, entry) => callback(entry);
+      ipcRenderer.on("dev:log", listener);
+      return () => ipcRenderer.removeListener("dev:log", listener);
+    },
+  },
+  session: {
+    current: async () => {
+      const snapshot = await ipcRenderer.invoke("workspace:session");
+      activeSessionId = snapshot?.sessionId ?? null;
+      return snapshot;
+    },
+    subscribe: (callback) => {
+      const listener = (_event, snapshot) => {
+        activeSessionId = snapshot?.sessionId ?? null;
+        callback(snapshot);
+      };
+      ipcRenderer.on("session:snapshot", listener);
+      return () => ipcRenderer.removeListener("session:snapshot", listener);
+    },
+  },
   getWorkspaceRoot() {
     return ipcRenderer.invoke("workspace:get-root");
   },
   getWorkspaceSummary() {
     return ipcRenderer.invoke("workspace:summary");
   },
+  getWorkspaceSession() {
+    return ipcRenderer.invoke("workspace:session");
+  },
   chooseWorkspace() {
     return ipcRenderer.invoke("workspace:choose");
+  },
+  getRecentWorkspaces() {
+    return ipcRenderer.invoke("workspace:recents");
+  },
+  openRecentWorkspace(root) {
+    return ipcRenderer.invoke("workspace:open-recent", root);
+  },
+  chooseWorkspaceApp(sessionId, appRoot) {
+    return ipcRenderer.invoke("workspace:choose-app", sessionId, appRoot);
+  },
+  chooseNodeExecutable(sessionId) {
+    return ipcRenderer.invoke("workspace:choose-node", sessionId);
+  },
+  closeWorkspace(sessionId) {
+    return ipcRenderer.invoke("workspace:close", sessionId);
+  },
+  planWorkspaceDependencies(sessionId) {
+    return ipcRenderer.invoke("workspace:install-plan", sessionId);
+  },
+  confirmWorkspaceDependencies(sessionId, planId) {
+    return ipcRenderer.invoke("workspace:install-confirm", sessionId, planId);
+  },
+  cancelWorkspaceDependencies(sessionId) {
+    return ipcRenderer.invoke("workspace:install-cancel", sessionId);
+  },
+  getInstallStatus() {
+    return ipcRenderer.invoke("workspace:install-status");
+  },
+  getInstallLogs() {
+    return ipcRenderer.invoke("workspace:install-logs");
   },
   startWorkspace() {
     return ipcRenderer.invoke("workspace:start");
@@ -19,11 +118,17 @@ contextBridge.exposeInMainWorld("themelabDesktop", {
   getDevLogs() {
     return ipcRenderer.invoke("dev:logs");
   },
-  startDevServer() {
-    return ipcRenderer.invoke("dev:start");
+  startDevServer(sessionId) {
+    return ipcRenderer.invoke("dev:start", sessionId);
   },
-  stopDevServer() {
-    return ipcRenderer.invoke("dev:stop");
+  chooseDevEndpoint(sessionId, url) {
+    return ipcRenderer.invoke("dev:choose-endpoint", sessionId, url);
+  },
+  attachDevServer(sessionId, url) {
+    return ipcRenderer.invoke("dev:attach", sessionId, url);
+  },
+  stopDevServer(sessionId) {
+    return ipcRenderer.invoke("dev:stop", sessionId);
   },
   onDevStatus(callback) {
     const listener = (_event, status) => callback(status);
@@ -35,14 +140,32 @@ contextBridge.exposeInMainWorld("themelabDesktop", {
     ipcRenderer.on("dev:log", listener);
     return () => ipcRenderer.removeListener("dev:log", listener);
   },
+  onSessionSnapshot(callback) {
+    const listener = (_event, snapshot) => {
+      activeSessionId = snapshot?.sessionId ?? null;
+      callback(snapshot);
+    };
+    ipcRenderer.on("session:snapshot", listener);
+    return () => ipcRenderer.removeListener("session:snapshot", listener);
+  },
+  onInstallStatus(callback) {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on("install:status", listener);
+    return () => ipcRenderer.removeListener("install:status", listener);
+  },
+  onInstallLog(callback) {
+    const listener = (_event, entry) => callback(entry);
+    ipcRenderer.on("install:log", listener);
+    return () => ipcRenderer.removeListener("install:log", listener);
+  },
   proposeTheme(edits) {
-    return ipcRenderer.invoke("theme:propose", { edits });
+    return invokeSession("theme:propose", { edits });
   },
   applyThemeProposal(proposalId) {
-    return ipcRenderer.invoke("theme:apply", proposalId);
+    return invokeSession("theme:apply", proposalId);
   },
   discardThemeProposal(proposalId) {
-    return ipcRenderer.invoke("theme:discard", proposalId);
+    return invokeSession("theme:discard", proposalId);
   },
   listChanges() {
     return ipcRenderer.invoke("changes:list");
@@ -51,19 +174,19 @@ contextBridge.exposeInMainWorld("themelabDesktop", {
     return ipcRenderer.invoke("changes:history");
   },
   applyChange(proposalId) {
-    return ipcRenderer.invoke("changes:apply", proposalId);
+    return invokeSession("changes:apply", proposalId);
   },
   discardChange(proposalId) {
-    return ipcRenderer.invoke("changes:discard", proposalId);
+    return invokeSession("changes:discard", proposalId);
   },
   undoChange(proposalId) {
-    return ipcRenderer.invoke("changes:undo", proposalId);
+    return invokeSession("changes:undo", proposalId);
   },
   proposeClassChange(selection, className) {
-    return ipcRenderer.invoke("source:propose-class", { selection, className });
+    return invokeSession("source:propose-class", { selection, className });
   },
   proposeTailwindChanges(selection, updates) {
-    return ipcRenderer.invoke("source:propose-tailwind", { selection, updates });
+    return invokeSession("source:propose-tailwind", { selection, updates });
   },
   setPreviewBounds(bounds) {
     ipcRenderer.send("preview:setBounds", bounds);
@@ -89,72 +212,72 @@ contextBridge.exposeInMainWorld("themelabDesktop", {
     return () => ipcRenderer.removeListener("preview:theme", listener);
   },
   applyPreviewStyle(property, value) {
-    return ipcRenderer.invoke("preview:apply-style", { property, value });
+    return invokeSession("preview:apply-style", { property, value });
   },
   clearPreviewStyles() {
-    return ipcRenderer.invoke("preview:clear-styles");
+    return invokeSession("preview:clear-styles");
   },
   applyPreviewTheme(mode, name, value) {
-    return ipcRenderer.invoke("preview:apply-theme", { mode, name, value });
+    return invokeSession("preview:apply-theme", { mode, name, value });
   },
   setPreviewThemeMode(mode) {
-    return ipcRenderer.invoke("preview:set-theme-mode", mode);
+    return invokeSession("preview:set-theme-mode", mode);
   },
   resetPreviewTheme() {
-    return ipcRenderer.invoke("preview:reset-theme");
+    return invokeSession("preview:reset-theme");
   },
   commitPreviewTheme() {
-    return ipcRenderer.invoke("preview:commit-theme");
+    return invokeSession("preview:commit-theme");
   },
   navigatePreview(direction) {
-    return ipcRenderer.invoke("preview:navigate", direction);
+    return invokeSession("preview:navigate", direction);
   },
   movePreview(direction) {
-    return ipcRenderer.invoke("preview:move", direction);
+    return invokeSession("preview:move", direction);
   },
   bindPreviewToken(key, token) {
-    return ipcRenderer.invoke("preview:bind-token", { key, token });
+    return invokeSession("preview:bind-token", { key, token });
   },
   pickPreviewTailwind(key, token, css) {
-    return ipcRenderer.invoke("preview:pick-tailwind", { key, token, css });
+    return invokeSession("preview:pick-tailwind", { key, token, css });
   },
   undoPreview() {
-    return ipcRenderer.invoke("preview:undo");
+    return invokeSession("preview:undo");
   },
   canvasUndoPreview() {
-    return ipcRenderer.invoke("preview:canvas-undo");
+    return invokeSession("preview:canvas-undo");
   },
   resetPreview() {
-    return ipcRenderer.invoke("preview:reset");
+    return invokeSession("preview:reset");
   },
   togglePreviewCanvas() {
-    return ipcRenderer.invoke("preview:toggle-canvas");
+    return invokeSession("preview:toggle-canvas");
   },
   togglePreviewHistory() {
-    return ipcRenderer.invoke("preview:toggle-history");
+    return invokeSession("preview:toggle-history");
   },
   closePreview() {
-    return ipcRenderer.invoke("preview:close");
+    return invokeSession("preview:close");
   },
   commitPreview() {
-    return ipcRenderer.invoke("preview:commit");
+    return invokeSession("preview:commit");
   },
   commitPreviewAi() {
-    return ipcRenderer.invoke("preview:commit-ai");
+    return invokeSession("preview:commit-ai");
   },
   togglePreviewShortcuts() {
-    return ipcRenderer.invoke("preview:toggle-shortcuts");
+    return invokeSession("preview:toggle-shortcuts");
   },
   togglePreviewSettings() {
-    return ipcRenderer.invoke("preview:toggle-settings");
+    return invokeSession("preview:toggle-settings");
   },
   openThemeEditor() {
-    return ipcRenderer.invoke("preview:open-theme-editor");
+    return invokeSession("preview:open-theme-editor");
   },
   pasteTheme(value) {
-    return ipcRenderer.invoke("preview:paste-theme", value);
+    return invokeSession("preview:paste-theme", value);
   },
   setPreviewVariant(breakpoint, dark) {
-    return ipcRenderer.invoke("preview:set-variant", { breakpoint, dark });
+    return invokeSession("preview:set-variant", { breakpoint, dark });
   },
 });

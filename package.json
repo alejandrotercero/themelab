@@ -39,6 +39,7 @@
     "test": "pnpm --filter themelab-cli test",
     "test:theme-engine": "pnpm --filter @themelab/theme-engine test",
     "test:core": "pnpm --filter @themelab/core test",
+    "test:desktop-lifecycle": "pnpm --filter @themelab/desktop test:lifecycle",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"

@@ -15,8 +15,11 @@ const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
 
 interface ProxyServerOptions {
-  targetPort: number;
-  targetHost: string;
+  /** Exact upstream URL. Desktop uses this after it has resolved a real endpoint. */
+  targetUrl?: string;
+  /** Legacy CLI compatibility fields; use targetUrl for new callers. */
+  targetPort?: number;
+  targetHost?: string;
   proxyPort: number;
   wsPort: number;
   /** Base URL of the ThemeLab studio, for the overlay's "Open in editor". */
@@ -26,6 +29,7 @@ interface ProxyServerOptions {
 
 export function createProxyServer(options: ProxyServerOptions): http.Server {
   const {
+    targetUrl,
     targetPort,
     targetHost,
     // proxyPort is part of the public ProxyServerOptions shape but unused here.
@@ -35,8 +39,10 @@ export function createProxyServer(options: ProxyServerOptions): http.Server {
     getActiveClient,
   } = options;
 
+  const target = targetUrl ?? (targetHost && targetPort ? `http://${targetHost}:${targetPort}` : null);
+  if (!target) throw new Error("createProxyServer requires targetUrl or targetHost + targetPort.");
   const proxy = httpProxy.createProxyServer({
-    target: `http://${targetHost}:${targetPort}`,
+    target,
     ws: true,
     selfHandleResponse: true,
   });
@@ -95,7 +101,7 @@ export function createProxyServer(options: ProxyServerOptions): http.Server {
   });
 
   // Handle proxy response — inject script into HTML
-  proxy.on("proxyRes", (proxyRes, _req, res) => {
+  proxy.on("proxyRes", (proxyRes, req, res) => {
     const contentType = proxyRes.headers["content-type"] || "";
     const isHtml = contentType.includes("text/html");
     const outRes = res as unknown as http.ServerResponse;
@@ -113,6 +119,10 @@ export function createProxyServer(options: ProxyServerOptions): http.Server {
     proxyRes.on("end", () => {
       let body = Buffer.concat(chunks).toString("utf-8");
 
+      // In desktop mode the overlay itself hides its CLI chrome while retaining
+      // the selection canvas. Do not hide #themelab-root here: it is also the
+      // shadow host for the canvas, so doing so removes the only visible
+      // selection outline and label from the native preview.
       const injectedScript = `
 <script src="/__themelab/overlay.js"></script>
 <script>window.__THEMELAB_WS_PORT__ = ${wsPort}; window.__THEMELAB_STUDIO_URL__ = ${JSON.stringify(studioUrl)};</script>`;
@@ -175,7 +185,7 @@ export function createProxyServer(options: ProxyServerOptions): http.Server {
       return;
     }
     try {
-      const resp = await fetch(`http://${targetHost}:${targetPort}`, {
+      const resp = await fetch(target, {
         signal: AbortSignal.timeout(1000),
       });
       if (resp.ok || resp.status < 500) {

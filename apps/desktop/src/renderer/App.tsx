@@ -3,7 +3,9 @@ import {
   ArrowCounterClockwiseIcon,
   CaretDownIcon,
   CheckIcon,
+  ClockCounterClockwiseIcon,
   CursorIcon,
+  FolderSimpleIcon,
   GearSixIcon,
   ListBulletsIcon,
   PaletteIcon,
@@ -16,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { ThemeColorPicker, ThemeTokenSections, tokenContrast } from "@themelab/theme-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 import type {
   ComponentInfo,
@@ -31,13 +34,16 @@ import {
 } from "./color-utils";
 import { TAILWIND_PALETTE } from "../../../../packages/overlay/src/properties/tailwind-palette-data.js";
 import { ALL_DESCRIPTORS } from "../../../../packages/overlay/src/properties/property-descriptors.js";
+import type { LifecycleSnapshot } from "../project/lifecycle-protocol.js";
+import { deriveLifecycleView, type LifecycleViewModel } from "../project/lifecycle-view-model.js";
 
 type ThemePayload = { theme: ThemeStyles; source: ThemeSource | null } | null;
 type ThemeProposal = { id: string; label: string; createdAt: number; origin: "theme" | "inspector" | "agent" | "other"; operation: string | null; selectionKey: string | null; diff: string; files: string[] };
 type RecoveryEntry = { proposalId: string; label: string; createdAt: number; origin: "theme" | "inspector" | "agent" | "other"; operation: string | null; selectionKey: string | null; files: string[]; status: "undoable" | "undone" | "conflicted" };
-type WorkspaceSummary = NonNullable<Awaited<ReturnType<Window["themelabDesktop"]["getWorkspaceSummary"]>>>;
-type DevState = Awaited<ReturnType<Window["themelabDesktop"]["getDevStatus"]>>;
-type DevLog = Awaited<ReturnType<Window["themelabDesktop"]["getDevLogs"]>>[number];
+type WorkspaceSummary = NonNullable<Awaited<ReturnType<Window["themelabDesktop"]["workspace"]["summary"]>>>;
+type DevState = Awaited<ReturnType<Window["themelabDesktop"]["dev"]["status"]>>;
+type DevLog = Awaited<ReturnType<Window["themelabDesktop"]["dev"]["logs"]>>[number];
+type InstallState = Awaited<ReturnType<Window["themelabDesktop"]["dependencies"]["status"]>>;
 type TailwindProposalUpdate = {
   tailwindPrefix: string;
   tailwindToken: string | null;
@@ -46,6 +52,16 @@ type TailwindProposalUpdate = {
   classPattern?: string;
   standalone?: boolean;
   variant?: string;
+};
+
+const NO_PROJECT_VIEW: LifecycleViewModel = {
+  phase: "no-project",
+  serverReady: false,
+  previewReady: false,
+  canEdit: false,
+  canStart: false,
+  canAttach: false,
+  serverLabel: "Connect",
 };
 
 function Logo() {
@@ -101,16 +117,6 @@ function TailwindPalette({ anchor, inThemeDock = false, onClose, onPick }: { anc
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const panelRef = useRef<HTMLDivElement>(null);
-  const entries = tailwindPaletteEntries.filter((entry) => entry.token.includes(query.trim().toLowerCase()));
-  const rect = anchor.getBoundingClientRect();
-  const dock = inThemeDock ? anchor.closest(".native-theme-dock")?.getBoundingClientRect() : null;
-  // A WebContentsView always paints above DOM, regardless of z-index. Keep the
-  // theme palette physically inside the dock instead of allowing a fixed popup
-  // to cross into the live preview and appear clipped/broken.
-  const left = dock ? 8 : Math.max(8, Math.min(rect.right - 288, window.innerWidth - 296));
-  const top = dock
-    ? Math.max(8, Math.min(rect.top - dock.top, dock.height - 388))
-    : Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 388));
 
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (!panelRef.current?.contains(event.target as Node) && event.target !== anchor) onClose(); };
@@ -120,11 +126,29 @@ function TailwindPalette({ anchor, inThemeDock = false, onClose, onPick }: { anc
     return () => { document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", key, true); };
   }, [anchor, onClose]);
 
-  return <div className={`tailwind-palette ${view}${dock ? " in-theme-dock" : ""}`} ref={panelRef} style={{ left, top }}>
+  // Keep hooks unconditional. The token list can be replaced while the
+  // palette is open (theme mode, filtering, or a source refresh), which may
+  // detach the original button before React commits the closing render.
+  if (!anchor.isConnected) return null;
+  const entries = tailwindPaletteEntries.filter((entry) => entry.token.includes(query.trim().toLowerCase()));
+  const rect = anchor.getBoundingClientRect();
+  const dock = inThemeDock ? anchor.closest(".native-theme-dock")?.getBoundingClientRect() : null;
+  // The WebContentsView paints above the renderer. The palette is portalled to
+  // avoid being clipped by the scrolling token list, but is constrained to the
+  // theme dock so it never crosses into the preview.
+  const left = dock
+    ? Math.max(dock.left + 8, Math.min(rect.right - 288, dock.right - 296))
+    : Math.max(8, Math.min(rect.right - 288, window.innerWidth - 296));
+  const top = dock
+    ? Math.max(dock.top + 8, Math.min(rect.bottom + 6, dock.bottom - 388))
+    : Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 388));
+
+  const palette = <div className={`tailwind-palette ${view}`} ref={panelRef} style={{ left, top }}>
     <div className="tailwind-palette-head"><div><TailwindIcon /><span>Tailwind v4</span></div><div><button aria-label="List view" className={view === "list" ? "active" : ""} onClick={() => setView("list")} type="button">☷</button><button aria-label="Grid view" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} type="button">⊞</button></div></div>
     <input autoFocus className="tailwind-palette-search" onChange={(event) => setQuery(event.target.value)} placeholder="Search colors" value={query} />
     <div className="tailwind-palette-list">{entries.length ? entries.map((entry) => <button key={entry.token} onClick={() => { onPick(entry.token, entry.css); onClose(); }} title={entry.token} type="button"><i style={{ background: entry.css === "transparent" ? "repeating-conic-gradient(#3a3a44 0% 25%, #555 0% 50%) 0 0 / 8px 8px" : entry.css }} />{view === "list" ? <span>{entry.token}</span> : null}</button>) : <p>No colors found.</p>}</div>
   </div>;
+  return inThemeDock ? createPortal(palette, document.body) : palette;
 }
 
 function TailwindIcon() {
@@ -177,8 +201,8 @@ function ColorStyleControl({
       <button aria-expanded={varsOpen} className="overlay-var-button" disabled={disabled || themeEntries.length === 0} onClick={() => { setVarsOpen((open) => !open); setPickerOpen(false); setTailwindAnchor(null); }} type="button">var</button>
       <button aria-label="Pick a Tailwind color" className="overlay-tailwind-button" disabled={disabled} onClick={(event) => { setTailwindAnchor((current) => current ? null : event.currentTarget); setPickerOpen(false); setVarsOpen(false); }} type="button"><TailwindIcon /></button>
       {varsOpen ? <div className="overlay-var-menu">{themeEntries.filter(([, value]) => toRenderableCss(value)).map(([name, value]) => <button key={name} onClick={() => { setBoundTokenOverride(name); onBindToken(property, name); setVarsOpen(false); }} type="button"><i style={{ background: toRenderableCss(value) ?? "transparent" }} /><span>{name}</span></button>)}</div> : null}
-      {pickerOpen && anchor ? <ColorPicker left={Math.max(8, Math.min(anchor.getBoundingClientRect().left, window.innerWidth - 304))} onChange={(next) => onPreview(next)} onClose={() => setPickerOpen(false)} top={anchor.getBoundingClientRect().top - 36} value={value} /> : null}
-      {tailwindAnchor ? <TailwindPalette anchor={tailwindAnchor} onClose={() => setTailwindAnchor(null)} onPick={(nextToken, css) => { setBoundTokenOverride(null); onPickTailwind(property, nextToken, css); }} /> : null}
+      {pickerOpen && anchor?.isConnected ? <ColorPicker left={Math.max(8, Math.min(anchor.getBoundingClientRect().left, window.innerWidth - 304))} onChange={(next) => onPreview(next)} onClose={() => setPickerOpen(false)} top={anchor.getBoundingClientRect().top - 36} value={value} /> : null}
+      {tailwindAnchor?.isConnected ? <TailwindPalette anchor={tailwindAnchor} onClose={() => setTailwindAnchor(null)} onPick={(nextToken, css) => { setBoundTokenOverride(null); onPickTailwind(property, nextToken, css); }} /> : null}
     </div>
   </div>;
 }
@@ -247,12 +271,21 @@ function FlexGlyph({ name }: { name: "justify-start" | "justify-center" | "justi
 }
 
 export function App() {
-  const [status, setStatus] = useState("Connecting preview");
+  const [status, setStatus] = useState("No preview connected");
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [lifecycleSnapshot, setLifecycleSnapshot] = useState<LifecycleSnapshot | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>([]);
   const [workspaceSummary, setWorkspaceSummary] = useState<WorkspaceSummary | null>(null);
   const [devState, setDevState] = useState<DevState>({ status: "idle" });
   const [devLogs, setDevLogs] = useState<DevLog[]>([]);
   const [devPanelOpen, setDevPanelOpen] = useState(false);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [installPlan, setInstallPlan] = useState<{ planId: string; displayCommand: string; cwd: string; mutatesLockfile: boolean } | null>(null);
+  const [installState, setInstallState] = useState<InstallState>({ status: "idle" });
+  const [installLogs, setInstallLogs] = useState<DevLog[]>([]);
+  const [attachUrl, setAttachUrl] = useState("");
   const [selection, setSelection] = useState<ComponentInfo | null>(null);
   const [theme, setTheme] = useState<ThemePayload>(null);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -276,11 +309,21 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(420);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const sidebarDrag = useRef(false);
+  const lifecycleView = lifecycleSnapshot ? deriveLifecycleView(lifecycleSnapshot) : NO_PROJECT_VIEW;
+  // During the initial bridge handshake the legacy dev status may arrive before
+  // the full snapshot. Once a snapshot exists, it is authoritative.
+  const serverReady = lifecycleSnapshot ? lifecycleView.serverReady : devState.status === "running" || devState.status === "attached";
 
   useEffect(() => {
-    void window.themelabDesktop.getWorkspaceRoot().then((root) => setWorkspaceName(root?.split("/").at(-1) ?? null));
+    void window.themelabDesktop.workspace.getRoot().then((root) => setWorkspaceName(root?.split("/").at(-1) ?? null));
+    void window.themelabDesktop.session.current().then((session) => {
+      setSessionId(session.sessionId);
+      setLifecycleSnapshot(session);
+    });
+    void window.themelabDesktop.workspace.recents().then(setRecentWorkspaces);
     refreshWorkspaceSummary();
-    void window.themelabDesktop.getDevStatus().then(setDevState);
+    void window.themelabDesktop.dev.status().then(setDevState);
+    void window.themelabDesktop.dependencies.status().then(setInstallState);
     void window.themelabDesktop.listChanges().then((changes) => {
       setPendingChanges(changes);
       setActiveProposal(changes.at(-1) ?? null);
@@ -292,43 +335,194 @@ export function App() {
     const removeStatusListener = window.themelabDesktop.onPreviewStatus((event) => setStatus(event.status === "error" ? event.message ?? "Preview error" : "Preview connected"));
     const removeSelectionListener = window.themelabDesktop.onPreviewSelection(setSelection);
     const removeThemeListener = window.themelabDesktop.onPreviewTheme(setTheme);
-    const removeDevListener = window.themelabDesktop.onDevStatus(setDevState);
-    const removeDevLogListener = window.themelabDesktop.onDevLog((entry) => {
+    const removeDevListener = window.themelabDesktop.dev.subscribe((next) => {
+      if (next.sessionId && next.sessionId !== sessionIdRef.current) return;
+      setDevState(next);
+    });
+    const removeDevLogListener = window.themelabDesktop.dev.subscribeLogs((entry) => {
       setDevLogs((current) => [...current, entry].slice(-250));
     });
-    return () => { removeBoundsListener(); removeStatusListener(); removeSelectionListener(); removeThemeListener(); removeDevListener(); removeDevLogListener(); };
+    const removeInstallListener = window.themelabDesktop.dependencies.subscribe((next) => {
+      setInstallState(next);
+      if (next.status === "ready") {
+        setInstallStatus("Dependencies installed.");
+        setInstallPlan(null);
+        refreshWorkspaceSummary();
+      } else if (next.status === "cancelled") {
+        setInstallStatus("Dependency install cancelled.");
+        setInstallPlan(null);
+      } else if (next.status === "error") {
+        setInstallStatus(next.message ?? "Dependency installation failed.");
+        setInstallPlan(null);
+      }
+    });
+    const removeInstallLogListener = window.themelabDesktop.dependencies.subscribeLogs((entry) => setInstallLogs((current) => [...current, entry].slice(-250)));
+    const removeSnapshotListener = window.themelabDesktop.session.subscribe((snapshot) => {
+      // The main process serializes snapshots for the active session. Accept a
+      // new session here even if React has not committed the session.current()
+      // promise yet; otherwise the first preview-ready event is dropped and
+      // the shell remains stuck on "No preview connected".
+      if (snapshot.sessionId !== sessionIdRef.current) {
+        sessionIdRef.current = snapshot.sessionId;
+        setSessionId(snapshot.sessionId);
+      }
+      setLifecycleSnapshot(snapshot);
+      if (snapshot.server.status === "ready") {
+        setDevState({ status: snapshot.server.ownership === "attached" ? "attached" : "running", targetUrl: snapshot.server.targetUrl, message: snapshot.server.message });
+      }
+      else if (snapshot.server.status === "starting") setDevState({ status: "starting", command: snapshot.server.command, message: snapshot.server.message });
+      else if (snapshot.server.status === "choosing-endpoint") setDevState({ status: "choosing-endpoint", command: snapshot.server.command, candidates: snapshot.server.candidates, message: snapshot.server.message });
+      else if (snapshot.server.status === "error") setDevState({ status: "error", message: snapshot.server.message });
+      else if (snapshot.server.status === "exited" || snapshot.server.status === "idle") setDevState({ status: "stopped", message: snapshot.server.message });
+      if (snapshot.preview.status === "ready") setStatus("Preview connected");
+      if (snapshot.preview.status === "error") setStatus(snapshot.preview.message ?? "Preview error");
+      if (snapshot.preview.status === "unavailable") setStatus("No preview connected");
+      refreshWorkspaceSummary();
+    });
+    return () => { removeBoundsListener(); removeStatusListener(); removeSelectionListener(); removeThemeListener(); removeDevListener(); removeDevLogListener(); removeInstallListener(); removeInstallLogListener(); removeSnapshotListener(); };
   }, []);
 
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+
+  const activateWorkspace = (root: string) => {
+    setWorkspaceName(root.split("/").at(-1) ?? root);
+    setStatus("No preview connected");
+    void window.themelabDesktop.workspace.start().then((result) => {
+      setStatus(result.error ?? "No preview connected");
+      if (!result.error) {
+        setPendingChanges([]);
+        setActiveProposal(null);
+        setLastAppliedChange(null);
+        setWorkspaceSummary((result.workspace ?? null) as WorkspaceSummary | null);
+        setDevPanelOpen(false);
+        void window.themelabDesktop.session.current().then((session) => {
+          setSessionId(session.sessionId);
+          setLifecycleSnapshot(session);
+        });
+        // The session snapshot can be emitted before React has committed the
+        // new session id. Hydrate the summary directly as well so runtime and
+        // dependency gates are accurate on the first setup render.
+        void window.themelabDesktop.workspace.summary().then((summary) => setWorkspaceSummary(summary as WorkspaceSummary | null));
+        void window.themelabDesktop.workspace.recents().then(setRecentWorkspaces);
+        refreshRecoveryHistory();
+      }
+    });
+  };
   const chooseWorkspace = () => {
-    void window.themelabDesktop.chooseWorkspace().then((root) => {
+    void window.themelabDesktop.workspace.choose().then((root) => {
       if (!root) return;
-      setWorkspaceName(root.split("/").at(-1) ?? root);
-      setStatus("Starting preview");
-      void window.themelabDesktop.startWorkspace().then((result) => {
-        setStatus(result.error ?? "Connecting preview");
-        if (!result.error) {
-          setPendingChanges([]);
-          setActiveProposal(null);
-          setLastAppliedChange(null);
-          setWorkspaceSummary(result.workspace ?? null);
-          refreshRecoveryHistory();
-        }
-      });
+      activateWorkspace(root);
+    });
+  };
+  const openRecentWorkspace = (root: string) => {
+    void window.themelabDesktop.workspace.openRecent(root).then((resolved) => {
+      if (resolved) activateWorkspace(resolved);
+      else void window.themelabDesktop.workspace.recents().then(setRecentWorkspaces);
+    });
+  };
+  const chooseWorkspaceApp = (appRoot: string) => {
+    if (!sessionId) return;
+    void window.themelabDesktop.workspace.chooseApp(sessionId, appRoot).then((summary) => {
+      if (!summary) {
+        setStatus("That app is no longer available inside this workspace.");
+        return;
+      }
+      setWorkspaceSummary(summary as WorkspaceSummary);
+      setStatus("No preview connected");
+      setDevPanelOpen(false);
+    });
+  };
+  const chooseNodeExecutable = () => {
+    if (!sessionId) return;
+    void window.themelabDesktop.workspace.chooseNode(sessionId).then((summary) => {
+      if (!summary) return;
+      setWorkspaceSummary(summary as WorkspaceSummary);
+      setInstallStatus(null);
+    });
+  };
+  const closeWorkspace = () => {
+    if (!sessionId) return;
+    void window.themelabDesktop.workspace.close(sessionId).then(() => {
+      setWorkspaceName(null);
+      setSessionId(null);
+      setLifecycleSnapshot(null);
+      setWorkspaceSummary(null);
+      setSelection(null);
+      setTheme(null);
+      setThemeOpen(false);
+      setThemeEdits({});
+      setPendingChanges([]);
+      setActiveProposal(null);
+      setRecoveryHistory([]);
+      setChangesOpen(false);
+      setDevPanelOpen(false);
+      setDevLogs([]);
+      setStatus("Choose a React project to start a preview");
     });
   };
 
   const openDevPanel = () => {
     setDevPanelOpen((open) => {
-      if (!open) void window.themelabDesktop.getDevLogs().then(setDevLogs);
+      if (!open) {
+        setThemeOpen(false);
+        void window.themelabDesktop.dev.logs().then(setDevLogs);
+      }
       return !open;
     });
   };
   const startDevServer = () => {
+    if (!sessionId) return;
     setDevPanelOpen(true);
-    void window.themelabDesktop.startDevServer().then(setDevState);
+    void window.themelabDesktop.dev.start(sessionId).then((next) => {
+      setDevState(next);
+      if (next.status === "running" || next.status === "attached") setDevPanelOpen(false);
+    });
+  };
+  const attachDevServer = () => {
+    if (!sessionId) return;
+    setDevPanelOpen(true);
+    void window.themelabDesktop.dev.attach(sessionId, attachUrl).then((next) => {
+      setDevState(next);
+      if (next.status === "running" || next.status === "attached") setDevPanelOpen(false);
+    });
+  };
+  const chooseDevEndpoint = (url: string) => {
+    if (!sessionId) return;
+    void window.themelabDesktop.dev.chooseEndpoint(sessionId, url).then((next) => {
+      setDevState(next);
+      if (next.status === "running" || next.status === "attached") setDevPanelOpen(false);
+    });
+  };
+  const installDependencies = () => {
+    if (!sessionId) return;
+    setDevPanelOpen(true);
+    void window.themelabDesktop.dependencies.plan(sessionId).then((result) => {
+      if (!result.ok || !result.planId || !result.plan) {
+        setInstallStatus(result.message ?? "Could not prepare an install plan.");
+        return;
+      }
+      setInstallPlan({ planId: result.planId, displayCommand: result.plan.displayCommand, cwd: result.plan.cwd, mutatesLockfile: result.plan.mutatesLockfile });
+      setInstallStatus("Review the install command, then confirm.");
+    });
+  };
+  const confirmInstallDependencies = () => {
+    if (!installPlan || !sessionId) return;
+    setInstallStatus("Installing dependencies…");
+    void window.themelabDesktop.dependencies.confirm(sessionId, installPlan.planId).then((result) => {
+      setInstallStatus(result.message);
+      if (!result.ok) setInstallPlan(null);
+    });
+  };
+  const cancelInstallDependencies = () => {
+    if (!sessionId) return;
+    void window.themelabDesktop.dependencies.cancel(sessionId).then((result) => {
+      setInstallStatus(result.message);
+      if (!result.ok) setInstallPlan(null);
+    });
   };
   const stopDevServer = () => {
-    void window.themelabDesktop.stopDevServer().then(setDevState);
+    if (!sessionId) return;
+    void window.themelabDesktop.dev.stop(sessionId).then(setDevState);
   };
 
   const refreshRecoveryHistory = () => {
@@ -337,7 +531,7 @@ export function App() {
     });
   };
   function refreshWorkspaceSummary() {
-    void window.themelabDesktop.getWorkspaceSummary().then(setWorkspaceSummary);
+    void window.themelabDesktop.workspace.summary().then(setWorkspaceSummary);
   }
 
   function sendPreviewBounds() {
@@ -368,7 +562,7 @@ export function App() {
       window.clearTimeout(afterLayout);
       window.clearTimeout(afterPaint);
     };
-  }, [inspectorOpen, sidebarWidth, themeOpen]);
+  }, [inspectorOpen, sidebarWidth, themeOpen, devPanelOpen, status, devState.status]);
 
   const selectionKey = selection ? `${selection.filePath}:${selection.lineNumber}:${selection.columnNumber}` : "";
   useEffect(() => {
@@ -376,7 +570,13 @@ export function App() {
     setStyleUpdates({});
     setClassDraft(selection?.className ?? "");
   }, [selectionKey, selection?.className]);
-  useEffect(() => { if (selection) setInspectorOpen(true); }, [selection]);
+  useEffect(() => {
+    if (!lifecycleView.canEdit) {
+      setSelection(null);
+    } else if (selection) {
+      setInspectorOpen(true);
+    }
+  }, [lifecycleView.canEdit, selection]);
 
   const previewStyle = (property: string, value: string) => {
     if (!selection || !value.trim()) return;
@@ -602,17 +802,7 @@ export function App() {
         />
         <span title={name}>{name}</span>
         <input aria-label={name} onChange={(event) => stageThemeValue(name, event.target.value)} title={value} value={value} />
-        <button
-          aria-label={`Pick a Tailwind color for ${name}`}
-          className="theme-tailwind-button"
-          onClick={(event) => {
-            setActiveColor(null);
-            setThemePalette((current) => current?.name === name ? null : { name, anchor: event.currentTarget });
-          }}
-          type="button"
-        >
-          <TailwindIcon />
-        </button>
+        <button aria-label={`Pick a Tailwind color for ${name}`} className="theme-tailwind-button" onClick={(event) => { setActiveColor(null); setThemePalette((current) => current?.name === name ? null : { name, anchor: event.currentTarget }); }} type="button"><TailwindIcon /></button>
         {activeColor?.name === name ? <ColorPicker onChange={(next) => stageThemeValue(name, next)} onClose={() => setActiveColor(null)} top={activeColor.top} value={value} /> : null}
       </div>
     );
@@ -625,16 +815,14 @@ export function App() {
         <span className="header-separator" />
         <span className="desktop-status"><i className={status === "Preview connected" ? "online" : ""} />{status}</span>
         <button className="header-project" onClick={chooseWorkspace} title={workspaceName ? `Change project (current: ${workspaceName})` : "Choose a React project"} type="button">{workspaceName ?? "Open project"}</button>
-        <button aria-expanded={devPanelOpen} className={`header-server-status ${devState.status}`} onClick={openDevPanel} title={devState.message ?? "Project dev server"} type="button"><i />{devState.status === "running" ? "Server" : devState.status === "attached" ? "Attached" : devState.status === "starting" ? "Starting" : "Server"}</button>
+        {workspaceName ? <><button aria-expanded={devPanelOpen} className={`header-server-status ${devState.status}`} onClick={openDevPanel} title={devState.message ?? "Project dev server"} type="button"><i />{lifecycleView.serverLabel}</button><button className="header-close-project" onClick={closeWorkspace} title="Close project" type="button">Close</button></> : null}
         <div className="header-spacer" />
-        <button aria-pressed={changesOpen} className="header-action" onClick={() => setChangesOpen((open) => !open)} type="button">Changes{pendingChanges.length ? ` (${pendingChanges.length})` : ""}</button>
-        <button className="header-action" type="button"><SparkleIcon size={15} weight="bold" /> Agent</button>
-        <button className="header-action primary" disabled={!reviewableStyleCount} onClick={proposeStyleChanges} type="button"><CheckIcon size={15} weight="bold" /> Review</button>
+        {workspaceName ? <><button aria-pressed={changesOpen} className="header-action" onClick={() => setChangesOpen((open) => !open)} type="button">Changes{pendingChanges.length ? ` (${pendingChanges.length})` : ""}</button><button className="header-action" type="button"><SparkleIcon size={15} weight="bold" /> Agent</button><button className="header-action primary" disabled={!reviewableStyleCount} onClick={proposeStyleChanges} type="button"><CheckIcon size={15} weight="bold" /> Review</button></> : null}
       </header>
 
-      <div className={`overlay-desktop-body${inspectorOpen ? "" : " inspector-closed"}`} style={{ "--desktop-inspector-width": `${sidebarWidth}px` } as CSSProperties}>
+      {!workspaceName ? <main className="workspace-welcome"><section><span className="workspace-welcome-kicker">Desktop workspace</span><h1>Open a project</h1><p>Choose a React project to attach its dev server or start its detected <code>dev</code> script. ThemeLab only receives access to that project.</p><button className="workspace-open-button" onClick={chooseWorkspace} type="button"><FolderSimpleIcon size={16} weight="bold" />Open project</button></section>{recentWorkspaces.length ? <section className="workspace-recents"><div><ClockCounterClockwiseIcon size={14} weight="bold" /><h2>Recent projects</h2></div>{recentWorkspaces.map((root) => <button key={root} onClick={() => openRecentWorkspace(root)} title={root} type="button"><FolderSimpleIcon size={15} weight="regular" /><span>{root.split("/").at(-1) ?? root}</span><code>{root}</code></button>)}</section> : null}</main> : workspaceSummary?.appChoices.length ? <main className="workspace-welcome"><section><span className="workspace-welcome-kicker">Project selection</span><h1>Choose an app</h1><p>This folder contains multiple runnable React apps. Choose one before ThemeLab reads dependencies or starts a server.</p><div className="workspace-recents">{workspaceSummary.appChoices.map((candidate) => <button key={candidate.appRoot} onClick={() => chooseWorkspaceApp(candidate.appRoot)} title={candidate.appRoot} type="button"><FolderSimpleIcon size={15} weight="regular" /><span>{candidate.displayName}</span><code>{candidate.framework} · {candidate.appRoot}</code></button>)}</div></section></main> : !serverReady ? <main className="workspace-welcome"><section><span className="workspace-welcome-kicker">Project server</span><h1>{workspaceName}</h1><p>{installStatus ?? devState.message ?? "Start the detected dev script or attach an existing loopback server."}</p>{workspaceSummary?.runtime ? <div className="runtime-summary"><span>requires {workspaceSummary.runtime.nodeRequirement ?? "Node not declared"}</span><span>{workspaceSummary.runtime.nodeVersion ?? "Node unavailable"}</span><span>{workspaceSummary.runtime.packageManager ?? "No package manager"}</span>{workspaceSummary.project?.runtime.compatible === false || !workspaceSummary.project?.runtime.executable ? <button onClick={chooseNodeExecutable} type="button">Choose existing Node</button> : null}</div> : null}{devState.status === "choosing-endpoint" ? <div className="dev-panel-actions">{devState.candidates?.map((candidate) => <button className="primary" key={candidate.url} onClick={() => chooseDevEndpoint(candidate.url)}>Use {candidate.url}</button>)}<button onClick={stopDevServer} type="button">Cancel server</button></div> : devState.status === "starting" ? <div className="dev-panel-actions"><button onClick={stopDevServer} type="button"><StopIcon size={13} weight="fill" />Stop server</button></div> : installPlan ? <div className="install-plan"><code>{installPlan.displayCommand}</code><small>{installPlan.cwd}</small><button className="primary" disabled={installState.status === "installing"} onClick={confirmInstallDependencies}>Confirm install</button><button disabled={installState.status !== "installing"} onClick={cancelInstallDependencies}>Cancel</button></div> : <div className="dev-panel-actions">{workspaceSummary?.runtime && !workspaceSummary.runtime.dependenciesInstalled ? <button onClick={installDependencies}>Install dependencies</button> : null}<input aria-label="Existing server URL" onChange={(event) => setAttachUrl(event.target.value)} placeholder="http://localhost:PORT" value={attachUrl} /><button disabled={!attachUrl.trim()} onClick={attachDevServer}>Attach existing</button><button className="primary" disabled={!lifecycleView.canStart} onClick={startDevServer}>Start dev server</button></div>}</section></main> : <div className={`overlay-desktop-body${inspectorOpen ? "" : " inspector-closed"}`} style={{ "--desktop-inspector-width": `${sidebarWidth}px` } as CSSProperties}>
         <main className={`preview-stage${themeOpen ? " theme-open" : ""}`}>
-          <div className={`preview-canvas${themeOpen ? " theme-open" : ""}`} id="preview-slot"><div className="preview-loading">Loading proxied app</div></div>
+          <div className={`preview-canvas${themeOpen ? " theme-open" : ""}${devPanelOpen ? " dev-panel-open" : ""}`} id="preview-slot"><div className="preview-loading">Loading proxied app</div></div>
 
           {themeOpen ? <aside className="native-theme-dock">
             <div className="theme-dock-heading"><strong>Theme</strong><div className="theme-mode-switch"><button className={themeMode === "light" ? "active" : ""} onClick={() => setMode("light")} type="button">Light</button><button className={themeMode === "dark" ? "active" : ""} onClick={() => setMode("dark")} type="button">Dark</button></div><button aria-label="Collapse Theme" onClick={() => { setActiveColor(null); setThemePalette(null); setThemeOpen(false); }} type="button">×</button></div>
@@ -664,10 +852,11 @@ export function App() {
 
           {devPanelOpen ? <section aria-label="Project dev server" className="dev-panel">
             <div className="dev-panel-header"><div><TerminalWindowIcon size={15} weight="bold" /><strong>Project server</strong></div><button aria-label="Close project server" onClick={() => setDevPanelOpen(false)} type="button"><XIcon size={15} weight="bold" /></button></div>
-            <p className="dev-panel-status"><i className={devState.status} />{devState.message ?? "Choose a project to start or attach a server."}</p>
+            <p className="dev-panel-status"><i className={devState.status} />{installStatus ?? devState.message ?? "Choose a project to start or attach a server."}</p>
+            {workspaceSummary?.runtime ? <div className="runtime-summary"><span>requires {workspaceSummary.runtime.nodeRequirement ?? "Node not declared"}</span><span title={workspaceSummary.runtime.nodePath ?? undefined}>using {workspaceSummary.runtime.nodeVersion ?? "Node unavailable"}</span><span>{workspaceSummary.runtime.packageManager ?? "no package manager"}</span><span>{workspaceSummary.runtime.dependenciesInstalled ? "dependencies ready" : "dependencies missing"}</span>{workspaceSummary.project?.runtime.compatible === false || !workspaceSummary.project?.runtime.executable ? <button onClick={chooseNodeExecutable} type="button">Choose existing Node</button> : null}</div> : null}
             {devState.command ? <code>{devState.command}</code> : null}
-            <pre>{devLogs.length ? devLogs.slice(-12).map((entry) => entry.text).join("") : "No process output yet."}</pre>
-            <div className="dev-panel-actions">{devState.status === "running" || devState.status === "attached" || devState.status === "starting" ? <button onClick={stopDevServer} type="button"><StopIcon size={13} weight="fill" />{devState.status === "attached" ? "Disconnect" : "Stop server"}</button> : <button className="primary" disabled={!workspaceName} onClick={startDevServer} type="button"><PlayIcon size={13} weight="fill" />Start detected server</button>}</div>
+            <pre>{installState.status === "installing" ? (installLogs.length ? installLogs.slice(-12).map((entry) => entry.text).join("") : "No install output yet.") : (devLogs.length ? devLogs.slice(-12).map((entry) => entry.text).join("") : "No process output yet.")}</pre>
+            {installPlan ? <div className="install-plan"><code>{installPlan.displayCommand}</code><small>{installPlan.cwd}{installPlan.mutatesLockfile ? " · may update lockfile" : " · lockfile frozen"}</small></div> : null}<div className="dev-panel-actions"><button onClick={stopDevServer} type="button"><StopIcon size={13} weight="fill" />{devState.status === "attached" ? "Disconnect" : "Stop server"}</button></div>
           </section> : null}
 
           <div className="native-bottom-bar">
@@ -731,7 +920,7 @@ export function App() {
             </OverlaySection>
           </div>
         </aside>
-      </div>
+      </div>}
     </div>
   );
 }

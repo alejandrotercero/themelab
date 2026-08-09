@@ -42,7 +42,6 @@ const TOOLBAR_STYLES = `
      remains an invisible runtime bridge for hit-testing and source resolution. */
   :host(.desktop-mode) .toolbar,
   :host(.desktop-mode) .tools-panel,
-  :host(.desktop-mode) .selection-label,
   :host(.desktop-mode) .changelog-panel,
   :host(.desktop-mode) .prop-sidebar,
   :host(.desktop-mode) .rr-settings-overlay,

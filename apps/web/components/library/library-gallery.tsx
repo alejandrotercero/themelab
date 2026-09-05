@@ -10,6 +10,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { toast } from "sonner"
 
+import { LibraryIoControls } from "@/components/library/library-io-controls"
 import { NameThemeDialog } from "@/components/theme-transpiler/name-theme-dialog"
 import { SavedThemeCard } from "@/components/theme-transpiler/saved-theme-card"
 import {
@@ -46,27 +47,30 @@ export function LibraryGallery({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="ov-seg w-fit" role="tablist" aria-label="Filter themes">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={filter === "all"}
-          data-active={filter === "all"}
-          className="ov-seg-btn"
-          onClick={() => setFilter("all")}
-        >
-          All ({themes.length})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={filter === "favorites"}
-          data-active={filter === "favorites"}
-          className="ov-seg-btn"
-          onClick={() => setFilter("favorites")}
-        >
-          ★ Favorites ({favCount})
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="ov-seg w-fit" role="tablist" aria-label="Filter themes">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "all"}
+            data-active={filter === "all"}
+            className="ov-seg-btn"
+            onClick={() => setFilter("all")}
+          >
+            All ({themes.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "favorites"}
+            data-active={filter === "favorites"}
+            className="ov-seg-btn"
+            onClick={() => setFilter("favorites")}
+          >
+            ★ Favorites ({favCount})
+          </button>
+        </div>
+        <LibraryIoControls themes={themes} />
       </div>
 
       {visible.length === 0 ? (

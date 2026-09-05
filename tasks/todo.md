@@ -1,3 +1,36 @@
+# Library import/export (2026-06-10)
+
+## Plan
+
+- [x] `lib/saved-themes.ts`: portable file format (`{ version, exportedAt, count, themes }`) —
+      `serializeThemesFile`, `parseThemesFile` (accepts wrapped object, bare array, or a single
+      bare theme), `sanitizeImportedTheme` (defaults + drop empty themes), `themesFileName`;
+      store method `importThemes` that skips duplicate ids and uniquifies names.
+- [x] New `components/library/library-io-controls.tsx`: hidden file input + Import (merge) and
+      Export (whole library) buttons, toasts for each outcome.
+- [x] `library-gallery.tsx`: filter row gains the io controls (shared by /library page and the
+      in-tool "My Themes" dialog).
+- [x] `saved-theme-card.tsx`: "⋯" menu gains "Export theme (.json)" (same file format, one theme).
+- [x] Widen web vitest include to `lib/**` + tests for the file-IO pure functions.
+- [x] Verify: web typecheck, eslint, oxlint/oxfmt, web vitest, `next build`.
+
+## Review
+
+- Web: 110/110 vitest (16 new), tsc clean, eslint 0 errors, oxlint clean on touched files,
+  `next build` passes with `/library` prerendered.
+- Build was broken at HEAD for web (`@themelab/theme-ui` ships TS source but wasn't in
+  `transpilePackages`, and its sources used `.js` specifiers Turbopack can't map). Fixed by
+  adding `@themelab/theme-ui` to `transpilePackages` and dropping the `.js` extensions
+  (Bundler resolution everywhere it's consumed: web + desktop renderer; matches
+  `@themelab/shared`'s style). Desktop renderer typecheck passes; desktop main typecheck
+  passes once `pnpm build` produces the workspace dists.
+- Import semantics: entry ids already in the library are skipped (local copy wins) so
+  re-importing a file never duplicates; deleted themes re-import cleanly; names uniquified
+  against existing themes and within the batch; favorites preserved; missing fields defaulted
+  (`source: "Imported"`, radius `0.625rem`).
+- Pre-existing issues not touched: `no-barrel-file` oxlint error in `apps/web/lib/theme-engine/index.ts`,
+  4 eslint `<img>` warnings, 17 files failing `format:check:oxc` at HEAD.
+
 # Tiered AI escalation for the locator (2026-06-09)
 
 - [x] Tier 2 escalation in `ai-locate.ts`: tier-1 (Haiku, 8 steps/2048 tok) failure

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 
-import { THEME_TOKEN_GROUPS } from "./token-model.js"
+import { THEME_TOKEN_GROUPS } from "./token-model"
 
 export interface ThemeTokenSectionsProps {
   /** Values detected from the active theme source. Missing tokens stay hidden. */

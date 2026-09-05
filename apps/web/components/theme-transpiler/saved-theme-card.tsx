@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { downloadTextFile } from "@/lib/download"
+import { serializeThemesFile, themesFileName } from "@/lib/saved-themes"
 import type { SavedTheme } from "@/lib/saved-themes"
 import { createInstallCommand, themeStylesToDesignMd } from "@/lib/theme-engine"
 
@@ -85,6 +86,15 @@ export function SavedThemeCard({
       "text/markdown"
     )
     toast.success("DESIGN.md downloaded")
+  }
+
+  const exportThemeJson = () => {
+    downloadTextFile(
+      serializeThemesFile([theme]),
+      themesFileName(theme.name),
+      "application/json"
+    )
+    toast.success("Theme exported — import it from any ThemeLab library")
   }
 
   return (
@@ -160,6 +170,10 @@ export function SavedThemeCard({
             <DropdownMenuItem onClick={downloadDesignMd}>
               <DownloadSimpleIcon className="size-4" />
               Download DESIGN.md
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={exportThemeJson}>
+              <DownloadSimpleIcon className="size-4" />
+              Export theme (.json)
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

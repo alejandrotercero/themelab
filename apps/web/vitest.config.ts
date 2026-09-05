@@ -7,6 +7,9 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["lib/theme-engine/**/*.test.ts", "../../packages/theme-engine/src/**/*.test.ts"],
+    include: [
+      "lib/**/*.test.ts",
+      "../../packages/theme-engine/src/**/*.test.ts",
+    ],
   },
 })

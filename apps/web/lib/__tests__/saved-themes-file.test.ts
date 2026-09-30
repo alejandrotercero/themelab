@@ -102,6 +102,26 @@ describe("sanitizeImportedTheme", () => {
     expect(sanitizeImportedTheme(null)).toBeNull()
   })
 
+  it("accepts a scale-set entry with empty theme maps (regenerated live)", () => {
+    const item = sanitizeImportedTheme({
+      id: "s1",
+      name: "Brand scales",
+      theme: { light: {}, dark: {} },
+      radius: "0.625rem",
+      source: "Tailwind scales",
+      favorite: false,
+      createdAt: 1000,
+      updatedAt: 2000,
+      scaleSet: {
+        algo: "themelab",
+        appearance: "light",
+        rows: [{ name: "brand", color: "#3b82f6", neutral: false }],
+      },
+    })
+    expect(item?.scaleSet?.rows).toHaveLength(1)
+    expect(item?.theme).toEqual({ light: {}, dark: {} })
+  })
+
   it("fills missing fields with defaults and drops non-string tokens", () => {
     const item = sanitizeImportedTheme({
       theme: { light: { background: "#fff", bogus: 42 } },
@@ -124,6 +144,61 @@ describe("sanitizeImportedTheme", () => {
     expect(sanitizeImportedTheme({ ...theme, favorite: "yes" })?.favorite).toBe(
       false
     )
+  })
+
+  it("round-trips a scale-set entry with its generator inputs", () => {
+    const scaleSet = {
+      algo: "themelab" as const,
+      appearance: "light" as const,
+      rows: [{ name: "brand", color: "#3b82f6", neutral: false }],
+    }
+    const theme = makeTheme({ scaleSet })
+    const parsed = parseThemes(serializeThemesFile([theme]))
+    expect(parsed).toEqual({ themes: [theme], invalidCount: 0 })
+    expect(parsed?.themes[0].scaleSet).toEqual(scaleSet)
+  })
+
+  it("sanitizes scale rows and drops the set when no rows are usable", () => {
+    const item = sanitizeImportedTheme({
+      ...makeTheme(),
+      scaleSet: {
+        algo: "radix",
+        appearance: "dark",
+        rows: [
+          { name: " brand ", color: " #3b82f6 ", neutral: true },
+          { name: "", color: "#fff" },
+          { name: "nope", color: "" },
+          "junk",
+        ],
+      },
+    })
+    expect(item?.scaleSet).toEqual({
+      algo: "radix",
+      appearance: "dark",
+      rows: [{ name: "brand", color: "#3b82f6", neutral: true }],
+    })
+    // Garbage rows → no scaleSet key at all, so theme entries stay clean.
+    const bare = sanitizeImportedTheme({
+      ...makeTheme(),
+      scaleSet: { rows: [{ name: "", color: "" }] },
+    })
+    expect(bare).not.toHaveProperty("scaleSet")
+    expect(sanitizeImportedTheme(makeTheme())).not.toHaveProperty("scaleSet")
+  })
+
+  it("defaults a malformed scale-set header to themelab/light", () => {
+    const item = sanitizeImportedTheme({
+      ...makeTheme(),
+      scaleSet: {
+        algo: "bogus",
+        rows: [{ name: "brand", color: "#3b82f6" }],
+      },
+    })
+    expect(item?.scaleSet).toEqual({
+      algo: "themelab",
+      appearance: "light",
+      rows: [{ name: "brand", color: "#3b82f6", neutral: false }],
+    })
   })
 })
 

@@ -16,6 +16,7 @@ export default function Page() {
         <Navbar2
           navLinks={[
             { title: "Theme Generator", url: "/create" },
+            { title: "Tailwind", url: "/tailwind" },
             { title: "100r Themes", url: "/100r" },
             { title: "Mindful Palettes", url: "/mindfulpalettes" },
             { title: "Library", url: "/library" },

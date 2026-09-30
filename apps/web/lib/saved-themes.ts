@@ -14,6 +14,27 @@ export interface SavedTheme {
   favorite: boolean
   createdAt: number
   updatedAt: number
+  /** Scale-set entries (from /tailwind) carry their generator inputs here so
+   *  they re-generate live on open. Absent on classic theme entries. */
+  scaleSet?: SavedScaleSet
+}
+
+/** One row of a saved scale set: a single color producing a named scale. */
+export interface SavedScaleRow {
+  name: string
+  color: string
+  neutral: boolean
+}
+
+export interface SavedScaleSet {
+  algo: "themelab" | "radix"
+  appearance: "light" | "dark"
+  rows: SavedScaleRow[]
+}
+
+/** True for /tailwind scale-set entries, false (and undefined-safe) for themes. */
+export function isScaleSetEntry(t: SavedTheme): boolean {
+  return !!t.scaleSet && t.scaleSet.rows.length > 0
 }
 
 const KEY = "tl-saved-themes"
@@ -144,6 +165,7 @@ export const savedThemesStore = {
     theme: ThemeStyles
     radius: string
     source: string
+    scaleSet?: SavedScaleSet
   }): SavedTheme {
     ensureHydrated()
     const now = Date.now()
@@ -156,6 +178,9 @@ export const savedThemesStore = {
       favorite: false,
       createdAt: now,
       updatedAt: now,
+      ...(input.scaleSet && input.scaleSet.rows.length > 0
+        ? { scaleSet: input.scaleSet }
+        : {}),
     }
     write([item, ...cache])
     return item
@@ -163,7 +188,9 @@ export const savedThemesStore = {
 
   update(
     id: string,
-    patch: Partial<Pick<SavedTheme, "theme" | "radius" | "source" | "name">>
+    patch: Partial<
+      Pick<SavedTheme, "theme" | "radius" | "source" | "name" | "scaleSet">
+    >
   ): void {
     ensureHydrated()
     write(
@@ -271,15 +298,51 @@ function sanitizeTokenMap(value: unknown): Record<string, string> {
   return tokens
 }
 
+/** Coerce an unknown scale-set payload into a SavedScaleSet, or undefined when
+ *  it carries no usable rows (so theme entries stay scale-free). */
+function sanitizeScaleSet(value: unknown): SavedScaleSet | undefined {
+  if (!isRecord(value) || !Array.isArray(value.rows)) {
+    return undefined
+  }
+  const rows: SavedScaleRow[] = []
+  for (const raw of value.rows) {
+    if (
+      !isRecord(raw) ||
+      typeof raw.name !== "string" ||
+      !raw.name.trim() ||
+      typeof raw.color !== "string" ||
+      !raw.color.trim()
+    ) {
+      continue
+    }
+    rows.push({
+      name: raw.name.trim(),
+      color: raw.color.trim(),
+      neutral: raw.neutral === true,
+    })
+  }
+  if (!rows.length) {
+    return undefined
+  }
+  return {
+    algo: value.algo === "radix" ? "radix" : "themelab",
+    appearance: value.appearance === "dark" ? "dark" : "light",
+    rows,
+  }
+}
+
 /** Coerce an unknown file entry into a SavedTheme, filling gaps with defaults.
- *  Returns null for entries with no usable tokens in either mode. */
+ *  Returns null for entries with no usable tokens in either mode — unless they
+ *  carry a valid scale set (/tailwind entries regenerate their scales live
+ *  from the inputs, so their theme maps stay empty). */
 export function sanitizeImportedTheme(raw: unknown): SavedTheme | null {
   if (!isRecord(raw) || !isRecord(raw.theme)) {
     return null
   }
   const light = sanitizeTokenMap(raw.theme.light)
   const dark = sanitizeTokenMap(raw.theme.dark)
-  if (!Object.keys(light).length && !Object.keys(dark).length) {
+  const scaleSet = sanitizeScaleSet(raw.scaleSet)
+  if (!Object.keys(light).length && !Object.keys(dark).length && !scaleSet) {
     return null
   }
   const now = Date.now()
@@ -303,6 +366,7 @@ export function sanitizeImportedTheme(raw: unknown): SavedTheme | null {
       typeof raw.updatedAt === "number" && Number.isFinite(raw.updatedAt)
         ? raw.updatedAt
         : now,
+    ...(scaleSet ? { scaleSet } : {}),
   }
 }
 

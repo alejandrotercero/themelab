@@ -114,3 +114,13 @@ export function radixScales(args: {
     hexes.map((value, i) => ({ stop: i + 1, value: oklch(value) }))
   return { primary: toScale(r.accentScale), neutral: toScale(r.grayScale) }
 }
+
+/** Single-input wrapper: tinted neutrals (gray = accent) with the /create
+ *  DEFAULT_RADIX backgrounds (#ffffff light, #111111 dark). */
+export function radixScaleFromColor(
+  accent: string,
+  appearance: Appearance = "light"
+): { primary: Scale; neutral: Scale } {
+  const background = appearance === "light" ? "#ffffff" : "#111111"
+  return radixScales({ accent, gray: accent, background, appearance })
+}

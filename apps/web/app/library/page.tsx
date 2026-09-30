@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation"
 import { LibraryGallery } from "@/components/library/library-gallery"
 import { Logo } from "@/components/logo"
 import { Toaster } from "@/components/ui/sonner"
+import { isScaleSetEntry } from "@/lib/saved-themes"
 
 export default function LibraryPage() {
   const router = useRouter()
@@ -36,7 +37,13 @@ export default function LibraryPage() {
       </header>
 
       <main className="max-w-6xl mx-auto w-full flex-1 px-4 py-6">
-        <LibraryGallery onOpen={(t) => router.push(`/edit?saved=${t.id}`)} />
+        <LibraryGallery
+          onOpen={(t) =>
+            router.push(
+              isScaleSetEntry(t) ? `/tailwind?saved=${t.id}` : `/edit?saved=${t.id}`
+            )
+          }
+        />
       </main>
 
       <Toaster />

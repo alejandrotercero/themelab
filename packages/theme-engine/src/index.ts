@@ -43,6 +43,7 @@ export {
 export {
   radixThemeStyles,
   radixScales,
+  radixScaleFromColor,
   type RadixInputs,
   type RadixModeColors,
   type Appearance,

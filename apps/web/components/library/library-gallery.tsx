@@ -23,27 +23,38 @@ import {
 } from "@/components/ui/dialog"
 import { useSavedThemes } from "@/hooks/use-saved-themes"
 import type { SavedTheme } from "@/hooks/use-saved-themes"
+import { isScaleSetEntry } from "@/lib/saved-themes"
 
-type Filter = "all" | "favorites"
+type Filter = "all" | "favorites" | "themes" | "scales"
 
 interface LibraryGalleryProps {
   onOpen: (t: SavedTheme) => void
   /** Tailwind grid-template-columns classes; tune per surface. */
   gridClassName?: string
+  /** Initial filter tab; defaults to "all". */
+  initialFilter?: Filter
 }
 
 export function LibraryGallery({
   onOpen,
   gridClassName = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+  initialFilter = "all",
 }: LibraryGalleryProps) {
   const { themes, rename, duplicate, remove, toggleFavorite } = useSavedThemes()
-  const [filter, setFilter] = useState<Filter>("all")
+  const [filter, setFilter] = useState<Filter>(initialFilter)
   const [renameTarget, setRenameTarget] = useState<SavedTheme | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SavedTheme | null>(null)
 
   const visible =
-    filter === "favorites" ? themes.filter((t) => t.favorite) : themes
+    filter === "favorites"
+      ? themes.filter((t) => t.favorite)
+      : filter === "themes"
+        ? themes.filter((t) => !isScaleSetEntry(t))
+        : filter === "scales"
+          ? themes.filter((t) => isScaleSetEntry(t))
+          : themes
   const favCount = themes.filter((t) => t.favorite).length
+  const scaleCount = themes.filter((t) => isScaleSetEntry(t)).length
 
   return (
     <div className="flex flex-col gap-3">
@@ -69,6 +80,16 @@ export function LibraryGallery({
           >
             ★ Favorites ({favCount})
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "scales"}
+            data-active={filter === "scales"}
+            className="ov-seg-btn"
+            onClick={() => setFilter("scales")}
+          >
+            Scales ({scaleCount})
+          </button>
         </div>
         <LibraryIoControls themes={themes} />
       </div>
@@ -76,10 +97,27 @@ export function LibraryGallery({
       {visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--ov-radius-sm)] border border-dashed border-[var(--ov-border)] px-6 py-12 text-center">
           <p className="text-sm font-medium text-[var(--ov-text)]">
-            {themes.length === 0 ? "No saved themes yet" : "No favorites yet"}
+            {filter === "scales"
+              ? "No scale sets yet"
+              : themes.length === 0
+                ? "No saved themes yet"
+                : filter === "themes"
+                  ? "No themes yet"
+                  : "No favorites yet"}
           </p>
           <p className="text-xs text-[var(--ov-text-dim)]">
-            {themes.length === 0 ? (
+            {filter === "scales" ? (
+              <>
+                Build one in the{" "}
+                <Link
+                  href="/tailwind"
+                  className="underline hover:text-[var(--ov-text)]"
+                >
+                  tailwind scales tool
+                </Link>{" "}
+                and press Save.
+              </>
+            ) : themes.length === 0 ? (
               <>
                 Generate one in the{" "}
                 <Link

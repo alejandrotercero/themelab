@@ -16,6 +16,7 @@ export const metadata: Metadata = {
 
 const NAV_LINKS = [
   { title: "Theme Generator", url: "/create" },
+  { title: "Tailwind", url: "/tailwind" },
   { title: "100r Themes", url: "/100r" },
   { title: "Library", url: "/library" },
   { title: "Github", url: "https://github.com/alejandrotercero/themelab" },

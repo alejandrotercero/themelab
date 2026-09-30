@@ -1,3 +1,62 @@
+# /tailwind scale tool (2026-09-29)
+
+## Plan (approved — Plan A library save, building now)
+
+Goal: standalone `/tailwind` tool — one color per row, as many rows as
+wanted, each producing a named Tailwind scale. ThemeLab 50–950 XOR Radix
+1–12 via algorithm toggle. Scales only, no shadcn theme. Tailwind `@theme`
+CSS export + copy-as-SVG (same Figma paste flow as /create). Save scale
+sets into the SAME library (Plan A): `SavedTheme.scales` holds the
+*inputs*; theme entries untouched.
+
+- [ ] Engine — `packages/theme-engine/src/radix/index.ts`: add
+      `radixScaleFromColor(accent, appearance)` single-input wrapper
+      (gray = accent so neutrals come out tinted; bg defaults `#ffffff` /
+      `#111111`, matching /create's DEFAULT_RADIX). Returns the existing
+      `{ primary, neutral }` 12-step scales.
+- [ ] Engine — `packages/theme-engine/src/figma.ts`: generalize
+      `scalesToFigmaSvg` from fixed `{ primary, neutral }` to
+      `families: { name, scale }[]` stacked vertically (keep a thin
+      compat wrapper or update /create's call site). Keeps 11/12-stop
+      alpha progressions per family.
+- [ ] UI — `components/theme-transpiler/tailwind-creator.tsx` (new):
+      dynamic rows of `{ name, color, neutral }` (default one row,
+      `brand` / `#3b82f6`); SwatchPopover + name text input + neutral
+      checkbox + add/remove. Algorithm seg toggle (ThemeLab `buildScale`
+      vs Radix wrapper); appearance seg (light/dark, Radix only — its
+      scales are appearance-specific). No EditorShell (that's theme
+      chrome); slim `tl-overlay` page with own header.
+- [ ] UI — output: reuse `ScaleView` with one row per family; dedicated
+      `scale-export-dialog.tsx` (tailwind tab with format select + copy,
+      figma tab with SVG preview + "Copy SVG for Figma", mirroring
+      ExportDialog patterns — ExportDialog itself stays theme-bound).
+- [ ] Route — `apps/web/app/tailwind/page.tsx` + metadata
+      ("Build a Tailwind color scale from a single color …").
+- [ ] Nav — add `{ title: "Tailwind", url: "/tailwind" }` to
+      `app/page.tsx` navLinks and `app/how-it-works/page.tsx` NAV_LINKS.
+- [ ] Verify: web typecheck, web vitest (new: radix helper smoke —
+      12 steps, all parse as oklch; figma N-family — family ids present),
+      `next build`.
+
+Assumptions: (1) row list, not strictly one input — each row is a single
+color producing its own named scale; (2) Radix gray = the anchor (tinted
+neutrals), backgrounds fixed, no config modal for now; (3) scales-only —
+no token sidebar / preview / shadcn export (those stay on /create).
+
+## Review (2026-09-30, built)
+
+- Web: 119/119 vitest (4 new scale-set store tests), engine 85/85
+  (radix-scale 2, figma N-family 3), both typechecks clean,
+  `next build` passes with `/tailwind` prerendered.
+- ESLint: 0 errors on touched files; 1 `<img>` warning on the figma
+  preview (same accepted data-URI pattern as export-dialog, 4 at HEAD).
+- `LibraryControls.open` routes scale sets to `/tailwind?saved=` instead
+  of loading empty theme maps into the theme editor; `/library` opens
+  scale sets in `/tailwind`, themes in `/edit`.
+- TailwindCreator hydrates via lazy useState initializers (no
+  set-state-in-effect); radix+neutral row uses the gray scale so the
+  neutral toggle stays meaningful under Radix too.
+
 # Library import/export (2026-06-10)
 
 ## Plan

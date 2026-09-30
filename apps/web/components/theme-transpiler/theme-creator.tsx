@@ -130,8 +130,10 @@ export function ThemeCreator() {
   const figmaSvg = useCallback(
     () =>
       scalesToFigmaSvg({
-        primary: scales.primary,
-        neutral: scales.neutral,
+        families: [
+          { name: "primary", scale: scales.primary },
+          { name: "neutral", scale: scales.neutral },
+        ],
         mode: editor.mode,
         title: gen.algo === "radix" ? "Radix" : "ThemeLab",
       }),

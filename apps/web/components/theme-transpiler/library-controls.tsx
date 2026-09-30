@@ -11,6 +11,7 @@ import { toast } from "sonner"
 
 import { savedThemesStore } from "@/lib/saved-themes"
 import type { SavedTheme } from "@/lib/saved-themes"
+import { isScaleSetEntry } from "@/lib/saved-themes"
 
 import { LibraryDialog } from "./library-dialog"
 import { NameThemeDialog } from "./name-theme-dialog"
@@ -50,6 +51,12 @@ export function LibraryControls({ editor }: LibraryControlsProps) {
   }
 
   const open = (t: SavedTheme) => {
+    // Scale sets belong to /tailwind — route there instead of loading empty
+    // theme maps into the theme editor.
+    if (isScaleSetEntry(t)) {
+      window.location.href = `/tailwind?saved=${t.id}`
+      return
+    }
     editor.loadBase(t.theme, { source: t.name, swatches: [], savedId: t.id })
     editor.setRadius(t.radius)
   }

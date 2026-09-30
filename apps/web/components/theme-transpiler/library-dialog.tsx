@@ -18,12 +18,15 @@ interface LibraryDialogProps {
   onOpenChange: (open: boolean) => void
   /** Load the chosen theme into the editor. The dialog closes afterwards. */
   onOpen: (t: SavedTheme) => void
+  /** Initial filter tab for the gallery; defaults to "all". */
+  initialFilter?: "all" | "favorites" | "themes" | "scales"
 }
 
 export function LibraryDialog({
   open,
   onOpenChange,
   onOpen,
+  initialFilter = "all",
 }: LibraryDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,6 +42,7 @@ export function LibraryDialog({
         </DialogHeader>
         <LibraryGallery
           gridClassName="grid-cols-2 sm:grid-cols-3"
+          initialFilter={initialFilter}
           onOpen={(t) => {
             onOpen(t)
             onOpenChange(false)

@@ -23,10 +23,8 @@ export function HueWheel({ colors }: HueWheelProps) {
   const markers = useMemo(() => wheelMarkers(colors), [colors])
 
   return (
-    <div className="mx-auto w-full max-w-[240px]">
+    <figure className="mx-auto w-full max-w-[240px]">
       <div
-        role="img"
-        aria-label={`Hue wheel with ${markers.length} anchor colors`}
         className="relative aspect-square w-full rounded-full border border-[var(--ov-border)]"
         style={{ background: WHEEL_BACKGROUND }}
       >
@@ -46,9 +44,9 @@ export function HueWheel({ colors }: HueWheelProps) {
           />
         ))}
       </div>
-      <p className="mt-1 text-center text-[10px] text-[var(--ov-text-ghost)]">
-        angle = hue · distance = vividness
-      </p>
-    </div>
+      <figcaption className="mt-1 text-center text-[10px] text-[var(--ov-text-ghost)]">
+        {markers.length} anchors · angle = hue · distance = vividness
+      </figcaption>
+    </figure>
   )
 }

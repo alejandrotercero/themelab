@@ -1,3 +1,44 @@
+# Anchored scales, gamut mapping, real neutrals (2026-10-07)
+
+## Plan
+
+- [x] `mapToSrgb` in `oklch.ts` — hold L+H, bisect chroma down until in gamut.
+      Critically it tests the color AS `oklchCss` WILL PRINT IT (3 decimals):
+      rounding alone pushes ~4% of real sRGB colors back out of gamut (worst
+      0.047 chroma), so checking the unrounded value is not enough.
+- [x] `buildScale` now anchors: the anchor lands on the stop nearest its
+      lightness and is emitted verbatim (same L/C/H), and `anchorLightness`
+      rescales each side of that pivot so the ramp keeps its Tailwind-like
+      spacing and stays monotone. Chroma is scaled so the anchor's stop carries
+      the anchor's exact chroma.
+- [x] `NEUTRAL_LIGHTNESS` = Tailwind's real `gray` ramp (950 = 0.13, vs the
+      chromatic curve's 0.262). Used when the checkbox is on OR the anchor is
+      achromatic (≤0.002), so pure grays get it too.
+- [x] Neutral chroma: `softCap(c, 0.02)` (monotone compression) replaces the
+      flat `min(c, 0.02)`, which made every color above the cap byte-identical.
+- [x] Chroma fabrication removed: a pure gray no longer invents 0.04 at hue 0.
+- [x] UI: the anchor's stop is flagged with a white underline on the ramp;
+      neutral checkbox tooltip explains the new semantics.
+
+## Review
+
+- Engine 110/110 (25 new in `scale-anchor.test.ts`), web 156/156, both
+  typechecks clean, eslint + oxlint clean on touched files, `next build` OK.
+- Verified: 0/13200 stops out of sRGB; neutral 950 = L 0.13 / `#070707`
+  (matches Tailwind gray-950); anchors land exactly — `#3b82f6`→500,
+  `#e11d48`→600, `#14506b`→900, `#808080`→500.
+- Reported teal case (`#0e7490` vs `#14506b`, neutral on): max ΔE went from
+  ~0 (byte-identical) to 0.0556 (~3 JND). Chromatic differentiation is more
+  modest (0.0172) because both ramps still span the same pinned endpoints.
+- Caveat: the anchor is exact to 3-decimal print precision, so ~69% of inputs
+  round-trip to the identical hex; the rest are ≤1/255 off. Lightness placement
+  drift is ≤0.0005 (half the print granularity).
+- Found: the token set is **32**, not 31 (existing `scale.test.ts` titles say
+  31 while enumerating 32) — pre-existing doc inconsistency, not fixed.
+- Not done (out of scope, same flaw): /create's `paletteToScales` still uses the
+  fixed `STOP_LIGHTNESS` for its neutral scale, so its neutrals still end at
+  0.262 and its neutral scale is still too light.
+
 # /tailwind — header toggles, Radix L/D stacking, wheel fix (2026-10-06)
 
 - [x] Algorithm + Copy as moved out of the sidebar into the header, next to

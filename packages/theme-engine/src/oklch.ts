@@ -8,6 +8,7 @@ import {
   formatHex,
   formatHsl,
   formatRgb,
+  inGamut,
   wcagContrast,
 } from "culori"
 import type { Oklch } from "culori"
@@ -107,6 +108,53 @@ export function oklchToHex(o: Oklch): string {
 /** Copy an OKLCH color with a new lightness (0–1). */
 export function withL(o: Oklch, l01: number): Oklch {
   return { mode: "oklch", l: clamp(l01, 0, 1), c: o.c, h: o.h }
+}
+
+const inSrgb = inGamut("rgb")
+
+/**
+ * Bring an OKLCH color into the sRGB gamut by holding lightness and hue and
+ * reducing chroma until it fits — the CSS Color 4 approach.
+ *
+ * This matters for consistency, not just tidiness: an out-of-gamut value is
+ * handled differently by each consumer. Browsers chroma-map it (so the painted
+ * color is less saturated than requested), while culori's `formatHex` clips RGB
+ * channels (which also drifts the effective lightness — e.g. `oklch(0.262 0.121
+ * 25)` clipped to `#500001` actually measures L=0.271). Keeping every generated
+ * value in gamut means the preview swatch, the copied hex, the Figma SVG and the
+ * exported `oklch()` all describe the same color.
+ */
+export function mapToSrgb(o: Oklch): Oklch {
+  const l = clamp(o.l, 0, 1)
+  const h = o.h ?? 0
+  const c = Math.max(0, o.c)
+  // Test the color AS `oklchCss` WILL PRINT IT (3 decimals). Rounding alone can
+  // push a value back over the boundary — measured on real sRGB colors, ~4% do
+  // so, by as much as 0.047 chroma — so checking the unrounded value is not
+  // enough to guarantee the shipped string is displayable.
+  const printable = (chroma: number) =>
+    inSrgb({
+      mode: "oklch",
+      l: round(l, 3),
+      c: round(Math.max(0, chroma), 3),
+      h: round(h, 3),
+    })
+  if (printable(c)) {
+    return { mode: "oklch", l, c, h }
+  }
+  // Chroma 0 is always in gamut, and `printable` is monotone in chroma, so
+  // bisect on the boundary.
+  let lo = 0
+  let hi = c
+  for (let i = 0; i < 24; i += 1) {
+    const mid = (lo + hi) / 2
+    if (printable(mid)) {
+      lo = mid
+    } else {
+      hi = mid
+    }
+  }
+  return { mode: "oklch", l, c: lo, h }
 }
 
 /** Rotate hue by `deg` degrees, wrapping to [0, 360). */

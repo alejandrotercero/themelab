@@ -38,8 +38,8 @@ function newRowId(): string {
 function sanitizeRowName(raw: string, index: number): string {
   const clean = raw
     .toLowerCase()
-    .replace(/ /g, "-")
-    .replace(/[^a-z0-9-]/g, "")
+    .replaceAll(" ", "-")
+    .replaceAll(/[^a-z0-9-]/g, "")
   return clean || `scale-${index + 1}`
 }
 
@@ -97,7 +97,7 @@ export function ScaleRowsInput({
               className="ov-input min-w-0 flex-1"
             />
             <label
-              title="Clamp chroma so grays stay gray"
+              title="Neutral ramp: chroma held near zero with a deeper dark end (Tailwind gray), instead of reproducing this color's saturation"
               className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-[var(--ov-text-dim)]"
             >
               <input
@@ -163,7 +163,7 @@ export function ScaleRowsInput({
             className="ov-input w-28"
           />
           <label
-            title="Clamp chroma so grays stay gray"
+            title="Neutral ramp: chroma held near zero with a deeper dark end (Tailwind gray), instead of reproducing this color's saturation"
             className="flex cursor-pointer items-center gap-1 text-[11px] text-[var(--ov-text-dim)]"
           >
             <input

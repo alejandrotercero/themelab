@@ -22,6 +22,11 @@ function ringStops(bg: string): string[] {
   return (conic.match(HEX6) ?? []).map((s) => s.toLowerCase())
 }
 
+/** Distance of a marker from the wheel's center, in percent units. */
+function distanceFromCenter(m: { xPct: number; yPct: number }): number {
+  return Math.hypot(m.xPct - 50, m.yPct - 50)
+}
+
 describe("wheelBackground", () => {
   const bg = wheelBackground()
 
@@ -115,9 +120,10 @@ describe("wheelMarkers", () => {
       { name: "dull", color: "oklch(0.6 0.05 264)" },
       { name: "vivid", color: "oklch(0.5 0.28 264)" },
     ])
-    const dist = (m: { xPct: number; yPct: number }) =>
-      Math.hypot(m.xPct - 50, m.yPct - 50)
-    expect(dist(vivid!)).toBeGreaterThan(dist(dull!))
+    if (!dull || !vivid) {
+      throw new Error("expected two markers")
+    }
+    expect(distanceFromCenter(vivid)).toBeGreaterThan(distanceFromCenter(dull))
   })
 
   it("uses the hue step for its buckets", () => {

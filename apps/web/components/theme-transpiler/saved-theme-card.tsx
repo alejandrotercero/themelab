@@ -94,10 +94,10 @@ function ScaleSetCard({
   if (!set) {
     return null
   }
-  const rows = set.rows
+  const { rows, algo } = set
   const visibleRows = rows.slice(0, MAX_VISIBLE_ROWS)
   const extra = rows.length - visibleRows.length
-  const algoLabel = set.algo === "themelab" ? "ThemeLab" : "Radix"
+  const algoLabel = algo === "themelab" ? "ThemeLab" : "Radix"
 
   const exportScaleSetJson = () => {
     downloadTextFile(

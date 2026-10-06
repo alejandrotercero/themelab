@@ -50,9 +50,32 @@ interface ScaleEntry {
   rowKey: string
   /** The source row's display name (the group heading). */
   rowName: string
+  /** The source row's color, so the ramp can flag the stop that IS this color. */
+  color: string
   mode?: Appearance
 }
 
+/**
+ * True when a generated stop IS the row's own color. Compares lightness and
+ * chroma at print precision (0.001), plus hue when the color is actually
+ * chromatic — an anchor stop is emitted verbatim, so it matches on all three.
+ * Neutral ramps deliberately drop the anchor's chroma, so nothing matches.
+ */
+function isBaseStop(rowColor: string, value: string): boolean {
+  const a = toOklch(rowColor)
+  const b = toOklch(value)
+  if (!a || !b) {
+    return false
+  }
+  if (Math.abs(a.l - b.l) > 0.0006 || Math.abs((a.c ?? 0) - (b.c ?? 0)) > 0.0006) {
+    return false
+  }
+  if ((a.c ?? 0) <= 0.002) {
+    return true
+  }
+  const delta = Math.abs((((a.h ?? 0) - (b.h ?? 0)) % 360) + 360) % 360
+  return Math.min(delta, 360 - delta) <= 0.6
+}
 function newRowId(): string {
   try {
     return crypto.randomUUID()
@@ -83,8 +106,10 @@ function uniqueNames(rows: ScaleRow[]): string[] {
 
 export function TailwindCreator() {
   // Hydrate from the library (?saved=<id>) so saved scale sets reopen here.
-  // Lazy useState initializers (not an effect): this runs once on mount and
-  // reads the external system (URL + localStorage store) synchronously.
+  // Lazy useState initializer (not an effect): this runs once on mount and
+  // reads the external system (URL + localStorage store) synchronously. The
+  // value never changes, so only the value half of the pair is needed.
+  // oxlint-disable-next-line react/hook-use-state -- one-time initializer, no setter required
   const [initial] = useState(() => {
     const savedIdParam =
       typeof window === "undefined"
@@ -162,6 +187,7 @@ export function TailwindCreator() {
             scale: buildScale(row.color, { neutral: row.neutral }),
             rowKey: row.id,
             rowName: name,
+            color: row.color,
           },
         ]
       }
@@ -173,6 +199,7 @@ export function TailwindCreator() {
           scale: row.neutral ? light.neutral : light.primary,
           rowKey: row.id,
           rowName: name,
+          color: row.color,
           mode: "light" as const,
         },
         {
@@ -180,6 +207,7 @@ export function TailwindCreator() {
           scale: row.neutral ? dark.neutral : dark.primary,
           rowKey: row.id,
           rowName: name,
+          color: row.color,
           mode: "dark" as const,
         },
       ]
@@ -443,7 +471,7 @@ export function TailwindCreator() {
                     {entries[0]?.scale.length ?? 0} stops
                   </span>
                 </div>
-                {entries.map(({ name, scale, mode }) => (
+                {entries.map(({ name, scale, mode, color }) => (
                   <div key={name} className="flex flex-col gap-1">
                     {mode && (
                       <span className="text-[9px] tracking-wide text-[var(--ov-text-ghost)] uppercase">
@@ -454,16 +482,28 @@ export function TailwindCreator() {
                       {scale.map(({ stop, value }) => {
                         const hex = toHex(value)
                         const copied = reformat(value, format)
+                        // The anchor is emitted verbatim on its nearest stop, so
+                        // flag it — this is the "your color is in the palette"
+                        // marker. Neutral ramps deliberately drop the anchor's
+                        // chroma, so no stop matches and no marker shows.
+                        const isBase = isBaseStop(color, value)
                         return (
                           <button
                             key={stop}
                             type="button"
-                            title={`${name}-${stop} · ${copied}`}
+                            title={`${name}-${stop} · ${copied}${isBase ? " · base color" : ""}`}
                             aria-label={`Copy ${name}-${stop} (${copied})`}
                             onClick={() => copyStop(value, `${name}-${stop}`)}
-                            className="h-14 min-w-0 flex-1 transition-transform hover:scale-y-105"
+                            className="relative h-14 min-w-0 flex-1 transition-transform hover:scale-y-105"
                             style={{ backgroundColor: hex }}
-                          />
+                          >
+                            {isBase && (
+                              <span
+                                aria-hidden
+                                className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-white"
+                              />
+                            )}
+                          </button>
                         )
                       })}
                     </div>

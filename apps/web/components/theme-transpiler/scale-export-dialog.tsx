@@ -17,15 +17,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { COLOR_FORMATS, scaleToCss, scalesToFigmaSvg } from "@/lib/theme-engine"
+import { scaleToCss, scalesToFigmaSvg } from "@/lib/theme-engine"
 import type { ColorFormat, Scale } from "@/lib/theme-engine"
 
 type Tab = "tailwind" | "figma"
@@ -37,14 +30,16 @@ interface ScaleExportDialogProps {
   title: string
   /** Theme-set display name, for the dialog title only. */
   name: string
+  /** Shared color format (selector lives on the /tailwind sidebar). */
+  format: ColorFormat
 }
 
 export function ScaleExportDialog({
   scales,
   title,
   name,
+  format,
 }: ScaleExportDialogProps) {
-  const [format, setFormat] = useState<ColorFormat>("oklch")
   const [tab, setTab] = useState<Tab>("tailwind")
   const [copied, setCopied] = useState(false)
 
@@ -113,6 +108,12 @@ export function ScaleExportDialog({
             </DialogDescription>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <span
+              className="text-[11px] tracking-wide text-[var(--ov-text-ghost)] uppercase"
+              title="Color format — change it on the sidebar"
+            >
+              {format}
+            </span>
             <Tabs
               value={tab}
               onValueChange={(v) => setTab(v as Tab)}
@@ -123,23 +124,6 @@ export function ScaleExportDialog({
                 <TabsTrigger value="figma">figma</TabsTrigger>
               </TabsList>
             </Tabs>
-            {tab === "tailwind" && (
-              <Select
-                value={format}
-                onValueChange={(v) => v && setFormat(v as ColorFormat)}
-              >
-                <SelectTrigger size="sm" className="w-28 uppercase">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="tl-overlay">
-                  {COLOR_FORMATS.map((f) => (
-                    <SelectItem key={f} value={f} className="uppercase">
-                      {f}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
             <button
               type="button"
               className="ov-btn"
@@ -161,10 +145,11 @@ export function ScaleExportDialog({
         {tab === "figma" && (
           <div className="flex h-[60vh] flex-col items-center justify-center gap-4 overflow-auto bg-[var(--ov-bg)] p-6">
             <div className="w-full max-w-[980px]">
-              <div className="mb-2 text-center text-[10px] text-[var(--ov-text-dim)]">
+              <div className="mb-2 max-w-[980px] text-center text-[10px] leading-relaxed text-[var(--ov-text-dim)]">
                 White canvas with solid + alpha rows. Layer names are set via
-                ids. Paste into Figma, then create color styles / variables from
-                the rectangles.
+                ids. The alpha row is one mid-tone tint per family at stepped
+                opacities (8-digit hex) — paste into Figma, then create color
+                styles / variables from the rectangles.
               </div>
               <div className="overflow-auto rounded border border-[var(--ov-border)] bg-white p-3 shadow-inner">
                 {/* Render the SVG via data URI so it scales cleanly as an image preview */}

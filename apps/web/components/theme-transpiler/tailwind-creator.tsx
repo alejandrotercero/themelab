@@ -23,16 +23,19 @@ import { savedThemesStore } from "@/lib/saved-themes"
 import type { SavedTheme } from "@/lib/saved-themes"
 import {
   buildScale,
+  COLOR_FORMATS,
   oklchToHex,
   radixScaleFromColor,
+  reformat,
   scalesToFigmaSvg,
   toOklch,
 } from "@/lib/theme-engine"
-import type { Appearance, Scale } from "@/lib/theme-engine"
+import type { Appearance, ColorFormat, Scale } from "@/lib/theme-engine"
 
 import { LibraryDialog } from "./library-dialog"
 import { NameThemeDialog } from "./name-theme-dialog"
 import { ScaleExportDialog } from "./scale-export-dialog"
+import { HueWheel } from "./hue-wheel"
 import { ScaleRowsInput } from "./scale-rows-input"
 import type { ScaleRow } from "./scale-rows-input"
 import { ScaleView } from "./scale-view"
@@ -115,6 +118,8 @@ export function TailwindCreator() {
   const [savedId, setSavedId] = useState<string | null>(initial.savedId)
   const [nameOpen, setNameOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  /** Default color format for swatch copy + the export dialog. */
+  const [format, setFormat] = useState<ColorFormat>("oklch")
 
   const generate = useCallback(() => {
     setGen({ algo, appearance, rows })
@@ -167,14 +172,17 @@ export function TailwindCreator() {
     [scales]
   )
 
-  const copyStop = useCallback(async (value: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(value)
-      toast.success(`Copied ${label}`)
-    } catch {
-      toast.error("Couldn't access the clipboard.")
-    }
-  }, [])
+  const copyStop = useCallback(
+    async (value: string, label: string) => {
+      try {
+        await navigator.clipboard.writeText(reformat(value, format))
+        toast.success(`Copied ${label} (${format})`)
+      } catch {
+        toast.error("Couldn't access the clipboard.")
+      }
+    },
+    [format]
+  )
 
   const save = () => {
     if (savedId && savedThemesStore.get(savedId)) {
@@ -265,150 +273,194 @@ export function TailwindCreator() {
             scales={scales}
             title={gen.algo === "radix" ? "Radix" : "ThemeLab"}
             name={setName}
+            format={format}
           />
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 overflow-y-auto px-4 py-6">
-        <div className="flex flex-col gap-2">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="shrink-0 text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
-              Scale set:
-            </span>
-            <span className="truncate text-lg font-semibold text-[var(--ov-text)]">
-              {setName}
-            </span>
-          </div>
-
-          <ScaleRowsInput
-            rows={rows}
-            onChange={(next) => {
-              setRows(next)
-              setSavedId(null)
-            }}
-            onGenerate={generate}
-          />
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-[var(--ov-text-ghost)]">
-                Algorithm
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* Sidebar — scale rows + generation controls */}
+        <aside className="min-h-0 shrink-0 overflow-y-auto border-b border-[var(--ov-border)] p-4 lg:w-[320px] lg:border-r lg:border-b-0">
+          <div className="flex flex-col gap-4">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="shrink-0 text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
+                Scale set:
               </span>
-              <div
-                className="ov-seg"
-                role="tablist"
-                aria-label="Generation algorithm"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={algo === "themelab"}
-                  data-active={algo === "themelab"}
-                  className="ov-seg-btn"
-                  title="Fixed lightness + chroma curve per stop in the anchor's hue"
-                  onClick={() => changeAlgo("themelab")}
-                >
-                  ThemeLab
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={algo === "radix"}
-                  data-active={algo === "radix"}
-                  className="ov-seg-btn"
-                  title="Radix's real generateRadixColors"
-                  onClick={() => changeAlgo("radix")}
-                >
-                  Radix
-                </button>
-              </div>
+              <span className="truncate text-lg font-semibold text-[var(--ov-text)]">
+                {setName}
+              </span>
             </div>
 
-            {algo === "radix" && (
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-[10px] font-semibold tracking-wide text-[var(--ov-text-ghost)] uppercase">
+                Scales
+              </h2>
+              <HueWheel colors={rows} />
+              <ScaleRowsInput
+                layout="stacked"
+                rows={rows}
+                onChange={(next) => {
+                  setRows(next)
+                  setSavedId(null)
+                }}
+                onGenerate={generate}
+              />
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] text-[var(--ov-text-ghost)]">
-                  Appearance
+                  Algorithm
                 </span>
                 <div
                   className="ov-seg"
                   role="tablist"
-                  aria-label="Radix appearance"
+                  aria-label="Generation algorithm"
                 >
-                  {(["light", "dark"] as const).map((m) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={algo === "themelab"}
+                    data-active={algo === "themelab"}
+                    className="ov-seg-btn"
+                    title="Fixed lightness + chroma curve per stop in the anchor's hue"
+                    onClick={() => changeAlgo("themelab")}
+                  >
+                    ThemeLab
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={algo === "radix"}
+                    data-active={algo === "radix"}
+                    className="ov-seg-btn"
+                    title="Radix's real generateRadixColors"
+                    onClick={() => changeAlgo("radix")}
+                  >
+                    Radix
+                  </button>
+                </div>
+              </div>
+
+              {algo === "radix" && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-[var(--ov-text-ghost)]">
+                    Appearance
+                  </span>
+                  <div
+                    className="ov-seg"
+                    role="tablist"
+                    aria-label="Radix appearance"
+                  >
+                    {(["light", "dark"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        role="tab"
+                        aria-selected={appearance === m}
+                        data-active={appearance === m}
+                        className="ov-seg-btn"
+                        title={`Generate the ${m}-mode Radix scales`}
+                        onClick={() => changeAppearance(m)}
+                      >
+                        {m === "light" ? "Light" : "Dark"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="text-[11px] text-[var(--ov-text-ghost)]"
+                  title="Color format for swatch copy + Code export"
+                >
+                  Copy as
+                </span>
+                <div
+                  className="ov-seg"
+                  role="tablist"
+                  aria-label="Copy color format"
+                >
+                  {COLOR_FORMATS.map((f) => (
                     <button
-                      key={m}
+                      key={f}
                       type="button"
                       role="tab"
-                      aria-selected={appearance === m}
-                      data-active={appearance === m}
-                      className="ov-seg-btn"
-                      title={`Generate the ${m}-mode Radix scales`}
-                      onClick={() => changeAppearance(m)}
+                      aria-selected={format === f}
+                      data-active={format === f}
+                      className="ov-seg-btn uppercase"
+                      title={`Copy colors as ${f}`}
+                      onClick={() => setFormat(f)}
                     >
-                      {m === "light" ? "Light" : "Dark"}
+                      {f}
                     </button>
                   ))}
                 </div>
               </div>
-            )}
-
-            <span className="text-[11px] text-[var(--ov-text-ghost)]">
-              {scales.length} scale{scales.length === 1 ? "" : "s"} ·{" "}
-              {swatchCount} swatches · click a swatch to copy
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          {scales.map(({ name, scale }) => (
-            <div key={name} className="flex flex-col gap-1.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <h2 className="truncate text-sm font-semibold text-[var(--ov-text)]">
-                  {name}
-                </h2>
-                <span className="shrink-0 text-[10px] text-[var(--ov-text-ghost)]">
-                  {scale.length} stops
-                </span>
-              </div>
-              <div className="flex overflow-hidden rounded-[var(--ov-radius-xs)] border border-[var(--ov-border)]">
-                {scale.map(({ stop, value }) => {
-                  const hex = toHex(value)
-                  return (
-                    <button
-                      key={stop}
-                      type="button"
-                      title={`${name}-${stop} · ${hex} · ${value}`}
-                      aria-label={`Copy ${name}-${stop} (${hex})`}
-                      onClick={() => copyStop(value, `${name}-${stop}`)}
-                      className="h-14 min-w-0 flex-1 transition-transform hover:scale-y-105"
-                      style={{ backgroundColor: hex }}
-                    />
-                  )
-                })}
-              </div>
-              <div className="flex">
-                {scale.map(({ stop }) => (
-                  <span
-                    key={stop}
-                    className="flex-1 text-center text-[9px] text-[var(--ov-text-ghost)]"
-                  >
-                    {stop}
-                  </span>
-                ))}
-              </div>
             </div>
-          ))}
-        </div>
-
-        <details className="text-[11px] text-[var(--ov-text-dim)]">
-          <summary className="cursor-pointer text-[var(--ov-text-ghost)]">
-            Scale rows (compact list)
-          </summary>
-          <div className="mt-2">
-            <ScaleView scales={scales} figmaSvg={figmaSvg} />
           </div>
-        </details>
-      </main>
+        </aside>
+
+        {/* Main — generated ramps */}
+        <main className="mx-auto flex w-full max-w-4xl min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-6">
+          <span className="text-[11px] text-[var(--ov-text-ghost)]">
+            {scales.length} scale{scales.length === 1 ? "" : "s"} ·{" "}
+            {swatchCount} swatches · click a swatch to copy as {format}
+          </span>
+
+          <div className="flex flex-col gap-4">
+            {scales.map(({ name, scale }) => (
+              <div key={name} className="flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="truncate text-sm font-semibold text-[var(--ov-text)]">
+                    {name}
+                  </h2>
+                  <span className="shrink-0 text-[10px] text-[var(--ov-text-ghost)]">
+                    {scale.length} stops
+                  </span>
+                </div>
+                <div className="flex overflow-hidden rounded-[var(--ov-radius-xs)] border border-[var(--ov-border)]">
+                  {scale.map(({ stop, value }) => {
+                    const hex = toHex(value)
+                    const copied = reformat(value, format)
+                    return (
+                      <button
+                        key={stop}
+                        type="button"
+                        title={`${name}-${stop} · ${copied}`}
+                        aria-label={`Copy ${name}-${stop} (${copied})`}
+                        onClick={() => copyStop(value, `${name}-${stop}`)}
+                        className="h-14 min-w-0 flex-1 transition-transform hover:scale-y-105"
+                        style={{ backgroundColor: hex }}
+                      />
+                    )
+                  })}
+                </div>
+                <div className="flex">
+                  {scale.map(({ stop }) => (
+                    <span
+                      key={stop}
+                      className="flex-1 text-center text-[9px] text-[var(--ov-text-ghost)]"
+                    >
+                      {stop}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <details className="text-[11px] text-[var(--ov-text-dim)]">
+            <summary className="cursor-pointer text-[var(--ov-text-ghost)]">
+              Scale rows (compact list)
+            </summary>
+            <div className="mt-2">
+              <ScaleView scales={scales} figmaSvg={figmaSvg} />
+            </div>
+          </details>
+        </main>
+      </div>
 
       <NameThemeDialog
         open={nameOpen}

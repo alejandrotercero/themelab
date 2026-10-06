@@ -1,3 +1,18 @@
+# /tailwind follow-ups — format selector, sidebar, alpha caption (2026-10-06)
+
+- [x] "Copy as" seg (oklch/hsl/rgb/hex) in the sidebar drives both swatch
+      click-to-copy (`reformat`, toast names the format) and the Code dialog
+      (dialog-local selector removed, current format shown as a label).
+- [x] Sidebar layout: 320px left rail (scale-set name, stacked ScaleRowsInput
+      cards, Algorithm, Appearance, Copy-as) + ramp pane; stacks on mobile.
+      `ScaleRowsInput` gains a `layout="stacked"` variant (inline kept,
+      unused for now).
+- [x] Figma alpha explained in-product: caption now reads "The alpha row is
+      one mid-tone tint per family at stepped opacities (8-digit hex)" — in
+      both scale-export-dialog and export-dialog (/create shares the SVG).
+- [x] Verify: web typecheck clean, eslint 0 errors (2 accepted data-URI
+      `<img>` warnings), `next build` passes with `/tailwind` prerendered.
+
 # /tailwind scale tool (2026-09-29)
 
 ## Plan (approved — Plan A library save, building now)

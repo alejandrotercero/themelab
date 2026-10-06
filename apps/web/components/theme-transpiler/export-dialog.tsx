@@ -246,10 +246,11 @@ export function ExportDialog({
         {tab === "figma" && (
           <div className="flex h-[60vh] flex-col items-center justify-center gap-4 overflow-auto bg-[var(--ov-bg)] p-6">
             <div className="w-full max-w-[980px]">
-              <div className="mb-2 text-center text-[10px] text-[var(--ov-text-dim)]">
+              <div className="mb-2 text-center text-[10px] leading-relaxed text-[var(--ov-text-dim)]">
                 White canvas with solid + alpha rows. Layer names are set via
-                ids. Paste into Figma, then create color styles / variables from
-                the rectangles.
+                ids. The alpha row is one mid-tone tint per family at stepped
+                opacities (8-digit hex). Paste into Figma, then create color
+                styles / variables from the rectangles.
               </div>
               <div className="overflow-auto rounded border border-[var(--ov-border)] bg-white p-3 shadow-inner">
                 {/* Render the SVG via data URI so it scales cleanly as an image preview */}

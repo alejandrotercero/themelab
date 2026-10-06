@@ -16,6 +16,9 @@ interface ScaleRowsInputProps {
   rows: ScaleRow[]
   onChange: (rows: ScaleRow[]) => void
   onGenerate: () => void
+  /** "inline" (default) wraps rows in one line; "stacked" renders one row per
+   *  line with full-width actions — for sidebar layouts. */
+  layout?: "inline" | "stacked"
 }
 
 const MAX_ROWS = 8
@@ -44,6 +47,7 @@ export function ScaleRowsInput({
   rows,
   onChange,
   onGenerate,
+  layout = "inline",
 }: ScaleRowsInputProps) {
   const update = (id: string, patch: Partial<ScaleRow>) =>
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
@@ -63,6 +67,76 @@ export function ScaleRowsInput({
     ])
   }
   const addDisabled = rows.length >= MAX_ROWS
+
+  if (layout === "stacked") {
+    return (
+      <div className="flex flex-col gap-2">
+        {rows.map((row, index) => (
+          <div
+            key={row.id}
+            className="flex items-center gap-1.5 rounded-[var(--ov-radius-xs)] border border-[var(--ov-border)] bg-[var(--ov-surface-2)] px-2 py-1.5"
+          >
+            <SwatchPopover
+              value={row.color}
+              onChange={(hex) => update(row.id, { color: hex })}
+              title={`${row.name}: ${row.color}`}
+              className="size-[22px]"
+            />
+            <input
+              type="text"
+              value={row.name}
+              onChange={(e) => update(row.id, { name: e.target.value })}
+              onBlur={() => {
+                const clean = sanitizeRowName(row.name, index)
+                if (clean !== row.name) {
+                  update(row.id, { name: clean })
+                }
+              }}
+              aria-label="Scale name"
+              spellCheck={false}
+              className="ov-input min-w-0 flex-1"
+            />
+            <label
+              title="Clamp chroma so grays stay gray"
+              className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-[var(--ov-text-dim)]"
+            >
+              <input
+                type="checkbox"
+                checked={row.neutral}
+                onChange={(e) => update(row.id, { neutral: e.target.checked })}
+              />
+              neutral
+            </label>
+            <button
+              type="button"
+              className="ov-btn shrink-0 px-1.5"
+              onClick={() => onChange(rows.filter((r) => r.id !== row.id))}
+              disabled={rows.length <= 1}
+              aria-label="Remove scale"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="ov-btn w-full"
+          onClick={add}
+          disabled={addDisabled}
+          title={addDisabled ? "Maximum of 8 scales" : undefined}
+        >
+          + Add scale
+        </button>
+        <button
+          type="button"
+          className="ov-btn ov-btn-primary w-full"
+          onClick={onGenerate}
+        >
+          Generate
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-3">

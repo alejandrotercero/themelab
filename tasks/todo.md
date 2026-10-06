@@ -1,3 +1,23 @@
+# /tailwind — header toggles, Radix L/D stacking, wheel fix (2026-10-06)
+
+- [x] Algorithm + Copy as moved out of the sidebar into the header, next to
+      My themes / Save / Code (with a divider before the actions).
+- [x] Radix now renders BOTH appearances stacked under one row heading
+      (labelled light/dark) instead of an Appearance toggle; the dark ramps
+      are suffixed (`brand-dark`) so their @theme vars stay unique.
+      `appearance` stays in state + SavedScaleSet for file-format compat.
+- [x] Hue wheel was BLACK: `conic-gradient(in oklch, …)` is unsupported in
+      Safari, which drops the entire background declaration. Replaced with
+      72 precomputed sRGB hex stops from oklchToHex. Also switched from a
+      constant-L ring (olive at yellow, dark at blue) to the most vivid
+      in-gamut color per hue, and normalized marker distance by each hue's
+      own chroma peak. Added a dark outer ring so pale dots read on the
+      near-white center.
+- [x] Enter closes the Kibo color picker (SwatchPopover now controlled;
+      onKeyDown on PopoverContent). Shared, so all three tools benefit.
+- [x] Verify: web typecheck clean, eslint 0 errors, 119/119 tests,
+      `next build` passes with `/tailwind` prerendered.
+
 # /tailwind follow-ups — format selector, sidebar, alpha caption (2026-10-06)
 
 - [x] "Copy as" seg (oklch/hsl/rgb/hex) in the sidebar drives both swatch

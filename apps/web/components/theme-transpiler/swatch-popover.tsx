@@ -6,6 +6,7 @@
 // unmounting on close to re-seed from the current value each time it opens.
 
 import { formatHex } from "culori"
+import { useState } from "react"
 
 import {
   ColorPicker,
@@ -36,8 +37,10 @@ export function SwatchPopover({
   title,
   className,
 }: SwatchPopoverProps) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <Popover>
+    <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger
         type="button"
         title={title}
@@ -47,7 +50,18 @@ export function SwatchPopover({
           className
         )}
       />
-      <PopoverContent align="start" className="tl-overlay w-72 gap-3 p-3">
+      <PopoverContent
+        align="start"
+        className="tl-overlay w-72 gap-3 p-3"
+        // Enter is the keyboard commit gesture: the picker applies each keystroke
+        // live, so Enter just dismisses. (Escape still closes via base-ui.)
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            setOpen(false)
+          }
+        }}
+      >
         <ColorPicker
           defaultValue={value}
           onChange={(next) => {
